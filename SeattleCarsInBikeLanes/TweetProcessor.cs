@@ -62,7 +62,7 @@ namespace SeattleCarsInBikeLanes
                 }
                 else
                 {
-                    logger.LogWarning("More than 1 item was probably marked as latest. Fixing.");
+                    logger.LogWarning("Could not find latest item. Fixing.");
                     allItems = allItems.OrderByDescending(i => i.CreatedAt).ToList();
                     foreach (var item in allItems)
                     {

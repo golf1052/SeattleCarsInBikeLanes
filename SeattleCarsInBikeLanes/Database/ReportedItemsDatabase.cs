@@ -1,4 +1,5 @@
-﻿using LinqToTwitter;
+﻿using System.Text;
+using LinqToTwitter;
 using LinqToTwitter.Common;
 using Microsoft.Azure.Cosmos;
 using SeattleCarsInBikeLanes.Database.Models;
@@ -46,60 +47,93 @@ namespace SeattleCarsInBikeLanes.Database
 
         public async Task<ReportedItem?> GetLatestReportedItem()
         {
-            try
+            List<ReportedItem>? items = await RunQuery("select * from items where items.Latest = true");
+            if (items == null || items.Count == 0)
             {
-                List<ReportedItem> items = new List<ReportedItem>();
-                using FeedIterator<ReportedItem> itemsIterator = itemsContainer.GetItemQueryIterator<ReportedItem>(
-                    "select * from items where items.Latest = true");
-                while (itemsIterator.HasMoreResults)
-                {
-                    FeedResponse<ReportedItem> currentResults = await itemsIterator.ReadNextAsync();
-                    foreach (ReportedItem item in currentResults)
-                    {
-                        items.Add(item);
-                    }
-                }
-
-                if (items.Count == 0)
-                {
-                    return null;
-                }
-
-                if (items.Count > 1)
-                {
-                    string markedItems = string.Join(' ', items.Select(i => i.TweetId));
-                    logger.LogWarning($"More than 1 item marked as latest. {markedItems}");
-                    return null;
-                }
-
-                return items[0];
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to get latest item.");
                 return null;
             }
+
+            if (items.Count > 1)
+            {
+                string markedItems = string.Join(' ', items.Select(i => i.TweetId));
+                logger.LogWarning($"More than 1 item marked as latest. {markedItems}");
+                return null;
+            }
+
+            return items[0];
         }
 
         public async Task<List<ReportedItem>?> GetAllItems()
         {
+            return await RunQuery();
+        }
+
+        public async Task<List<ReportedItem>?> GetItems(List<string> tweetIds)
+        {
+            if (tweetIds.Count == 0)
+            {
+                return new List<ReportedItem>();
+            }
+
+            StringBuilder queryStringBuilder = new StringBuilder("select * from items where ");
+            List<string> queryParts = new List<string>();
+            for (int i = 0; i < tweetIds.Count; i++)
+            {
+                queryParts.Add($"startswith(items.id, @t{i})");
+            }
+            queryStringBuilder.AppendJoin(" or ", queryParts);
+
+            QueryDefinition query = new QueryDefinition(queryStringBuilder.ToString());
+            for (int i = 0; i < tweetIds.Count; i++)
+            {
+                string id = tweetIds[i];
+                query.WithParameter($"@t{i}", id);
+            }
+
+            return await RunQuery(query);
+        }
+
+        public async Task<bool> DeleteItem(ReportedItem item)
+        {
+            try
+            {
+                await itemsContainer.DeleteItemAsync<ReportedItem>(item.TweetId, new PartitionKey(item.TweetId));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"Failed to delete item: {item.TweetId}");
+                return false;
+            }
+        }
+
+        private async Task<List<ReportedItem>?> RunQuery(string? query = null)
+        {
+            using FeedIterator<ReportedItem> iterator = itemsContainer.GetItemQueryIterator<ReportedItem>(query);
+            return await ProcessIterator(iterator);
+        }
+
+        private async Task<List<ReportedItem>?> RunQuery(QueryDefinition query)
+        {
+            using FeedIterator<ReportedItem> iterator = itemsContainer.GetItemQueryIterator<ReportedItem>(query);
+            return await ProcessIterator(iterator);
+        }
+
+        private async Task<List<ReportedItem>?> ProcessIterator(FeedIterator<ReportedItem> iterator)
+        {
             try
             {
                 List<ReportedItem> items = new List<ReportedItem>();
-                using FeedIterator<ReportedItem> itemsIterator = itemsContainer.GetItemQueryIterator<ReportedItem>();
-                while (itemsIterator.HasMoreResults)
+                while (iterator.HasMoreResults)
                 {
-                    FeedResponse<ReportedItem> currentResults = await itemsIterator.ReadNextAsync();
-                    foreach (ReportedItem item in currentResults)
-                    {
-                        items.Add(item);
-                    }
+                    FeedResponse<ReportedItem> currentResults = await iterator.ReadNextAsync();
+                    items.AddRange(currentResults);
                 }
                 return items;
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to get all items.");
+                logger.LogError(ex, "Failed to get results from iterator.");
                 return null;
             }
         }

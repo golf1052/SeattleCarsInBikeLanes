@@ -23,7 +23,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         {
             string url = $"https://twitter.com/{TwitterUsername}/status/{tweetId}";
             HttpClient client = new HttpClient();
-            HttpResponseMessage response = await client.GetAsync($"https://publish.twitter.com/oembed?url={url}");
+            HttpResponseMessage response = await client.GetAsync($"https://publish.twitter.com/oembed?url={url}&dnt=true");
             if (!response.IsSuccessStatusCode)
             {
                 return null;

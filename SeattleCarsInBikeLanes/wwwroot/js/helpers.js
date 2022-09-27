@@ -27,7 +27,8 @@ function createFeatureCollection(reportedItems) {
 
 function createDataSource(reportedItems) {
     const dataSourceOptions = {
-        cluster: true
+        cluster: true,
+        clusterRadius: 40
     };
     const source = new atlas.source.DataSource(null, dataSourceOptions);
     source.add(createFeatureCollection(reportedItems));
