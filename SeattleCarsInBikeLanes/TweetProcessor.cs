@@ -86,25 +86,46 @@ namespace SeattleCarsInBikeLanes
             var tweets = await GetAllTweetsSinceId(helperMethods.GetRealTweetId(latestItem));
             if (tweets != null && tweets.Tweets != null && tweets.Tweets.Count > 0)
             {
-                latestItem.Latest = false;
-                bool updatedLatest = await reportedItemsDatabase.UpdateReportedItem(latestItem);
-                if (!updatedLatest)
+                List<ReportedItem> reportedItems = await GetReportedItems(tweets);
+                if (reportedItems.Count > 0)
                 {
-                    logger.LogError($"Failed to update latest tweet");
+                    latestItem.Latest = false;
+                    bool updatedLatest = await reportedItemsDatabase.UpdateReportedItem(latestItem);
+                    if (!updatedLatest)
+                    {
+                        logger.LogError($"Failed to update latest tweet");
+                    }
+                    await ImportTweetsToDatabase(reportedItems);
+                    logger.LogInformation("Imported latest tweets");
                 }
-                await ImportTweetsToDatabase(tweets);
-                logger.LogInformation("Imported latest tweets");
             }
         }
 
         private async Task ImportAllTweetsToDatabase()
         {
             var tweets = await GetAllTweets();
-            await ImportTweetsToDatabase(tweets);
+            List<ReportedItem> reportedItems = await GetReportedItems(tweets);
+            await ImportTweetsToDatabase(reportedItems);
             logger.LogInformation("Imported all tweets.");
         }
 
-        private async Task ImportTweetsToDatabase(TweetQuery tweets)
+        private async Task ImportTweetsToDatabase(List<ReportedItem> reportedItems)
+        {
+            if (reportedItems.Count > 0)
+            {
+                reportedItems[0].Latest = true;
+                foreach (var item in reportedItems)
+                {
+                    bool added = await reportedItemsDatabase.AddReportedItem(item);
+                    if (!added)
+                    {
+                        logger.LogError($"Failed to add tweet: {item.TweetId}");
+                    }
+                }
+            }
+        }
+
+        private async Task<List<ReportedItem>> GetReportedItems(TweetQuery tweets)
         {
             List<ReportedItem> allItems = new List<ReportedItem>();
             foreach (var tweet in tweets.Tweets!)
@@ -124,20 +145,7 @@ namespace SeattleCarsInBikeLanes
 
                 }
             }
-
-            allItems = allItems.OrderByDescending(i => i.CreatedAt).ToList();
-            if (allItems.Count > 0)
-            {
-                allItems[0].Latest = true;
-                foreach (var item in allItems)
-                {
-                    bool added = await reportedItemsDatabase.AddReportedItem(item);
-                    if (!added)
-                    {
-                        logger.LogError($"Failed to add tweet: {item.TweetId}");
-                    }
-                }
-            }
+            return allItems.OrderByDescending(i => i.CreatedAt).ToList();
         }
 
         private async Task<TweetQuery> GetAllTweets()
