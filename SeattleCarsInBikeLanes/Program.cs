@@ -16,6 +16,16 @@ namespace SeattleCarsInBikeLanes
 
             // Add services to the container.
 
+            builder.Services.AddCors(options =>
+            {
+                options.AddDefaultPolicy(policy =>
+                {
+                    policy.WithOrigins("https://localhost:7152",
+                        "http://localhost:5152",
+                        "https://seattle.carinbikelane.com");
+                });
+            });
+
             builder.Services.AddControllers();
             
             // Setup services
@@ -86,6 +96,8 @@ namespace SeattleCarsInBikeLanes
             app.UseDefaultFiles();
 
             app.UseStaticFiles();
+
+            app.UseCors();
 
             app.UseAuthorization();
 
