@@ -3,6 +3,7 @@ using LinqToTwitter;
 using LinqToTwitter.Common;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.Database.Models;
+using SeattleCarsInBikeLanes.Models;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace SeattleCarsInBikeLanes
@@ -13,6 +14,7 @@ namespace SeattleCarsInBikeLanes
         private readonly TwitterContext twitterContext;
         private readonly MapsSearchClient mapsSearchClient;
         private readonly ReportedItemsDatabase reportedItemsDatabase;
+        private readonly StatusResponse currentStatus;
         private readonly TimeSpan checkDuration;
         private readonly HelperMethods helperMethods;
         private Task checkTask;
@@ -21,6 +23,7 @@ namespace SeattleCarsInBikeLanes
             TwitterContext twitterContext,
             MapsSearchClient mapsSearchClient,
             ReportedItemsDatabase reportedItemsDatabase,
+            StatusResponse currentStatus,
             TimeSpan checkDuration,
             HelperMethods helperMethods)
         {
@@ -28,6 +31,7 @@ namespace SeattleCarsInBikeLanes
             this.twitterContext = twitterContext;
             this.mapsSearchClient = mapsSearchClient;
             this.reportedItemsDatabase = reportedItemsDatabase;
+            this.currentStatus = currentStatus;
             this.checkDuration = checkDuration;
             this.helperMethods = helperMethods;
             checkTask = CheckTweets();
@@ -97,8 +101,12 @@ namespace SeattleCarsInBikeLanes
                     }
                     await ImportTweetsToDatabase(reportedItems);
                     logger.LogInformation("Imported latest tweets");
+                    latestItem = reportedItems[0];
                 }
             }
+
+            currentStatus.LatestTweet = latestItem.CreatedAt;
+            currentStatus.LastChecked = DateTime.UtcNow;
         }
 
         private async Task ImportAllTweetsToDatabase()

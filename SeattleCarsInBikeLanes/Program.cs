@@ -5,6 +5,7 @@ using LinqToTwitter;
 using LinqToTwitter.OAuth;
 using Microsoft.Azure.Cosmos;
 using SeattleCarsInBikeLanes.Database;
+using SeattleCarsInBikeLanes.Models;
 
 namespace SeattleCarsInBikeLanes
 {
@@ -31,6 +32,7 @@ namespace SeattleCarsInBikeLanes
             // Setup services
             var services = builder.Services;
             services.AddSingleton<HelperMethods>();
+            services.AddSingleton<StatusResponse>();
             services.AddSingleton<DefaultAzureCredential>();
             services.AddSingleton(c =>
             {
@@ -85,6 +87,7 @@ namespace SeattleCarsInBikeLanes
                     serviceProvider.GetRequiredService<TwitterContext>(),
                     serviceProvider.GetRequiredService<MapsSearchClient>(),
                     serviceProvider.GetRequiredService<ReportedItemsDatabase>(),
+                    serviceProvider.GetRequiredService<StatusResponse>(),
                     TimeSpan.FromHours(1),
                     serviceProvider.GetRequiredService<HelperMethods>());
             }
