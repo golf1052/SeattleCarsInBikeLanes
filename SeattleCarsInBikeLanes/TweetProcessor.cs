@@ -125,6 +125,7 @@ namespace SeattleCarsInBikeLanes
                 logger.LogError("Not all items were deleted. Please delete the rest manually");
                 return;
             }
+            logger.LogInformation("Deleted all reported items.");
 
             await ImportAllTweetsToDatabase();
         }

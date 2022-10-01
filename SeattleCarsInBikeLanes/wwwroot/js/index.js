@@ -91,7 +91,7 @@ function initMap() {
 
                     } else {
                         const properties = e.shapes[0].getProperties();
-                        const position = new atlas.data.Position(properties.location.longitude, properties.location.latitude);
+                        const position = atlas.data.Position.fromLatLng(properties.location.position);
                         popup.setOptions({
                             position: position
                         });

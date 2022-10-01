@@ -1,7 +1,4 @@
-﻿using LinqToTwitter;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json.Linq;
+﻿using Microsoft.AspNetCore.Mvc;
 
 namespace SeattleCarsInBikeLanes.Controllers
 {
@@ -10,13 +7,6 @@ namespace SeattleCarsInBikeLanes.Controllers
     public class TwitterController : ControllerBase
     {
         private const string TwitterUsername = "carbikelanesea";
-
-        private readonly TwitterContext twitterContext;
-
-        public TwitterController(TwitterContext twitterContext)
-        {
-            this.twitterContext = twitterContext;
-        }
 
         [HttpGet("oembed")]
         public async Task<string?> GetOEmbed([FromQuery] string tweetId)

@@ -17,7 +17,7 @@ function getAllReportedItems() {
 
 function createFeatureCollection(reportedItems) {
     const features = reportedItems.map(i => {
-        const position = new atlas.data.Position(i.location.longitude, i.location.latitude);
+        const position = atlas.data.Position.fromLatLng(i.location.position);
         const point = new atlas.data.Point(position);
         return new atlas.data.Feature(point, i);
     });

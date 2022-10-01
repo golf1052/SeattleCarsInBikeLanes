@@ -4,6 +4,7 @@ using SeattleCarsInBikeLanes.Database.Models;
 using Azure.Maps.Search;
 using Azure.Core.GeoJson;
 using System.Runtime.InteropServices;
+using Microsoft.Azure.Cosmos.Spatial;
 
 namespace SeattleCarsInBikeLanes
 {
@@ -65,7 +66,7 @@ namespace SeattleCarsInBikeLanes
                 }
 
                 string? gpsString = GetReportedBlockValue(splitBlock[1..], "GPS");
-                LatLon? location = null;
+                Point? location = null;
                 if (!string.IsNullOrWhiteSpace(gpsString))
                 {
                     string[] splitGpsString = gpsString.Split(',');
@@ -76,11 +77,7 @@ namespace SeattleCarsInBikeLanes
                         if (double.TryParse(splitGpsString[0].Trim(), out latitude) &&
                             double.TryParse(splitGpsString[1].Trim(), out longitude))
                         {
-                            location = new LatLon()
-                            {
-                                Latitude = latitude,
-                                Longitude = longitude
-                            };
+                            location = new Point(longitude, latitude);
                         }
                     }
                 }
@@ -89,11 +86,7 @@ namespace SeattleCarsInBikeLanes
                     var potentialLocation = await GeocodeAddress(locationString, mapsSearchClient);
                     if (potentialLocation != null)
                     {
-                        location = new LatLon()
-                        {
-                            Latitude = potentialLocation.Value.Latitude,
-                            Longitude = potentialLocation.Value.Longitude
-                        };
+                        location = new Point(potentialLocation.Value.Longitude, potentialLocation.Value.Latitude);
                     }
                 }
 

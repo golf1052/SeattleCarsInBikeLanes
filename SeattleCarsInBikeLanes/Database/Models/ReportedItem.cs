@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using Microsoft.Azure.Cosmos.Spatial;
+using Newtonsoft.Json;
 
 namespace SeattleCarsInBikeLanes.Database.Models
 {
@@ -11,14 +12,8 @@ namespace SeattleCarsInBikeLanes.Database.Models
         public DateTime? Date { get; set; }
         public DateTime? Time { get; set; }
         public string LocationString { get; set; } = string.Empty;
-        public LatLon? Location { get; set; }
+        public Point? Location { get; set; }
         public List<string> ImageUrls { get; set; } = new List<string>();
         public bool Latest { get; set; } = false;
-    }
-
-    public struct LatLon
-    {
-        public double Latitude { get; set; }
-        public double Longitude { get; set; }
     }
 }
