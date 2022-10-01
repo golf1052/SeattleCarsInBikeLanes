@@ -107,6 +107,22 @@ namespace SeattleCarsInBikeLanes.Database
             }
         }
 
+        public async Task<bool> DeleteAllItems()
+        {
+            List<ReportedItem>? allItems = await GetAllItems();
+            if (allItems == null)
+            {
+                return false;
+            }
+
+            bool allDeleted = true;
+            foreach (var item in allItems)
+            {
+                allDeleted &= await DeleteItem(item);
+            }
+            return allDeleted;
+        }
+
         private async Task<List<ReportedItem>?> RunQuery(string? query = null)
         {
             using FeedIterator<ReportedItem> iterator = itemsContainer.GetItemQueryIterator<ReportedItem>(query);

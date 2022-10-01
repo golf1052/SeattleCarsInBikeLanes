@@ -117,6 +117,18 @@ namespace SeattleCarsInBikeLanes
             logger.LogInformation("Imported all tweets.");
         }
 
+        private async Task RebuildDatabase()
+        {
+            bool deletedAll = await reportedItemsDatabase.DeleteAllItems();
+            if (!deletedAll)
+            {
+                logger.LogError("Not all items were deleted. Please delete the rest manually");
+                return;
+            }
+
+            await ImportAllTweetsToDatabase();
+        }
+
         private async Task ImportTweetsToDatabase(List<ReportedItem> reportedItems)
         {
             if (reportedItems.Count > 0)

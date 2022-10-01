@@ -3,6 +3,7 @@ using LinqToTwitter;
 using SeattleCarsInBikeLanes.Database.Models;
 using Azure.Maps.Search;
 using Azure.Core.GeoJson;
+using System.Runtime.InteropServices;
 
 namespace SeattleCarsInBikeLanes
 {
@@ -101,11 +102,35 @@ namespace SeattleCarsInBikeLanes
                     TweetId = $"{tweet.ID}.{reportedItemCount}",
                     CreatedAt = tweet.CreatedAt.Value,
                     NumberOfCars = numberOfCars,
-                    Date = date.ToString(),
-                    Time = time.ToString(),
                     LocationString = locationString,
                     Location = location
                 };
+
+                if (date != null)
+                {
+                    // If the date exists it represents just the date of the incident
+                    reportedItem.Date = date.Value.ToDateTime(new TimeOnly(), DateTimeKind.Utc);
+
+                    if (time != null)
+                    {
+                        // If the time exists it represents just the time of the incident but we also set the date
+                        // just in case. Since the time is reported as Pacific Time we need to convert it to UTC
+                        // for storage.
+                        TimeZoneInfo timeZoneInfo;
+                        DateTimeOffset dateTimeOffset;
+                        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                        {
+                            timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
+                        }
+                        else
+                        {
+                            timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
+                        }
+                        reportedItem.Time = date.Value.ToDateTime(time.Value, DateTimeKind.Unspecified);
+                        dateTimeOffset = TimeZoneInfo.ConvertTimeToUtc(reportedItem.Time.Value, timeZoneInfo);
+                        reportedItem.Time = dateTimeOffset.UtcDateTime;
+                    }
+                }
 
                 // Finally check for any images and add them
                 if (tweet.Attachments != null && tweet.Attachments.MediaKeys != null)

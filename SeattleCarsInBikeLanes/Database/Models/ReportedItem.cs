@@ -8,8 +8,8 @@ namespace SeattleCarsInBikeLanes.Database.Models
         public string TweetId { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public int NumberOfCars { get; set; }
-        public string? Date { get; set; }
-        public string? Time { get; set; }
+        public DateTime? Date { get; set; }
+        public DateTime? Time { get; set; }
         public string LocationString { get; set; } = string.Empty;
         public LatLon? Location { get; set; }
         public List<string> ImageUrls { get; set; } = new List<string>();
