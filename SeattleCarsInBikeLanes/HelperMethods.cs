@@ -3,7 +3,6 @@ using LinqToTwitter;
 using SeattleCarsInBikeLanes.Database.Models;
 using Azure.Maps.Search;
 using Azure.Core.GeoJson;
-using System.Runtime.InteropServices;
 using Microsoft.Azure.Cosmos.Spatial;
 
 namespace SeattleCarsInBikeLanes
@@ -95,23 +94,11 @@ namespace SeattleCarsInBikeLanes
                     TweetId = $"{tweet.ID}.{reportedItemCount}",
                     CreatedAt = tweet.CreatedAt.Value,
                     NumberOfCars = numberOfCars,
+                    Date = date,
+                    Time = time,
                     LocationString = locationString,
                     Location = location
                 };
-
-                if (date != null)
-                {
-                    // If the date exists it represents just the date of the incident
-                    reportedItem.Date = date.Value.ToDateTime(new TimeOnly(), DateTimeKind.Utc);
-
-                    if (time != null)
-                    {
-                        // If the time exists it represents just the time of the incident but we also set the date
-                        // just in case. Since the time is reported as Pacific Time we need to convert it to UTC
-                        // for storage.
-                        reportedItem.Time = time.Value.ConvertLocalTimeOnlyToUtcDateTime(date.Value);
-                    }
-                }
 
                 // Finally check for any images and add them
                 if (tweet.Attachments != null && tweet.Attachments.MediaKeys != null)
