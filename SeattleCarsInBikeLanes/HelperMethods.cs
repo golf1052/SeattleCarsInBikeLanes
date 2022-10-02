@@ -109,19 +109,7 @@ namespace SeattleCarsInBikeLanes
                         // If the time exists it represents just the time of the incident but we also set the date
                         // just in case. Since the time is reported as Pacific Time we need to convert it to UTC
                         // for storage.
-                        TimeZoneInfo timeZoneInfo;
-                        DateTimeOffset dateTimeOffset;
-                        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                        {
-                            timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
-                        }
-                        else
-                        {
-                            timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
-                        }
-                        reportedItem.Time = date.Value.ToDateTime(time.Value, DateTimeKind.Unspecified);
-                        dateTimeOffset = TimeZoneInfo.ConvertTimeToUtc(reportedItem.Time.Value, timeZoneInfo);
-                        reportedItem.Time = dateTimeOffset.UtcDateTime;
+                        reportedItem.Time = time.Value.ConvertLocalTimeOnlyToUtcDateTime(date.Value);
                     }
                 }
 
