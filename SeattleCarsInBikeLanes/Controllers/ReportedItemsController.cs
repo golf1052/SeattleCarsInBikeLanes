@@ -1,8 +1,7 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json.Linq;
+﻿using Microsoft.AspNetCore.Mvc;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.Database.Models;
+using SeattleCarsInBikeLanes.Models;
 
 namespace SeattleCarsInBikeLanes.Controllers
 {
@@ -18,6 +17,20 @@ namespace SeattleCarsInBikeLanes.Controllers
         {
             this.logger = logger;
             this.reportedItemsDatabase = reportedItemsDatabase;
+        }
+
+        [HttpGet("search")]
+        public async Task<List<ReportedItem>> SearchItems([FromQuery] ReportedItemsSearchRequest request)
+        {
+            var items = await reportedItemsDatabase.SearchItems(request);
+            if (items == null)
+            {
+                return new List<ReportedItem>();
+            }
+            else
+            {
+                return items;
+            }
         }
 
         [HttpGet("all")]

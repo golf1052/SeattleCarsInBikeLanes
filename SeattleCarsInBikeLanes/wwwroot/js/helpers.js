@@ -15,6 +15,20 @@ function getAllReportedItems() {
     });
 }
 
+function searchReportedItems(searchParams) {
+    return fetch(`api/reporteditems/search?${searchParams.toString()}`)
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Error when fetching searched reported items. ${response}`);
+        }
+
+        return response.json();
+    })
+    .then(response => {
+        return response;
+    });
+}
+
 function createFeatureCollection(reportedItems) {
     const features = reportedItems.map(i => {
         const position = atlas.data.Position.fromLatLng(i.location.position);

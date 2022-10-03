@@ -4,8 +4,10 @@ using Azure.Security.KeyVault.Secrets;
 using LinqToTwitter;
 using LinqToTwitter.OAuth;
 using Microsoft.Azure.Cosmos;
+using Microsoft.Azure.Cosmos.Spatial;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.Models;
+using SeattleCarsInBikeLanes.Models.TypeConverters;
 
 namespace SeattleCarsInBikeLanes
 {
@@ -13,6 +15,9 @@ namespace SeattleCarsInBikeLanes
     {
         public static void Main(string[] args)
         {
+            System.ComponentModel.TypeDescriptor
+                .AddAttributes(typeof(Position), new System.ComponentModel.TypeConverterAttribute(typeof(PositionConverter)));
+
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
@@ -33,7 +38,14 @@ namespace SeattleCarsInBikeLanes
             var services = builder.Services;
             services.AddSingleton<HelperMethods>();
             services.AddSingleton<StatusResponse>();
-            services.AddSingleton<DefaultAzureCredential>();
+            services.AddSingleton<DefaultAzureCredential>(c =>
+            {
+                return new DefaultAzureCredential(new DefaultAzureCredentialOptions()
+                {
+                    // Seems like there's a bug in VS 2022 preview for .NET 7. VS credentials don't work at the moment.
+                    ExcludeVisualStudioCredential = true
+                });
+            });
             services.AddSingleton(c =>
             {
                 return new SecretClient(new Uri("https://seattle-carsinbikelanes.vault.azure.net/"),

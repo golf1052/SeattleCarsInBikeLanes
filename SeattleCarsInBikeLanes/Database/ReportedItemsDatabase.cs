@@ -1,8 +1,9 @@
 ﻿using System.Text;
-using LinqToTwitter;
-using LinqToTwitter.Common;
 using Microsoft.Azure.Cosmos;
+using Microsoft.Azure.Cosmos.Linq;
+using Microsoft.Azure.Cosmos.Spatial;
 using SeattleCarsInBikeLanes.Database.Models;
+using SeattleCarsInBikeLanes.Models;
 
 namespace SeattleCarsInBikeLanes.Database
 {
@@ -61,6 +62,60 @@ namespace SeattleCarsInBikeLanes.Database
             }
 
             return items[0];
+        }
+
+        public async Task<List<ReportedItem>?> SearchItems(ReportedItemsSearchRequest request)
+        {
+            IQueryable<ReportedItem> query = itemsContainer.GetItemLinqQueryable<ReportedItem>();
+            if (request.MinCars != null)
+            {
+                query = query.Where(i => i.NumberOfCars >= request.MinCars.Value);
+            }
+
+            if (request.MaxCars != null)
+            {
+                query = query.Where(i => i.NumberOfCars <= request.MaxCars.Value);
+            }
+
+            if (request.MinDate != null || request.MaxDate != null)
+            {
+                query = query.Where(i => i.Date != null);
+
+                if (request.MinDate != null)
+                {
+                    query = query.Where(i => i.Date!.Value >= request.MinDate.Value);
+                }
+
+                if (request.MaxDate != null)
+                {
+                    query = query.Where(i => i.Date!.Value <= request.MaxDate.Value);
+                }
+            }
+
+            if (request.MinTime != null || request.MaxTime != null)
+            {
+                query = query.Where(i => i.Time != null);
+
+                if (request.MinTime != null)
+                {
+                    query = query.Where(i => i.Time!.Value >= request.MinTime.Value);
+                }
+
+                if (request.MaxTime != null)
+                {
+                    query = query.Where(i => i.Time!.Value <= request.MaxTime.Value);
+                }
+            }
+
+            if (request.Location != null && request.DistanceFromLocationInMiles != null)
+            {
+                query = query.Where(i => i.Location != null)
+                    .Where(i => i.Location!.Distance(new Point(request.Location)) <=
+                    request.DistanceFromLocationInMiles * 1609.344);
+            }
+
+            using FeedIterator<ReportedItem> iterator = query.ToFeedIterator();
+            return await ProcessIterator(iterator);
         }
 
         public async Task<List<ReportedItem>?> GetAllItems()

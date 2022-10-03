@@ -4,13 +4,154 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="favicon.png" type="image/png">
     <title>Seattle Cars In Bike Lanes</title>
     <link rel="stylesheet" href="https://atlas.microsoft.com/sdk/javascript/mapcontrol/2/atlas.min.css" type="text/css">
     <script src="https://atlas.microsoft.com/sdk/javascript/mapcontrol/2/atlas.min.js"></script>
+    <link rel="stylesheet" href="css/azure-maps-layer-legend.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-iYQeCzEYFbKjA/T2uDLTpkwGzCiq6soy8tYaI1GyVh/UjpbCx/TYkiZhlZB6+fzT" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.1/dist/js/bootstrap.bundle.min.js" integrity="sha384-u1OknCvxWvY5kfmNBILK2hRnQC3Pr17a+RTT6rIHI7NnikvbZlHgTPOOmMi466C8" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="css/index.css"></script>
 </head>
 <body>
-    <div id="map"></div>
+    <div class="wrapper">
+      <nav class="navbar bg-light navbar-expand-sm sticky-top">
+        <div class="container-fluid">
+          <span class="navbar-brand">Seattle</span>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navContent" aria-controls="navContent" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <div class="collapse navbar-collapse" id="navContent">
+            <ul class="navbar-nav me-auto">
+              <li class="nav-item">
+                <button class="btn btn-outline-primary" id="toggleFiltersButton">Toggle filters</button>
+              </li>
+            </ul>
+            <ul class="navbar-nav">
+              <li class="nav-item">
+                <a class="nav-link" href="https://twitter.com/carbikelanesea" target="_blank">Twitter</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="https://github.com/golf1052/SeattleCarsInBikeLanes" target="_blank">GitHub</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </nav>
+      <div id="map"></div>
+    </div>
+    <form id="filterForm" hidden>
+      <h6>Number of cars</h6>
+      <div class="row">
+        <div class="col-auto">
+          <label for="minCarsInput" class="form-label">Min</label>
+        </div>
+        <div class="col-4">
+          <input type="number" class="form-control form-control-sm" id="minCarsInput" name="minCars" min="0">
+        </div>
+        <div class="col-auto">
+          <label for="maxCarsInput" class="form-label">Max</label>
+        </div>
+        <div class="col-4">
+          <input type="number" class="form-control form-control-sm" id="maxCarsInput" name="maxCars" min="0">
+        </div>
+      </div>
+      <div>
+        <h6>Date range</h6>
+        <div class="form-check">
+          <input type="radio" class="form-check-input" name="dateRadios" id="allRadio" value="all" checked>
+          <label for="allRadio" class="form-check-label">All</label>
+        </div>
+        <div class="form-check">
+          <input type="radio" class="form-check-input" name="dateRadios" id="weekRadio" value="week">
+          <label for="weekRadio" class="form-check-label">Last week</label>
+        </div>
+        <div class="form-check">
+          <input type="radio" class="form-check-input" name="dateRadios" id="monthRadio" value="month">
+          <label for="monthRadio" class="form-check-label">Last month</label>
+        </div>
+        <div class="form-check">
+          <input type="radio" class="form-check-input" name="dateRadios" id="yearRadio" value="year">
+          <label for="yearRadio" class="form-check-label">Last year</label>
+        </div>
+        <div class="row">
+          <div class="col-auto">
+            <label for="minDateInput" class="form-label">From</label>
+            <input type="date" class="form-control form-control-sm" id="minDateInput" name="minDate">
+          </div>
+          <div class="col-auto">
+            <label for="maxDateInput" class="form-label">To</label>
+            <input type="date" class="form-control form-control-sm" id="maxDateInput" name="maxDate">
+          </div>
+        </div>
+        <h6>Time range</h6>
+        <div class="form-check">
+          <input type="radio" class="form-check-input" name="timeRadios" id="allRadio" value="all" checked>
+          <label for="allRadio" class="form-check-label">All</label>
+        </div>
+        <div class="form-check">
+          <input type="radio" class="form-check-input" name="timeRadios" id="dawnRadio" value="dawn">
+          <label for="dawnRadio" class="form-check-label">Dawn</label>
+          <span class="form-text">3 AM - 6 AM</span>
+        </div>
+        <div class="form-check">
+          <input type="radio" class="form-check-input" name="timeRadios" id="morningRadio" value="morning">
+          <label for="morningRadio" class="form-check-label">Morning</label>
+          <span class="form-text">6 AM - 12 PM</span>
+        </div>
+        <div class="form-check">
+          <input type="radio" class="form-check-input" name="timeRadios" id="afternoonRadio" value="afternoon">
+          <label for="afternoonRadio" class="form-check-label">Afternoon</label>
+          <span class="form-text">12 PM - 6 PM</span>
+        </div>
+        <div class="form-check">
+          <input type="radio" class="form-check-input" name="timeRadios" id="duskRadio" value="dusk">
+          <label for="duskRadio" class="form-check-label">Dusk</label>
+          <span class="form-text">6 PM - 9 PM</span>
+        </div>
+        <div class="form-check">
+          <input type="radio" class="form-check-input" name="timeRadios" id="nightRadio" value="night">
+          <label for="nightRadio" class="form-check-label">Night</label>
+          <span class="form-text">9 PM - 12 AM</span>
+        </div>
+        <div class="form-check">
+          <input type="radio" class="form-check-input" name="timeRadios" id="advancedDarknessRadio" value="advanceddarkness">
+          <label for="nightRadio" class="form-check-label">Advanced Darkness</label>
+          <span class="form-text">12 AM - 3 AM</span>
+        </div>
+        <div class="row">
+          <div class="col-auto">
+            <label for="minTimeInput" class="form-label">From</label>
+          </div>
+          <div class="col-4">
+            <input type="time" class="form-control form-control-sm" id="minTimeInput" name="minTime">
+          </div>
+          <div class="col-auto">
+            <label for="maxTimeInput" class="form-label">To</label>
+          </div>
+          <div class="col-4">
+            <input type="time" class="form-control form-control-sm" id="maxTimeInput" name="maxTime">
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-auto">
+            <label for="locationInput" class="form-label">Location</label>
+          </div>
+          <div class="col-auto">
+            <input type="text" class="form-control form-control-sm" id="locationInput" name="location">
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-auto">
+            <label for="distanceInput" class="form-label">Distance</label>
+          </div>
+          <div class="col-auto">
+            <input type="number" class="form-control form-control-sm" id="distanceInput" name="distanceFromLocationInMiles" step="0.01">
+          </div>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    </form>
     <script>window.twttr = (function(d, s, id) {
         var js, fjs = d.getElementsByTagName(s)[0],
           t = window.twttr || {};
@@ -27,6 +168,8 @@
       
         return t;
       }(document, "script", "twitter-wjs"));</script>
+    <script src="js/azure-maps-layer-legend.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.4/build/global/luxon.min.js"></script>
     <script src="js/helpers.js"></script>
     <script src="js/index.js"></script>
 </body>
