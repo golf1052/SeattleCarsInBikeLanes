@@ -43,6 +43,7 @@ namespace SeattleCarsInBikeLanes
                 return new DefaultAzureCredential(new DefaultAzureCredentialOptions()
                 {
                     // Explicitly set the AuthorityHost so local testing works with personal Microsoft accounts (MSA)
+                    // https://learn.microsoft.com/en-us/azure/active-directory/develop/msal-client-application-configuration
                     AuthorityHost = new Uri("https://login.microsoftonline.com/common/")
                 });
             });
