@@ -1,0 +1,55 @@
+[
+    {
+        "id": "1565200730708852736.0",
+        "CreatedAt": "2022-09-01T04:51:48Z",
+        "NumberOfCars": 2,
+        "Date": "2022-06-30",
+        "Time": "09:15",
+        "LocationString": "8th and Blanchard",
+        "Location": {
+            "type": "Point",
+            "coordinates": [
+                -122.3398,
+                47.61753
+            ]
+        },
+        "ImageUrls": [
+            "https://pbs.twimg.com/media/Fbio_-PUEAEK_Ic.jpg"
+        ],
+        "Latest": false
+    },
+    {
+        "id": "1571694777929961478.0",
+        "CreatedAt": "2022-09-19T02:56:50Z",
+        "NumberOfCars": 1,
+        "Date": "2022-09-12",
+        "Time": null,
+        "LocationString": "N 77th and Greenwood Ave N",
+        "Location": {
+            "type": "Point",
+            "coordinates": [
+                -122.3553,
+                47.68476
+            ]
+        },
+        "ImageUrls": [],
+        "Latest": false
+    },
+    {
+        "id": "1573803314788978690.0",
+        "CreatedAt": "2022-09-24T22:35:24Z",
+        "NumberOfCars": 1,
+        "Date": null,
+        "Time": null,
+        "LocationString": "N 135 and Linden Ave N",
+        "Location": {
+            "type": "Point",
+            "coordinates": [
+                -122.3477,
+                47.72691
+            ]
+        },
+        "ImageUrls": [],
+        "Latest": true
+    }
+]
