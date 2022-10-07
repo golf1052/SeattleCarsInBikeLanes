@@ -42,8 +42,8 @@ namespace SeattleCarsInBikeLanes
             {
                 return new DefaultAzureCredential(new DefaultAzureCredentialOptions()
                 {
-                    // Seems like there's a bug in VS 2022 preview for .NET 7. VS credentials don't work at the moment.
-                    ExcludeVisualStudioCredential = true
+                    // Explicitly set the AuthorityHost so local testing works with personal Microsoft accounts (MSA)
+                    AuthorityHost = new Uri("https://login.microsoftonline.com/common/")
                 });
             });
             services.AddSingleton(c =>
