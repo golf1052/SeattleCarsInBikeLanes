@@ -44,19 +44,19 @@ function toggleBikeLanes() {
                     }
                 }
             });
-        });
-    }
 
-    if (bikeLaneLegendControl) {
-        if (bikeLaneLegendControl.getOptions().visible) {
-            bikeLaneLegendControl.setOptions({
-                visible: false
-            });
-        } else {
-            bikeLaneLegendControl.setOptions({
-                visible: true
-            });
-        }
+            if (bikeLaneLegendControl) {
+                if (bikeLaneLegendControl.getOptions().visible) {
+                    bikeLaneLegendControl.setOptions({
+                        visible: false
+                    });
+                } else {
+                    bikeLaneLegendControl.setOptions({
+                        visible: true
+                    });
+                }
+            }
+        });
     }
 }
 
