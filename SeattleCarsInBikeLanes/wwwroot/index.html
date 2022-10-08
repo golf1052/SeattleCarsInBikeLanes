@@ -23,8 +23,17 @@
           </button>
           <div class="collapse navbar-collapse" id="navContent">
             <ul class="navbar-nav me-auto">
-              <li class="nav-item">
+              <li class="nav-item me-2">
                 <button class="btn btn-outline-primary" id="toggleFiltersButton">Toggle filters</button>
+              </li>
+              <li class="nav-item">
+                <button class="btn btn-outline-info" id="toggleBikeLanes">Toggle bike lanes</button>
+              </li>
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown" aria-expanded="false">Resources</a>
+                <ul class="dropdown-menu">
+                  <li><a class="dropdown-item" href="https://www.seattle.gov/transportation/projects-and-programs/programs/bike-program/bike-web-map" target="_blank">Official Seattle Bike Web Map</a></li>
+                </ul>
               </li>
             </ul>
             <ul class="navbar-nav">
@@ -171,6 +180,7 @@
     <script src="js/azure-maps-layer-legend.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.4/build/global/luxon.min.js"></script>
     <script src="js/helpers.js"></script>
+    <script src="js/bikelanes.js"></script>
     <script src="js/index.js"></script>
 </body>
 </html>

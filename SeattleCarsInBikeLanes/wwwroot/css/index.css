@@ -13,17 +13,13 @@ html, body {
     flex: 1 1 auto;
 }
 
+.popup-content {
+    padding: 15px;
+}
+
 @media (max-height: 1000px) {
     .atlas-layer-legend-card {
         /* This overrides the legend card height so it doesn't take up too much space on small devices. */
         max-height: 300px !important;
     }
-}
-
-@media (prefers-color-scheme: dark) {
-
-}
-
-@media (prefers-color-scheme: light) {
-    
 }

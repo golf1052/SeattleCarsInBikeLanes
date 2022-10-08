@@ -36,6 +36,7 @@ namespace SeattleCarsInBikeLanes
             
             // Setup services
             var services = builder.Services;
+            services.AddSingleton<HttpClient>();
             services.AddSingleton<HelperMethods>();
             services.AddSingleton<StatusResponse>();
             services.AddSingleton<DefaultAzureCredential>(c =>

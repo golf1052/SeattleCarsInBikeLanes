@@ -2,7 +2,16 @@ let map = null;
 let dataSource = null;
 let popup = null;
 let legendControl = null;
+let bikeLaneLegendControl = null;
 let locationInputHasFocus = false;
+
+let bikeLanesPromise = null;
+let pblLayer = null;
+let bblLayer = null;
+let blLayer = null;
+let clLayer = null;
+let oLayer = null;
+let trailsLayer = null;
 const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
 function toggleLegendControl() {
@@ -19,9 +28,45 @@ function toggleLegendControl() {
     }
 }
 
+function toggleBikeLanes() {
+    if (bikeLanesPromise !== null) {
+        bikeLanesPromise.then(() => {
+            [pblLayer, bblLayer, blLayer, clLayer, oLayer, trailsLayer].forEach(layer => {
+                if (layer) {
+                    if (layer.getOptions().visible) {
+                        layer.setOptions({
+                            visible: false
+                        });
+                    } else {
+                        layer.setOptions({
+                            visible: true
+                        });
+                    }
+                }
+            });
+        });
+    }
+
+    if (bikeLaneLegendControl) {
+        if (bikeLaneLegendControl.getOptions().visible) {
+            bikeLaneLegendControl.setOptions({
+                visible: false
+            });
+        } else {
+            bikeLaneLegendControl.setOptions({
+                visible: true
+            });
+        }
+    }
+}
+
 function initControls() {
     document.getElementById('toggleFiltersButton').addEventListener('click', function() {
         toggleLegendControl();
+    });
+
+    document.getElementById('toggleBikeLanes').addEventListener('click', function() {
+        toggleBikeLanes();
     });
 }
 
@@ -224,6 +269,88 @@ function initMap() {
                 symbols
             ]);
 
+            bikeLanesPromise = getBikeLaneGeometry()
+            .then(lanes => {
+                bikeLaneLegendControl = new atlas.control.LegendControl({
+                    title: 'Bike Facilities',
+                    style: 'auto',
+                    visible: false,
+                    legends: [{
+                        type: 'category',
+                        itemLayout: 'row',
+                        shape: 'line',
+                        fitItems: true,
+                        shapeSize: 20,
+                        items: [
+                            { label: 'Protected Bike Lane', color: 'rgb(22, 145, 208)', strokeWidth: 4 },
+                            { label: 'Buffered Bike Lane', color: 'rgb(28, 179, 255)', strokeWidth: 3 },
+                            { label: 'Painted Bike Lane', color: 'rgb(255, 108, 44)', strokeWidth: 3 },
+                            { label: 'Climbing Lane', color: 'rgb(0, 168, 93)', strokeWidth: 2 },
+                            { label: 'Miscellaneous Off Street Bicycle Facility', color: darkMode ? '#fff': '#000', strokeWidth: 2 },
+                            { label: 'Multi-Use Trail', color: 'rgb(168, 56, 0)', strokeWidth: 4 }
+                        ]
+                    }]
+                });
+                map.controls.add(bikeLaneLegendControl, { position: 'bottom-left' });
+
+                pblLayer = getLineLayer(getProtectedBikeLanesCollection(lanes), 'rgb(22, 145, 208)', 4, map);
+                bblLayer = getLineLayer(getBufferedBikeLanesCollection(lanes), 'rgb(28, 179, 255)', 3, map);
+                blLayer = getLineLayer(getPaintedBikeLanesCollection(lanes), 'rgb(255, 108, 44)', 3, map);
+                clLayer = getLineLayer(getClimbingLanesCollection(lanes), 'rgb(0, 168, 93)', 2, map);
+                otherBikeLaneColor = darkMode ? '#fff' : '#000';
+                oLayer = getLineLayer(getOtherLanesCollection(lanes), otherBikeLaneColor, 2, map);
+                map.layers.add(pblLayer);
+                map.layers.add(bblLayer);
+                map.layers.add(blLayer);
+                map.layers.add(clLayer);
+                map.layers.add(oLayer);
+                map.layers.move(pblLayer, clusterBubbleLayer);
+                map.layers.move(bblLayer, clusterBubbleLayer);
+                map.layers.move(blLayer, clusterBubbleLayer);
+                map.layers.move(clLayer, clusterBubbleLayer);
+                map.layers.move(oLayer, clusterBubbleLayer);
+
+                map.events.add('click', pblLayer, function(e) {
+                    onBikeLaneClick(e, 'Protected Bike Lane');
+                });
+                map.events.add('click', bblLayer, function(e) {
+                    onBikeLaneClick(e, 'Buffered Bike Lane');
+                });
+                map.events.add('click', blLayer, function(e) {
+                    onBikeLaneClick(e, 'Painted Bike Lane');
+                });
+                map.events.add('click', clLayer, function(e) {
+                    onBikeLaneClick(e, 'Climbing Lane');
+                });
+                map.events.add('click', oLayer, function(e) {
+                    onBikeLaneClick(e, 'Miscellaneous Off Street Bicycle Facility');
+                });
+
+                return getTrailsGeometry();
+            })
+            .then(lanes => {
+                trailsLayer = getLineLayer(getTrailsCollection(lanes), 'rgb(168, 56, 0)', 4, map);
+                map.layers.add(trailsLayer);
+                map.layers.move(trailsLayer, clusterBubbleLayer);
+
+                map.events.add('click', trailsLayer, function(e) {
+                    if (e && e.shapes && e.shapes.length > 0) {
+                        let trailName = e.shapes[0].properties.ORD_STNAME_CONCAT;
+
+                        // To title case from https://stackoverflow.com/a/196991/6681022
+                        trailName = trailName.replace(/\w\S*/g, function(txt) {
+                            return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+                        })
+                        .replace(/\btrl\b/gi, 'Trail');
+                        popup.setOptions({
+                            position: e.position,
+                            content: `<div class="popup-content">${trailName}</div>`
+                        });
+                        popup.open(map);
+                    }
+                });
+            });
+
             map.events.add('click', clusterBubbleLayer, function(e) {
                 if (e && e.shapes && e.shapes.length > 0 && e.shapes[0].properties.cluster) {
                     const cluster = e.shapes[0];
@@ -247,7 +374,8 @@ function initMap() {
                         const properties = e.shapes[0].getProperties();
                         const position = atlas.data.Position.fromLatLng(properties.location.position);
                         popup.setOptions({
-                            position: position
+                            position: position,
+                            content: ''
                         });
                         popup.open(map);
                         const tweetId = properties.tweetId.split('.')[0];
