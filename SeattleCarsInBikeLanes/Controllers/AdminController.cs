@@ -1,9 +1,12 @@
-﻿using System.Net;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Net;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.Cosmos.Spatial;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.Database.Models;
+using SeattleCarsInBikeLanes.Models.TypeConverters;
 
 namespace SeattleCarsInBikeLanes.Controllers
 {
@@ -27,11 +30,8 @@ namespace SeattleCarsInBikeLanes.Controllers
         [HttpDelete("DeleteTweets")]
         public async Task<string> DeleteTweets([FromBody] DeleteTweetsRequest request)
         {
-            KeyVaultSecret adminPasswordSecret = secretClient.GetSecret("admin-password");
-            string adminPassword = adminPasswordSecret.Value;
-            if (adminPassword != request.Password)
+            if (!IsAuthorized(request))
             {
-                Response.StatusCode = (int)HttpStatusCode.Unauthorized;
                 return string.Empty;
             }
 
@@ -83,11 +83,83 @@ namespace SeattleCarsInBikeLanes.Controllers
             logger.LogInformation(returnString);
             return returnString;
         }
+
+        [HttpPatch("UpdateLocation")]
+        public async Task<string> UpdateLocation([FromBody] UpdateReportedItemLocationRequest request)
+        {
+            if (!IsAuthorized(request))
+            {
+                return string.Empty;
+            }
+
+            Position? newLocation = new PositionConverter().ConvertFrom(null, null, request.NewLocation) as Position;
+            if (newLocation == null || (newLocation.Latitude == 0 && newLocation.Longitude == 0))
+            {
+                Response.StatusCode = (int)HttpStatusCode.BadRequest;
+                return "Position should not be set to Null Island";
+            }
+
+            logger.LogInformation($"Starting location update of tweet {request.TweetId}");
+            string returnString;
+            ReportedItem? item = await reportedItemsDatabase.GetItem(request.TweetId);
+            if (item == null)
+            {
+                returnString = "0 tweets to update found.";
+                logger.LogInformation(returnString);
+                return returnString;
+            }
+
+            returnString = $"Old location: {item.Location?.Position.Latitude}, {item.Location?.Position.Longitude}.";
+            item.Location = new Point(newLocation);
+            bool updated = await reportedItemsDatabase.UpdateReportedItem(item);
+            if (!updated)
+            {
+                logger.LogWarning($"Failed to update {request.TweetId}.");
+                return $"Failed to update {request.TweetId}. {returnString}";
+            }
+            else
+            {
+                returnString += $" New Location: {item.Location.Position.Latitude}, {item.Location.Position.Longitude}.";
+                logger.LogInformation(returnString);
+                return returnString;
+            }
+        }
+
+        private bool IsAuthorized(AdminRequest request)
+        {
+            KeyVaultSecret adminPasswordSecret = secretClient.GetSecret("admin-password");
+            string adminPassword = adminPasswordSecret.Value;
+            if (adminPassword != request.Password)
+            {
+                Response.StatusCode = (int)HttpStatusCode.Unauthorized;
+                return false;
+            }
+            else
+            {
+                return true;
+            }
+        }
     }
 
-    public class DeleteTweetsRequest
+    public interface AdminRequest
+    {
+        public string Password { get; set; }
+    }
+
+    public class DeleteTweetsRequest : AdminRequest
     {
         public string Password { get; set; } = string.Empty;
         public List<string> TweetIds { get; set; } = new List<string>();
+    }
+
+    public class UpdateReportedItemLocationRequest : AdminRequest
+    {
+        public string Password { get; set; } = string.Empty;
+
+        [Required]
+        public string TweetId { get; set; } = string.Empty;
+
+        [Required]
+        public string NewLocation { get; set; } = string.Empty;
     }
 }

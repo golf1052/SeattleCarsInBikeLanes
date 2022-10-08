@@ -6,7 +6,7 @@ using System.Globalization;
 
 namespace SeattleCarsInBikeLanes.Models.TypeConverters
 {
-    internal sealed class PositionConverter : TypeConverter
+    public sealed class PositionConverter : TypeConverter
     {
         public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType)
         {

@@ -123,6 +123,16 @@ namespace SeattleCarsInBikeLanes.Database
             return await RunQuery();
         }
 
+        public async Task<ReportedItem?> GetItem(string tweetId)
+        {
+            var items = await GetItems(new List<string>() { tweetId });
+            if (items == null || items.Count == 0)
+            {
+                return null;
+            }
+            return items[0];
+        }
+
         public async Task<List<ReportedItem>?> GetItems(List<string> tweetIds)
         {
             if (tweetIds.Count == 0)

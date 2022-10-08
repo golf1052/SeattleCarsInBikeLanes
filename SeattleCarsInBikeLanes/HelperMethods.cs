@@ -4,6 +4,7 @@ using SeattleCarsInBikeLanes.Database.Models;
 using Azure.Maps.Search;
 using Azure.Core.GeoJson;
 using Microsoft.Azure.Cosmos.Spatial;
+using Azure.Maps.Search.Models;
 
 namespace SeattleCarsInBikeLanes
 {
@@ -128,15 +129,46 @@ namespace SeattleCarsInBikeLanes
                 CountryFilter = new string[] { "US" },
                 Coordinates = new GeoPosition(-122.333301, 47.606501)
             };
+            bool crossStreet = false;
+            string[] splitLocationString = locationString.Split(' ');
+            foreach (var str in splitLocationString)
+            {
+                if (str.Equals("and", StringComparison.InvariantCultureIgnoreCase) || str.Equals("&"))
+                {
+                    crossStreet = true;
+                    break;
+                }
+            }
             var result = await mapsSearchClient.SearchAddressAsync(locationString, options);
             if (result == null || result.Value.NumResults == null || result.Value.NumResults.Value == 0)
             {
                 return null;
             }
-            var results = result.Value.Results.Where(r => r.Address.Municipality.Equals("Seattle", StringComparison.InvariantCultureIgnoreCase))
+
+            var originalResults = result.Value.Results
+                .Where(r => r.Address.Municipality.Equals("Seattle", StringComparison.InvariantCultureIgnoreCase))
                 .OrderByDescending(r => r.Score)
                 .ToList();
-            return results[0].Position;
+
+            var justCrossStreets = originalResults
+                .Where(r =>
+                {
+                    if (crossStreet)
+                    {
+                        return r.SearchAddressResultType == SearchAddressResultType.CrossStreet;
+                    }
+                    else
+                    {
+                        return true;
+                    }
+                })
+                .ToList();
+
+            if (crossStreet && justCrossStreets.Count > 0)
+            {
+                return justCrossStreets[0].Position;
+            }
+            return originalResults[0].Position;
         }
 
         public List<string>? GetReportedBlocks(string tweetText)
