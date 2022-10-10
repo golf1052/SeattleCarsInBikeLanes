@@ -42,7 +42,9 @@ function createFeatureCollection(reportedItems) {
 function createDataSource(reportedItems) {
     const dataSourceOptions = {
         cluster: true,
-        clusterRadius: 40
+        clusterRadius: 40,
+        maxZoom: 25,
+        clusterMaxZoom: 25
     };
     const source = new atlas.source.DataSource(null, dataSourceOptions);
     source.add(createFeatureCollection(reportedItems));
@@ -63,6 +65,27 @@ function getTwitterOEmbed(tweetId) {
             return response.html;
         } else {
             return null;
+        }
+    });
+}
+
+function showReportedItemPopup(properties, popup, map) {
+    const position = atlas.data.Position.fromLatLng(properties.location.position);
+    popup.setOptions({
+        position: position,
+        content: ''
+    });
+    popup.open(map);
+    const tweetId = properties.tweetId.split('.')[0];
+    getTwitterOEmbed(tweetId)
+    .then(html => {
+        if (html) {
+            popup.setOptions({
+                content: html
+            });
+            twttr.ready(twttr => {
+                twttr.widgets.load();
+            });
         }
     });
 }

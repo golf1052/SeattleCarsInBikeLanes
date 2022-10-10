@@ -351,19 +351,14 @@ function initMap() {
                 });
             });
 
-            map.events.add('click', clusterBubbleLayer, function(e) {
-                if (e && e.shapes && e.shapes.length > 0 && e.shapes[0].properties.cluster) {
-                    const cluster = e.shapes[0];
-                    dataSource.getClusterExpansionZoom(cluster.properties.cluster_id)
-                    .then(zoom => {
-                        map.setCamera({
-                            center: cluster.geometry.coordinates,
-                            zoom: zoom,
-                            type: 'ease',
-                            duration: 200
-                        });
-                    });
-                }
+            const spiderClusterManager = new atlas.SpiderClusterManager(map, clusterBubbleLayer, symbols);
+
+            map.events.add('featureSelected', spiderClusterManager, function(e) {
+                showReportedItemPopup(e.shape.getProperties(), popup, map);
+            });
+
+            map.events.add('featureUnselected', spiderClusterManager, function(e) {
+                spiderClusterManager.hideSpiderCluster();
             });
             
             map.events.add('click', symbols, function(e) {
@@ -371,25 +366,7 @@ function initMap() {
                     if (e.shapes[0].getProperties().cluster) {
 
                     } else {
-                        const properties = e.shapes[0].getProperties();
-                        const position = atlas.data.Position.fromLatLng(properties.location.position);
-                        popup.setOptions({
-                            position: position,
-                            content: ''
-                        });
-                        popup.open(map);
-                        const tweetId = properties.tweetId.split('.')[0];
-                        getTwitterOEmbed(tweetId)
-                        .then(html => {
-                            if (html) {
-                                popup.setOptions({
-                                    content: html
-                                });
-                                twttr.ready(twttr => {
-                                    twttr.widgets.load();
-                                });
-                            }
-                        });
+                        showReportedItemPopup(e.shapes[0].getProperties(), popup, map);
                     }
                 }
             });
