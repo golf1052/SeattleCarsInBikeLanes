@@ -69,6 +69,10 @@ function getTwitterOEmbed(tweetId) {
     });
 }
 
+function getTweetId(databaseTweetId) {
+    return databaseTweetId.split('.')[0];
+}
+
 function showReportedItemPopup(properties, popup, map) {
     const position = atlas.data.Position.fromLatLng(properties.location.position);
     popup.setOptions({
@@ -76,7 +80,7 @@ function showReportedItemPopup(properties, popup, map) {
         content: ''
     });
     popup.open(map);
-    const tweetId = properties.tweetId.split('.')[0];
+    const tweetId = getTweetId(properties.tweetId);
     getTwitterOEmbed(tweetId)
     .then(html => {
         if (html) {

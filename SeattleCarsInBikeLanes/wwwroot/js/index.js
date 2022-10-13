@@ -1,4 +1,5 @@
 let map = null;
+let reportedItemsPromise = null;
 let dataSource = null;
 let popup = null;
 let legendControl = null;
@@ -176,7 +177,8 @@ function initLegendHtml() {
             }
         }
 
-        searchReportedItems(params)
+        reportedItemsPromise = searchReportedItems(params);
+        reportedItemsPromise
         .then(reportedItems => {
             toggleLegendControl();
             dataSource.clear();
@@ -207,7 +209,8 @@ function initMap() {
     map.events.add('ready', function() {
         initControls();
         popup = new atlas.Popup();
-        getAllReportedItems()
+        reportedItemsPromise = getAllReportedItems();
+        reportedItemsPromise
         .then(reportedItems => {
             legendControl = new atlas.control.LegendControl({
                 title: 'Filters',

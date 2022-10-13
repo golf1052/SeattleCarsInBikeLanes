@@ -9,6 +9,7 @@ Built with
   - [Key Vault](https://learn.microsoft.com/en-us/azure/key-vault/)
   - [Maps](https://learn.microsoft.com/en-us/azure/azure-maps/)
 - [Bootstrap](https://getbootstrap.com/)
+- [CSV Stringify](https://csv.js.org/stringify/)
 - [Twitter](https://developer.twitter.com) ([linqtotwitter](https://github.com/JoeMayo/LinqToTwitter))
 
 ## Contributing
