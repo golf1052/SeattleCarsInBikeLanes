@@ -3,7 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.3.32825.248
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeattleCarsInBikeLanes", "SeattleCarsInBikeLanes\SeattleCarsInBikeLanes.csproj", "{6CD23716-450E-4ABD-86F3-5EA19CA91F60}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SeattleCarsInBikeLanes", "SeattleCarsInBikeLanes\SeattleCarsInBikeLanes.csproj", "{6CD23716-450E-4ABD-86F3-5EA19CA91F60}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TwitterFunction", "TwitterFunction\TwitterFunction.csproj", "{5D731004-4945-44BE-B0E5-F37672745D05}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AzureMapsTokenFunction", "AzureMapsTokenFunction\AzureMapsTokenFunction.csproj", "{A3ED3C2A-4DDE-4441-B0F4-CCB499AAA184}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +19,14 @@ Global
 		{6CD23716-450E-4ABD-86F3-5EA19CA91F60}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6CD23716-450E-4ABD-86F3-5EA19CA91F60}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6CD23716-450E-4ABD-86F3-5EA19CA91F60}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5D731004-4945-44BE-B0E5-F37672745D05}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D731004-4945-44BE-B0E5-F37672745D05}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D731004-4945-44BE-B0E5-F37672745D05}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D731004-4945-44BE-B0E5-F37672745D05}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A3ED3C2A-4DDE-4441-B0F4-CCB499AAA184}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A3ED3C2A-4DDE-4441-B0F4-CCB499AAA184}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A3ED3C2A-4DDE-4441-B0F4-CCB499AAA184}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A3ED3C2A-4DDE-4441-B0F4-CCB499AAA184}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
