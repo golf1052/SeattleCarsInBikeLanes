@@ -65,6 +65,11 @@ namespace SeattleCarsInBikeLanes
                     continue;
                 }
 
+                if (locationString.Contains("&amp;"))
+                {
+                    locationString = locationString.Replace("&amp;", "&");
+                }
+
                 string? gpsString = GetReportedBlockValue(splitBlock[1..], "GPS");
                 Point? location = null;
                 if (!string.IsNullOrWhiteSpace(gpsString))
