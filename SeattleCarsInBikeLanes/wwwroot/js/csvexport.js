@@ -19,6 +19,8 @@ document.getElementById('downloadButton').addEventListener('click', () => {
             let imageString = null;
             if (item.imageUrls && item.imageUrls.length > 0) {
                 imageString = item.imageUrls.join(';');
+            } else if (item.imgurUrls && item.imgurUrls.length > 0) {
+                imageString = item.imgurUrls.join(';');
             }
             
             return {

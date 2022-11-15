@@ -23,3 +23,7 @@ html, body {
         max-height: 300px !important;
     }
 }
+
+.twitter-button {
+    background-color: #1DA1F2 !important;
+}

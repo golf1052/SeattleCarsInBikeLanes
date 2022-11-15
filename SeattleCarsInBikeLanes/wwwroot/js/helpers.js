@@ -29,7 +29,43 @@ function searchReportedItems(searchParams) {
     });
 }
 
-function createFeatureCollection(reportedItems) {
+function uploadImage(file) {
+    return fetch(`api/Upload/Initial`, {
+        method: 'POST',
+        body: file
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text();
+        }
+
+        return response.json();
+    })
+    .then(response => {
+        if (typeof response === 'string') {
+            throw new Error(response);
+        }
+
+        return response;
+    });
+}
+
+function finalizeUploadImage(metadata) {
+    return fetch('api/Upload/Finalize', {
+        method: 'POST',
+        body: JSON.stringify(metadata),
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Error when finalizing image upload. ${response}`);
+        }
+    });
+}
+
+function createReportedItemFeatureCollection(reportedItems) {
     const features = reportedItems.map(i => {
         const position = atlas.data.Position.fromLatLng(i.location.position);
         const point = new atlas.data.Point(position);
@@ -47,7 +83,7 @@ function createDataSource(reportedItems) {
         clusterMaxZoom: 25
     };
     const source = new atlas.source.DataSource(null, dataSourceOptions);
-    source.add(createFeatureCollection(reportedItems));
+    source.add(createReportedItemFeatureCollection(reportedItems));
     return source;
 }
 
@@ -66,6 +102,48 @@ function getTwitterOEmbed(tweetId) {
         } else {
             return null;
         }
+    });
+}
+
+function refreshTwitterToken(refreshToken) {
+    return fetch('api/Twitter/RefreshToken', {
+        method: 'POST',
+        body: JSON.stringify({ refreshToken: refreshToken }),
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Failed to refresh Twitter access token ${response}`);
+        }
+
+        return response.json();
+    })
+    .then(response => {
+        localStorage.setItem('twitterAccessToken', response.accessToken);
+        localStorage.setItem('twitterRefreshToken', response.refreshToken);
+        localStorage.setItem('twitterExpiresAt', response.expiresAt);
+    });
+}
+
+function getTwitterUsername() {
+    return fetch('api/Twitter/GetTwitterUsername', {
+        method: 'POST',
+        body: JSON.stringify({ accessToken: localStorage.getItem('twitterAccessToken') }),
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Failed to get logged in Twitter username ${response}`);
+        }
+
+        return response.json();
+    })
+    .then(response => {
+        return response;
     });
 }
 
@@ -92,4 +170,12 @@ function showReportedItemPopup(properties, popup, map) {
             });
         }
     });
+}
+
+function createAlertBanner(text) {
+    const element = document.createElement('div');
+    element.className = 'alert alert-danger';
+    element.setAttribute('role', 'alert');
+    element.append(text);
+    return element;
 }

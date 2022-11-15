@@ -1,10 +1,12 @@
-﻿using LinqToTwitter.Common;
-using LinqToTwitter;
-using SeattleCarsInBikeLanes.Database.Models;
+﻿using Azure.Core.GeoJson;
 using Azure.Maps.Search;
-using Azure.Core.GeoJson;
-using Microsoft.Azure.Cosmos.Spatial;
 using Azure.Maps.Search.Models;
+using Azure.Security.KeyVault.Secrets;
+using LinqToTwitter;
+using LinqToTwitter.Common;
+using Microsoft.Azure.Cosmos.Spatial;
+using SeattleCarsInBikeLanes.Database.Models;
+using SeattleCarsInBikeLanes.Models;
 
 namespace SeattleCarsInBikeLanes
 {
@@ -12,6 +14,18 @@ namespace SeattleCarsInBikeLanes
     {
         public const string TwitterUsername = "carbikelanesea";
         public const string TwitterUserId = "1565182292695269377";
+
+        public bool IsAuthorized(AdminRequest request, SecretClient secretClient)
+        {
+            return IsAuthorized("admin-password", request.Password, secretClient);
+        }
+
+        public bool IsAuthorized(string secretName, string secretValue, SecretClient secretClient)
+        {
+            KeyVaultSecret keyVaultSecret = secretClient.GetSecret(secretName);
+            string actualSecretValue = keyVaultSecret.Value;
+            return actualSecretValue == secretValue;
+        }
 
         public string GetTweetUrl(string username, string tweetId)
         {

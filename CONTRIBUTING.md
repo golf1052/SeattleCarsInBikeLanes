@@ -15,6 +15,14 @@
   - No Azure Maps tiles and search.
   - No Cosmos DB. You can use the [emulator](https://learn.microsoft.com/en-us/azure/cosmos-db/local-emulator) and import the [sample data](./sampledbdata.json) into it using the [Cosmos DB data migration tool](https://github.com/azure/azure-documentdb-datamigrationtool).
 
+### Getting OAuth 1.0a Write Token for Twitter Photo/Tweet Uploads
+
+This token pair lasts forever or until it is revoked.
+
+1. [POST oauth/request_token](https://developer.twitter.com/en/docs/authentication/api-reference/request_token) with `x_auth_access_type` query parameter set to `write`.
+2. [GET oauth/authorize](https://developer.twitter.com/en/docs/authentication/api-reference/authorize). Login with Twitter account
+3. [POST oauth/access_token](https://developer.twitter.com/en/docs/authentication/api-reference/access_token). `oauth_token` is from step 1. `oauth_verifier` is PIN returned from step 2.
+
 ## Useful Links
 
 - [Azure Maps Samples](https://samples.azuremaps.com/)

@@ -1,11 +1,11 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Net;
 using Azure.Security.KeyVault.Secrets;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Cosmos.Spatial;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.Database.Models;
+using SeattleCarsInBikeLanes.Models;
 using SeattleCarsInBikeLanes.Models.TypeConverters;
 
 namespace SeattleCarsInBikeLanes.Controllers
@@ -17,21 +17,25 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly ILogger<AdminController> logger;
         private readonly SecretClient secretClient;
         private readonly ReportedItemsDatabase reportedItemsDatabase;
+        private readonly HelperMethods helperMethods;
 
         public AdminController(ILogger<AdminController> logger,
             SecretClient secretClient,
-            ReportedItemsDatabase reportedItemsDatabase)
+            ReportedItemsDatabase reportedItemsDatabase,
+            HelperMethods helperMethods)
         {
             this.logger = logger;
             this.secretClient = secretClient;
             this.reportedItemsDatabase = reportedItemsDatabase;
+            this.helperMethods = helperMethods;
         }
 
         [HttpDelete("DeleteTweets")]
         public async Task<string> DeleteTweets([FromBody] DeleteTweetsRequest request)
         {
-            if (!IsAuthorized(request))
+            if (!helperMethods.IsAuthorized(request, secretClient))
             {
+                Response.StatusCode = (int)HttpStatusCode.Unauthorized;
                 return string.Empty;
             }
 
@@ -87,8 +91,9 @@ namespace SeattleCarsInBikeLanes.Controllers
         [HttpPatch("UpdateLocation")]
         public async Task<string> UpdateLocation([FromBody] UpdateReportedItemLocationRequest request)
         {
-            if (!IsAuthorized(request))
+            if (!helperMethods.IsAuthorized(request, secretClient))
             {
+                Response.StatusCode = (int)HttpStatusCode.Unauthorized;
                 return string.Empty;
             }
 
@@ -124,26 +129,6 @@ namespace SeattleCarsInBikeLanes.Controllers
                 return returnString;
             }
         }
-
-        private bool IsAuthorized(AdminRequest request)
-        {
-            KeyVaultSecret adminPasswordSecret = secretClient.GetSecret("admin-password");
-            string adminPassword = adminPasswordSecret.Value;
-            if (adminPassword != request.Password)
-            {
-                Response.StatusCode = (int)HttpStatusCode.Unauthorized;
-                return false;
-            }
-            else
-            {
-                return true;
-            }
-        }
-    }
-
-    public interface AdminRequest
-    {
-        public string Password { get; set; }
     }
 
     public class DeleteTweetsRequest : AdminRequest

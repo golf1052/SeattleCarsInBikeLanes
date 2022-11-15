@@ -2,10 +2,14 @@ let map = null;
 let reportedItemsPromise = null;
 let dataSource = null;
 let popup = null;
-let legendControl = null;
+let filterLegendControl = null;
+let uploadLegendControl = null;
 let bikeLaneLegendControl = null;
 let locationInputHasFocus = false;
 
+let clusterBubbleLayer = null;
+let symbolLayer = null;
+let clusterBubbleNumberLayer = null;
 let bikeLanesPromise = null;
 let pblLayer = null;
 let bblLayer = null;
@@ -14,8 +18,17 @@ let clLayer = null;
 let oLayer = null;
 let trailsLayer = null;
 const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+let loggedInTwitterUsername = null;
 
-function toggleLegendControl() {
+function toggleFilterLegendControl() {
+    toggleLegendControl(filterLegendControl);
+}
+
+function toggleUploadLegendControl() {
+    toggleLegendControl(uploadLegendControl);
+}
+
+function toggleLegendControl(legendControl) {
     if (legendControl) {
         if (legendControl.getOptions().visible) {
             legendControl.setOptions({
@@ -61,17 +74,91 @@ function toggleBikeLanes() {
     }
 }
 
+function setTwitterButtonAsLoggedIn() {
+    const twitterButton = document.getElementById('twitterSignInButton');
+    const newTwitterButton = document.createElement('button');
+    newTwitterButton.className = 'btn btn-info twitter-button';
+    newTwitterButton.id = 'twitterSignInButton';
+    newTwitterButton.setAttribute('disabled', '');
+    newTwitterButton.innerText = 'Logged in with Twitter';
+    twitterButton.replaceWith(newTwitterButton);
+}
+
+function setTwitterButtonAsLoggedOut() {
+    const twitterButton = document.getElementById('twitterSignInButton');
+    const newTwitterButton = document.createElement('a');
+    newTwitterButton.className = 'btn btn-info twitter-button';
+    newTwitterButton.id = 'twitterSignInButton';
+    newTwitterButton.href = 'https://twitter.com/i/oauth2/authorize?response_type=code&client_id=RXYtYnN5b2hsMUo3ZjlSZ2p6bEE6MTpjaQ&redirect_uri=https://seattle.carinbikelane.com/redirect&scope=tweet.read%20users.read%20offline.access&state=randomstate&code_challenge=plain&code_challenge_method=plain';
+    newTwitterButton.innerText = 'Sign in with Twitter';
+    twitterButton.replaceWith(newTwitterButton);
+}
+
+function clearTwitterAuth() {
+    localStorage.removeItem('twitterAccessToken');
+    localStorage.removeItem('twitterRefreshToken');
+    localStorage.removeItem('twitterExpiresAt');
+    loggedInTwitterUsername = null;
+    setTwitterButtonAsLoggedOut();
+    document.getElementById('twitterLogoutButton').className = 'dropdown-item disabled';
+}
+
+function checkTwitterAuthExpiration() {
+    const tokenExpiresAt = luxon.DateTime.fromISO(localStorage.getItem('twitterExpiresAt'));
+    const now = luxon.DateTime.utc();
+    if (tokenExpiresAt <= now.minus({ minutes: 5 })) {
+        return refreshTwitterToken(localStorage.getItem('twitterRefreshToken'))
+        .catch(() => {
+            clearTwitterAuth();
+        });
+    } else {
+        return Promise.resolve();
+    }
+}
+
+function checkTwitterAuth() {
+    if (localStorage.getItem('twitterAccessToken')) {
+        document.getElementById('twitterLogoutButton').className = 'dropdown-item';
+        checkTwitterAuthExpiration()
+        .then(() => {
+            setTwitterButtonAsLoggedIn();
+            return getTwitterUsername();
+        })
+        .then(response => {
+            loggedInTwitterUsername = response.username;
+        });
+    } else {
+        document.getElementById('twitterLogoutButton').className = 'dropdown-item disabled';
+    }
+}
+
 function initControls() {
+    document.getElementById('toggleUploadButton').addEventListener('click', function() {
+        toggleUploadLegendControl();
+    });
+
     document.getElementById('toggleFiltersButton').addEventListener('click', function() {
-        toggleLegendControl();
+        toggleFilterLegendControl();
     });
 
     document.getElementById('toggleBikeLanes').addEventListener('click', function() {
         toggleBikeLanes();
     });
+
+    document.getElementById('twitterLogoutButton').addEventListener('click', function() {
+        clearTwitterAuth();
+    });
+
+    document.getElementById('attributeCheckbox').addEventListener('change', function(event) {
+        if (event.target.checked) {
+            document.getElementById('submittedByInput').value = `Submitted by @${loggedInTwitterUsername}`;
+        } else {
+            document.getElementById('submittedByInput').value = 'Submission';
+        }
+    });
 }
 
-function initLegendHtml() {
+function initFilterLegendHtml() {
     document.getElementById('minDateInput').addEventListener('focus', function (event) {
         const checkedItem = document.querySelector('input[name="dateRadios"]:checked');
         if (checkedItem) {
@@ -180,13 +267,201 @@ function initLegendHtml() {
         reportedItemsPromise = searchReportedItems(params);
         reportedItemsPromise
         .then(reportedItems => {
-            toggleLegendControl();
+            toggleFilterLegendControl();
             dataSource.clear();
-            dataSource.add(createFeatureCollection(reportedItems));
+            dataSource.add(createReportedItemFeatureCollection(reportedItems));
         });
     });
     form.removeAttribute('hidden');
     return form;
+}
+
+function initUpload1LegendHtml() {
+    document.getElementById('photoFileInput').value = '';
+    const form = document.getElementById('uploadForm1');
+    form.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const button = event.submitter;
+        button.setAttribute('disabled', '');
+        updateButtonToUploadingButton(button);
+        document.getElementById('uploadForm1AlertDiv').innerHTML = '';
+        const files = Array.from(new FormData(event.target).entries());
+        if (files.length === 1 && files[0][1].size > 0) {
+            uploadImage(files[0][1])
+            .then(response => {
+                form.setAttribute('hidden', '');
+                const body = document.getElementsByTagName('body')[0];
+                body.appendChild(form);
+                updateButtonToRegularButton(button);
+                button.removeAttribute('disabled');
+
+                uploadLegendControl.setOptions({
+                    legends: [{
+                        type: 'html',
+                        html: initUpload2LegendHtml(response)
+                    }]
+                });
+            })
+            .catch(error => {
+                document.getElementById('uploadForm1AlertDiv')
+                    .appendChild(createAlertBanner(error.message));
+                
+                updateButtonToRegularButton(button);
+                button.removeAttribute('disabled');
+            });
+        }
+    });
+    form.removeAttribute('hidden');
+    return form;
+}
+
+function initUpload2LegendHtml(metadata) {
+    document.getElementById('photo').src = metadata.uri;
+    const dateTime = luxon.DateTime.fromISO(metadata.photoDateTime);
+    document.getElementById('photoDateInput').value = dateTime.toISODate();
+    document.getElementById('photoTimeInput').value = dateTime.toLocaleString(luxon.DateTime.TIME_24_SIMPLE);
+    document.getElementById('photoLocationInput').value = metadata.photoCrossStreet;
+    document.getElementById('photoGPSInput').value = `${metadata.photoLatitude}, ${metadata.photoLongitude}`;
+    if (localStorage.getItem('twitterAccessToken') && loggedInTwitterUsername) {
+        document.getElementById('submittedByInput').value = 'Submission';
+        document.getElementById('attributeDiv').removeAttribute('hidden');
+    } else {
+        document.getElementById('signInAttributeText').removeAttribute('hidden');
+        document.getElementById('submittedByInput').value = 'Submission';
+    }
+
+    clusterBubbleLayer.setOptions({
+        visible: false
+    });
+    symbolLayer.setOptions({
+        visible: false
+    });
+    clusterBubbleNumberLayer.setOptions({
+        visible: false
+    });
+    const photoLocation = new atlas.data.Position(parseFloat(metadata.photoLongitude),
+        parseFloat(metadata.photoLatitude));
+    const photoLocationFeatureCollection = new atlas.data.FeatureCollection([
+        new atlas.data.Feature(new atlas.data.Point(photoLocation))
+    ]);
+    const photoLocationDataSource = new atlas.source.DataSource(null, {
+        cluster: false
+    });
+    photoLocationDataSource.add(photoLocationFeatureCollection);
+    map.sources.add(photoLocationDataSource);
+    const photoLocationSymbolLayer = new atlas.layer.SymbolLayer(photoLocationDataSource, null, {
+        iconOptions: {
+            image: 'marker-red'
+        }
+    });
+    map.layers.add(photoLocationSymbolLayer);
+    map.setCamera({
+        center: photoLocation,
+        type: 'ease',
+        duration: 500,
+        zoom: 17
+    });
+
+    const form = document.getElementById('uploadForm2');
+    form.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const button = event.submitter;
+        button.setAttribute('disabled', '');
+        updateButtonToUploadingButton(button);
+        const data = new FormData(event.target);
+        for (const [name, value] of data) {
+            if (name === 'photoNumberOfCars') {
+                metadata.numberOfCars = parseInt(value);
+            }
+            if (name === 'attributeCheck') {
+                if (localStorage.getItem('twitterAccessToken')) {
+                    metadata.attribute = true;
+                    metadata.twitterUsername = loggedInTwitterUsername;
+                    metadata.twitterAccessToken = localStorage.getItem('twitterAccessToken');
+                }
+            }
+            if (name === 'submittedBy') {
+                metadata.submittedBy = value;
+            }
+        }
+        
+        if (localStorage.getItem('twitterAccessToken')) {
+            metadata.twitterUsername = loggedInTwitterUsername;
+        }
+
+        finalizeUploadImage(metadata)
+        .then(() => {
+
+            clusterBubbleLayer.setOptions({
+                visible: true
+            });
+            symbolLayer.setOptions({
+                visible: true
+            });
+            clusterBubbleNumberLayer.setOptions({
+                visible: true
+            });
+            map.layers.remove(photoLocationSymbolLayer);
+            map.sources.remove(photoLocationDataSource);
+            map.setCamera({
+                center: [-122.333301, 47.606501],
+                type: 'ease',
+                duration: 500,
+                zoom: 11
+            });
+
+            form.setAttribute('hidden', '');
+            const body = document.getElementsByTagName('body')[0];
+            body.appendChild(form);
+            updateButtonToRegularButton(button);
+            button.removeAttribute('disabled');
+
+            uploadLegendControl.setOptions({
+                legends: [{
+                    type: 'html',
+                    html: initUploadDoneLegendHtml()
+                }]
+            });
+        });
+    });
+    form.removeAttribute('hidden');
+    return form;
+}
+
+function initUploadDoneLegendHtml() {
+    const div = document.getElementById('uploadDoneDiv');
+    div.removeAttribute('hidden');
+    setTimeout(() => {
+        uploadLegendControl.setOptions({
+            visible: false
+        });
+        div.setAttribute('hidden', '');
+        const body = document.getElementsByTagName('body')[0];
+        body.appendChild(div);
+
+        uploadLegendControl.setOptions({
+            legends: [{
+                type: 'html',
+                html: initUpload1LegendHtml()
+            }]
+        });
+    }, 1000);
+    return div;
+}
+
+function updateButtonToUploadingButton(button) {
+    button.innerHTML = '';
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner-border spinner-border-sm';
+    spinner.setAttribute('role', 'status');
+    spinner.setAttribute('aria-hidden', 'true');
+    button.appendChild(spinner);
+    button.append(' Uploading...');
+}
+
+function updateButtonToRegularButton(button) {
+    button.innerHTML = '';
+    button.append('Upload');
 }
 
 function initMap() {
@@ -212,21 +487,34 @@ function initMap() {
         reportedItemsPromise = getAllReportedItems();
         reportedItemsPromise
         .then(reportedItems => {
-            legendControl = new atlas.control.LegendControl({
+            filterLegendControl = new atlas.control.LegendControl({
                 title: 'Filters',
                 style: 'auto',
                 showToggle: false,
                 visible: false,
                 legends: [{
                     type: 'html',
-                    html: initLegendHtml()
+                    html: initFilterLegendHtml()
                 }]
             });
-            map.controls.add(legendControl, { position: 'bottom-right' });
+            map.controls.add(filterLegendControl, { position: 'bottom-right' });
+
+            uploadLegendControl = new atlas.control.LegendControl({
+                title: 'Upload',
+                style: 'auto',
+                showToggle: false,
+                visible: false,
+                legends: [{
+                    type: 'html',
+                    html: initUpload1LegendHtml()
+                }]
+            });
+            map.controls.add(uploadLegendControl, { position: 'bottom-right' });
+
             dataSource = createDataSource(reportedItems);
             map.sources.add(dataSource);
 
-            const clusterBubbleLayer = new atlas.layer.BubbleLayer(dataSource, null, {
+            clusterBubbleLayer = new atlas.layer.BubbleLayer(dataSource, null, {
                 radius: [
                     'step',
                     ['get', 'point_count'],
@@ -254,22 +542,24 @@ function initMap() {
                 map.getCanvasContainer().style.cursor = 'grab';
             });
 
-            const symbols = new atlas.layer.SymbolLayer(dataSource, null, {
+            symbolLayer = new atlas.layer.SymbolLayer(dataSource, null, {
                 filter: ['!', ['has', 'point_count']] // Filters out clustered points from this layer
+            });
+
+            clusterBubbleNumberLayer = new atlas.layer.SymbolLayer(dataSource, null, {
+                iconOptions: {
+                    image: 'none'
+                },
+                textOptions: {
+                    textField: ['get', 'point_count_abbreviated'],
+                    offset: [0, 0.4]
+                }
             });
 
             map.layers.add([
                 clusterBubbleLayer,
-                new atlas.layer.SymbolLayer(dataSource, null, {
-                    iconOptions: {
-                        image: 'none'
-                    },
-                    textOptions: {
-                        textField: ['get', 'point_count_abbreviated'],
-                        offset: [0, 0.4]
-                    }
-                }),
-                symbols
+                clusterBubbleNumberLayer,
+                symbolLayer
             ]);
 
             bikeLanesPromise = getBikeLaneGeometry()
@@ -354,7 +644,7 @@ function initMap() {
                 });
             });
 
-            const spiderClusterManager = new atlas.SpiderClusterManager(map, clusterBubbleLayer, symbols);
+            const spiderClusterManager = new atlas.SpiderClusterManager(map, clusterBubbleLayer, symbolLayer);
 
             map.events.add('featureSelected', spiderClusterManager, function(e) {
                 showReportedItemPopup(e.shape.getProperties(), popup, map);
@@ -364,7 +654,7 @@ function initMap() {
                 spiderClusterManager.hideSpiderCluster();
             });
             
-            map.events.add('click', symbols, function(e) {
+            map.events.add('click', symbolLayer, function(e) {
                 if (e && e.shapes && e.shapes.length > 0) {
                     if (e.shapes[0].getProperties().cluster) {
 
@@ -374,10 +664,10 @@ function initMap() {
                 }
             });
 
-            map.layers.add(symbols);
+            map.layers.add(symbolLayer);
 
             map.events.add('click', function (e) {
-                if (e && legendControl && legendControl.getOptions().visible && locationInputHasFocus) {
+                if (e && filterLegendControl && filterLegendControl.getOptions().visible && locationInputHasFocus) {
                     document.getElementById('locationInput').value = JSON.stringify(e.position);
                 }
             });
@@ -400,3 +690,4 @@ function initDarkMode() {
 
 initDarkMode();
 initMap();
+checkTwitterAuth();

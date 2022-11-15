@@ -24,10 +24,16 @@
           <div class="collapse navbar-collapse" id="navContent">
             <ul class="navbar-nav me-auto">
               <li class="nav-item me-2">
+                <button class="btn btn-outline-success" id="toggleUploadButton">Upload photo</button>
+              </li>
+              <li class="nav-item me-2">
                 <button class="btn btn-outline-primary" id="toggleFiltersButton">Toggle filters</button>
               </li>
-              <li class="nav-item">
+              <li class="nav-item me-2">
                 <button class="btn btn-outline-info" id="toggleBikeLanes">Toggle bike lanes</button>
+              </li>
+              <li class="nav-item">
+                <a class="btn btn-info twitter-button" id="twitterSignInButton" href="https://twitter.com/i/oauth2/authorize?response_type=code&client_id=RXYtYnN5b2hsMUo3ZjlSZ2p6bEE6MTpjaQ&redirect_uri=https://seattle.carinbikelane.com/redirect&scope=tweet.read%20users.read%20offline.access&state=randomstate&code_challenge=plain&code_challenge_method=plain">Sign in with Twitter</a>
               </li>
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown" aria-expanded="false">Resources</a>
@@ -39,6 +45,7 @@
                 <a class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown" aria-expanded="false">Tools</a>
                 <ul class="dropdown-menu">
                   <li><a class="dropdown-item" id="downloadButton" role="button">Export to CSV</a></li>
+                  <li><a class="dropdown-item" id="twitterLogoutButton" role="button">Logout of Twitter</a></li>
                 </ul>
               </li>
             </ul>
@@ -167,6 +174,78 @@
       </div>
       <button type="submit" class="btn btn-primary btn-sm">Filter</button>
     </form>
+    <form id="uploadForm1" hidden>
+      <div id="uploadForm1AlertDiv">
+      </div>
+      <div class="row">
+        <label for="photoFileInput" class="form-label">Choose image to upload:</label>
+        <input type="file" class="form-control" id="photoFileInput" name="photoFile">
+      </div>
+      <button type="submit" class="btn btn-success btn-sm">Upload</button>
+    </form>
+    <form id="uploadForm2" hidden>
+      <div class="text-center">
+        <img id="photo" width="300">
+      </div>
+      <div class="row">
+        <div class="col-auto">
+          <label for="photoNumberOfCarsInput" class="form-label">Number of cars:</label>
+        </div>
+        <div class="col-12">
+          <input type="number" class="form-control form-control-sm" id="photoNumberOfCarsInput" name="photoNumberOfCars" min="1" required>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-auto">
+          <label for="photoDateInput" class="form-label">Date:</label>
+        </div>
+        <div class="col-12">
+          <input type="date" class="form-control form-control-sm" id="photoDateInput" name="photoDate" readonly>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-auto">
+          <label for="photoTimeInput" class="form-label">Time:</label>
+        </div>
+        <div class="col-12">
+          <input type="time" class="form-control form-control-sm" id="photoTimeInput" name="photoTime" readonly>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-auto">
+          <label for="photoLocationInput" class="form-label">Location:</label>
+        </div>
+        <div class="col-12">
+          <input type="text" class="form-control form-control-sm" id="photoLocationInput" name="photoLocation" readonly>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-auto">
+          <label for="photoGPSInput" class="form-label">GPS:</label>
+        </div>
+        <div class="col-12">
+          <input type="text" class="form-control form-control-sm" id="photoGPSInput" name="photoGPS" readonly>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-auto">
+          <label for="submittedByInput" class="form-label">Attribution</label>
+        </div>
+        <div class="col-12">
+          <input type="text" class="form-control form-control-sm" id="submittedByInput" name="submittedBy" readonly>
+        </div>
+      </div>
+      <div id="signInAttributeText" hidden>Sign in with Twitter to attribute this submission to you</div>
+      <div id="attributeDiv" class="form-check" hidden>
+        <input type="checkbox" class="form-check-input" id="attributeCheckbox" name="attributeCheck">
+        <label for="attribtueCheckbox" class="form-check-label">Attribute</label>
+      </div>
+      <button type="submit" class="btn btn-success btn-sm">Upload</button>
+    </form>
+    <div id="uploadDoneDiv" class="text-center" style="width: 300px;" hidden>
+      <p style="font-size: 100px; margin-top: 50px;">✅</p>
+      <h1 style="margin-top: 50px;">Uploaded!</h1>
+    </div>
     <script>window.twttr = (function(d, s, id) {
         var js, fjs = d.getElementsByTagName(s)[0],
           t = window.twttr || {};
