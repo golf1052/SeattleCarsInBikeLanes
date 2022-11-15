@@ -109,11 +109,6 @@ namespace SeattleCarsInBikeLanes.Controllers
                     return BadRequest("Error: Photo does not pass content check.");
                 }
 
-                if (!imageAnalysisResults.Tags.Any(r => r.Name.Equals("vehicle", StringComparison.OrdinalIgnoreCase)))
-                {
-                    return BadRequest("Error: Photo does not contain any vehicles.");
-                }
-
                 StringBuilder randomFileNameBuilder = new StringBuilder();
                 for (int i = 0; i < 32; i++)
                 {
