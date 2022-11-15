@@ -326,6 +326,10 @@ function initUpload2LegendHtml(metadata) {
         document.getElementById('submittedByInput').value = 'Submission';
         document.getElementById('attributeDiv').removeAttribute('hidden');
     } else {
+        const attributeDiv = document.getElementById('attributeDiv');
+        if (!attributeDiv.hasAttribute('hidden')) {
+            attributeDiv.setAttribute('hidden', '');
+        }
         document.getElementById('signInAttributeText').removeAttribute('hidden');
         document.getElementById('submittedByInput').value = 'Submission';
     }
