@@ -70,7 +70,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                 BlobClient jsonBlobClient = blobContainerClient.GetBlobClient(blob.Name);
                 var downloadResponse = await jsonBlobClient.DownloadContentAsync();
                 var metadata = JsonConvert.DeserializeObject<FinalizedPhotoUploadWithSasUriMetadata>(downloadResponse.Value.Content.ToString());
-                BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata.PhotoId}.jpeg");
+                BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata!.PhotoId}.jpeg");
                 Uri photoUri = await photoBlobClient.GenerateUserDelegationReadOnlySasUri(DateTimeOffset.UtcNow.AddHours(1));
                 metadata.Uri = photoUri.ToString();
                 photos.Add(metadata);

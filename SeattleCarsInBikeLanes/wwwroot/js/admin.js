@@ -140,11 +140,23 @@ getStatus()
 getPendingPhotos()
 .then(response => {
     const cardsDiv = document.getElementById('cardsDiv');
-    for (let i = 0; i < response.length; i++) {
-        let metadata = response[i];
-        let card = createDesktopCard(metadata);
-        cardsDiv.append(card);
+    if (response.length === 0) {
+        cardsDiv.append('No pending reported items.');
+    } else {
+        for (let i = 0; i < response.length; i++) {
+            let metadata = response[i];
+            let card = createDesktopCard(metadata);
+            cardsDiv.append(card);
+        }
     }
+})
+.catch(error => {
+    const cardsDiv = document.getElementById('cardsDiv');
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-danger';
+    alertDiv.setAttribute('role', 'alert');
+    alertDiv.append(error.message);
+    cardsDiv.append(alertDiv);
 });
 
 

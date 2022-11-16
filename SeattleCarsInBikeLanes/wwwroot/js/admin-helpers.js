@@ -8,7 +8,18 @@ function getStatus() {
 function getPendingPhotos() {
     return fetch('api/AdminPage/PendingPhotos')
     .then(response => {
+        if (!response.ok) {
+            return response.text();
+        }
+
         return response.json();
+    })
+    .then(response => {
+        if (typeof response === 'string') {
+            throw new Error(response);
+        }
+
+        return response;
     });
 }
 
