@@ -5,6 +5,8 @@ VisualStudioVersion = 17.3.32825.248
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SeattleCarsInBikeLanes", "SeattleCarsInBikeLanes\SeattleCarsInBikeLanes.csproj", "{6CD23716-450E-4ABD-86F3-5EA19CA91F60}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "golf1052.Mastodon", "..\MastodonAPI\golf1052.Mastodon\golf1052.Mastodon.csproj", "{83D37D1E-4B5B-48B6-AE4D-569BAE9A6B5B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{6CD23716-450E-4ABD-86F3-5EA19CA91F60}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6CD23716-450E-4ABD-86F3-5EA19CA91F60}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6CD23716-450E-4ABD-86F3-5EA19CA91F60}.Release|Any CPU.Build.0 = Release|Any CPU
+		{83D37D1E-4B5B-48B6-AE4D-569BAE9A6B5B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{83D37D1E-4B5B-48B6-AE4D-569BAE9A6B5B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{83D37D1E-4B5B-48B6-AE4D-569BAE9A6B5B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{83D37D1E-4B5B-48B6-AE4D-569BAE9A6B5B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -7,43 +7,21 @@ using SeattleCarsInBikeLanes.Models;
 
 namespace SeattleCarsInBikeLanes.Database
 {
-    public class ReportedItemsDatabase
+    public class ReportedItemsDatabase : AbstractDatabase<ReportedItem>
     {
-        private ILogger<ReportedItemsDatabase> logger;
-        private readonly Container itemsContainer;
-
-        public ReportedItemsDatabase(ILogger<ReportedItemsDatabase> logger, Container itemsContainer)
+        public ReportedItemsDatabase(ILogger<ReportedItemsDatabase> logger, Container itemsContainer) :
+            base(logger, itemsContainer)
         {
-            this.logger = logger;
-            this.itemsContainer = itemsContainer;
         }
 
         public async Task<bool> AddReportedItem(ReportedItem item)
         {
-            try
-            {
-                await itemsContainer.CreateItemAsync(item, new PartitionKey(item.TweetId));
-                return true;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to add reported item to database.");
-                return false;
-            }
+            return await base.AddItem(item, item.TweetId);
         }
 
         public async Task<bool> UpdateReportedItem(ReportedItem item)
         {
-            try
-            {
-                await itemsContainer.ReplaceItemAsync(item, item.TweetId, new PartitionKey(item.TweetId));
-                return true;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to update reported item.");
-                return false;
-            }
+            return await base.UpdateItem(item, item.TweetId);
         }
 
         public async Task<ReportedItem?> GetLatestReportedItem()
@@ -66,7 +44,7 @@ namespace SeattleCarsInBikeLanes.Database
 
         public async Task<List<ReportedItem>?> SearchItems(ReportedItemsSearchRequest request)
         {
-            IQueryable<ReportedItem> query = itemsContainer.GetItemLinqQueryable<ReportedItem>();
+            IQueryable<ReportedItem> query = container.GetItemLinqQueryable<ReportedItem>();
             if (request.MinCars != null)
             {
                 query = query.Where(i => i.NumberOfCars >= request.MinCars.Value);
@@ -123,7 +101,7 @@ namespace SeattleCarsInBikeLanes.Database
             return await RunQuery();
         }
 
-        public async Task<ReportedItem?> GetItem(string tweetId)
+        public new async Task<ReportedItem?> GetItem(string tweetId)
         {
             var items = await GetItems(new List<string>() { tweetId });
             if (items == null || items.Count == 0)
@@ -160,16 +138,7 @@ namespace SeattleCarsInBikeLanes.Database
 
         public async Task<bool> DeleteItem(ReportedItem item)
         {
-            try
-            {
-                await itemsContainer.DeleteItemAsync<ReportedItem>(item.TweetId, new PartitionKey(item.TweetId));
-                return true;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, $"Failed to delete item: {item.TweetId}");
-                return false;
-            }
+            return await base.DeleteItem(item.TweetId);
         }
 
         public async Task<bool> DeleteAllItems()
@@ -186,37 +155,6 @@ namespace SeattleCarsInBikeLanes.Database
                 allDeleted &= await DeleteItem(item);
             }
             return allDeleted;
-        }
-
-        private async Task<List<ReportedItem>?> RunQuery(string? query = null)
-        {
-            using FeedIterator<ReportedItem> iterator = itemsContainer.GetItemQueryIterator<ReportedItem>(query);
-            return await ProcessIterator(iterator);
-        }
-
-        private async Task<List<ReportedItem>?> RunQuery(QueryDefinition query)
-        {
-            using FeedIterator<ReportedItem> iterator = itemsContainer.GetItemQueryIterator<ReportedItem>(query);
-            return await ProcessIterator(iterator);
-        }
-
-        private async Task<List<ReportedItem>?> ProcessIterator(FeedIterator<ReportedItem> iterator)
-        {
-            try
-            {
-                List<ReportedItem> items = new List<ReportedItem>();
-                while (iterator.HasMoreResults)
-                {
-                    FeedResponse<ReportedItem> currentResults = await iterator.ReadNextAsync();
-                    items.AddRange(currentResults);
-                }
-                return items;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to get results from iterator.");
-                return null;
-            }
         }
     }
 }

@@ -4,6 +4,7 @@ using Azure.Identity;
 using Azure.Maps.Search;
 using Azure.Security.KeyVault.Secrets;
 using Azure.Storage.Blobs;
+using golf1052.Mastodon;
 using idunno.Authentication.Basic;
 using ImageMagick;
 using Imgur.API.Authentication;
@@ -17,6 +18,7 @@ using Microsoft.Azure.Cosmos.Spatial;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.Models;
 using SeattleCarsInBikeLanes.Models.TypeConverters;
+using SeattleCarsInBikeLanes.Providers;
 
 namespace SeattleCarsInBikeLanes
 {
@@ -130,14 +132,15 @@ namespace SeattleCarsInBikeLanes
             });
             services.AddSingleton(c =>
             {
-                Microsoft.Azure.Cosmos.Database database = c.GetRequiredService<Microsoft.Azure.Cosmos.Database>();
-                return database.GetContainer("items");
+                ILogger<ReportedItemsDatabase> logger = c.GetRequiredService<ILogger<ReportedItemsDatabase>>();
+                Container container = c.GetRequiredService<Microsoft.Azure.Cosmos.Database>().GetContainer("items");
+                return new ReportedItemsDatabase(logger, container);
             });
             services.AddSingleton(c =>
             {
-                ILogger<ReportedItemsDatabase> logger = c.GetRequiredService<ILogger<ReportedItemsDatabase>>();
-                Container container = c.GetRequiredService<Container>();
-                return new ReportedItemsDatabase(logger, container);
+                ILogger<MastodonOAuthMappingDatabase> logger = c.GetRequiredService<ILogger<MastodonOAuthMappingDatabase>>();
+                Container container = c.GetRequiredService<Microsoft.Azure.Cosmos.Database>().GetContainer("mastodon-oauth-mapping");
+                return new MastodonOAuthMappingDatabase(logger, container);
             });
             services.AddSingleton(c =>
             {
@@ -183,6 +186,14 @@ namespace SeattleCarsInBikeLanes
             {
                 return new ImageEndpoint(c.GetRequiredService<ApiClient>(),
                     new HttpClient());
+            });
+            services.AddSingleton(c =>
+            {
+                return new MastodonClientProvider(c.GetRequiredService<ILogger<MastodonClientProvider>>(),
+                    c.GetRequiredService<MastodonOAuthMappingDatabase>(),
+                    c.GetRequiredService<SecretClient>(),
+                    c.GetRequiredService<ILogger<MastodonClient>>(),
+                    c.GetRequiredService<HttpClient>());
             });
 
             var app = builder.Build();
