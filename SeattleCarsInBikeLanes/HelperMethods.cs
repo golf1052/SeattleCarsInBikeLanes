@@ -308,9 +308,10 @@ namespace SeattleCarsInBikeLanes
             TweetQuery? tweetResponse = await (from tweet in twitterContext.Tweets
                                                where tweet.Type == TweetType.Lookup &&
                                                tweet.Ids == id &&
-                                               tweet.Expansions == $"{ExpansionField.MediaKeys}" &&
+                                               tweet.Expansions == $"{ExpansionField.MediaKeys},{ExpansionField.ReferencedTweetAuthorID}" &&
                                                tweet.MediaFields == MediaField.Url &&
-                                               tweet.TweetFields == $"{TweetField.CreatedAt}"
+                                               tweet.TweetFields == $"{TweetField.CreatedAt}" &&
+                                               tweet.UserFields == $"{UserField.UserName}"
                                                select tweet).SingleOrDefaultAsync();
             return tweetResponse;
         }

@@ -131,6 +131,18 @@ function createDesktopCard(metadata) {
     return card;
 }
 
+document.getElementById('postLinkButton').addEventListener('click', function() {
+    const postLinkInput = document.getElementById('postLinkInput');
+    const link = postLinkInput.value;
+    postTweet(link)
+    .then(() => {
+        postLinkInput.value = '';
+    })
+    .catch(error => {
+        displayError(error.message);
+    });
+});
+
 getStatus()
 .then(response => {
     document.getElementById('latestTweetTime').innerText = `Latest tweet: ${luxon.DateTime.fromISO(response.latestTweet).toISO()}`;

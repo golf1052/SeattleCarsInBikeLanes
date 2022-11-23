@@ -269,27 +269,38 @@ namespace SeattleCarsInBikeLanes.Controllers
                                 TweetQuery? quotedTweet = await helperMethods.GetQuoteTweet(tweetRef.ID!, uploadTwitterContext);
                                 if (quotedTweet != null)
                                 {
-                                    if (quotedTweet.Includes != null && quotedTweet.Includes.Media != null)
+                                    if (quotedTweet.Includes != null)
                                     {
-                                        tweetQuery.Includes!.Media!.AddRange(quotedTweet.Includes.Media);
+                                        if (quotedTweet.Includes.Media != null)
+                                        {
+                                            tweetQuery.Includes!.Media!.AddRange(quotedTweet.Includes.Media);
+                                        }
+                                        
+                                        if (quotedTweet.Includes.Users != null && quotedTweet.Includes.Users.Count > 0)
+                                        {
+                                            // If this is a quote tweet try to include a link to the quoted tweet for proper attribution.
+                                            tweetText += $"\nhttps://twitter.com/{quotedTweet.Includes.Users[0].Username}/status/{tweetRef.ID}";
+                                        }
                                     }
 
                                     Tweet? includesQuotedTweet = tweetQuery.Includes!.Tweets!.FirstOrDefault(t => t.ID == tweetRef.ID);
-                                    if (includesQuotedTweet != null && includesQuotedTweet.Attachments != null &&
-                                        includesQuotedTweet.Attachments.MediaKeys != null)
+                                    if (includesQuotedTweet != null)
                                     {
-                                        foreach (var mediaKey in includesQuotedTweet.Attachments.MediaKeys)
+                                        if (includesQuotedTweet.Attachments != null && includesQuotedTweet.Attachments.MediaKeys != null)
                                         {
-                                            string? quotedTweetPictureUrl = helperMethods.GetUrlForMediaKey(mediaKey, tweetQuery.Includes.Media);
-                                            if (quotedTweetPictureUrl != null)
+                                            foreach (var mediaKey in includesQuotedTweet.Attachments.MediaKeys)
                                             {
-                                                var stream = await helperMethods.DownloadImage(quotedTweetPictureUrl, httpClient);
-                                                if (stream == null)
+                                                string? quotedTweetPictureUrl = helperMethods.GetUrlForMediaKey(mediaKey, tweetQuery.Includes.Media);
+                                                if (quotedTweetPictureUrl != null)
                                                 {
-                                                    helperMethods.DisposePictureStreams(pictureStreams);
-                                                    return BadRequest($"Couldn't download picture with media key {mediaKey}. Id {tweet.ID} with text {tweet.Text}");
+                                                    var stream = await helperMethods.DownloadImage(quotedTweetPictureUrl, httpClient);
+                                                    if (stream == null)
+                                                    {
+                                                        helperMethods.DisposePictureStreams(pictureStreams);
+                                                        return BadRequest($"Couldn't download picture with media key {mediaKey}. Id {tweet.ID} with text {tweet.Text}");
+                                                    }
+                                                    pictureStreams.Add(stream);
                                                 }
-                                                pictureStreams.Add(stream);
                                             }
                                         }
                                     }
@@ -528,6 +539,16 @@ namespace SeattleCarsInBikeLanes.Controllers
         private async Task<TweetQuery?> GetTweet(ulong tweetIdNumber)
         {
             string tweetId = tweetIdNumber.ToString();
+            TweetQuery tweetQuery = new TweetQuery()
+            {
+                Tweets = new List<Tweet>(),
+                Includes = new TwitterInclude()
+                {
+                    Tweets = new List<Tweet>(),
+                    Media = new List<TwitterMedia>(),
+                    Users = new List<TwitterUser>()
+                }
+            };
 
             TweetQuery? tweetResponse = await (from tweet in uploadTwitterContext.Tweets
                                                where tweet.Type == TweetType.Lookup &&
@@ -536,7 +557,33 @@ namespace SeattleCarsInBikeLanes.Controllers
                                                tweet.MediaFields == MediaField.Url &&
                                                tweet.TweetFields == $"{TweetField.CreatedAt},{TweetField.ReferencedTweets}"
                                                select tweet).SingleOrDefaultAsync();
-            return tweetResponse;
+            if (tweetResponse != null)
+            {
+                if (tweetResponse.Tweets != null)
+                {
+                    tweetQuery.Tweets.AddRange(tweetResponse.Tweets);
+                }
+
+                if (tweetResponse.Includes != null)
+                {
+                    if (tweetResponse.Includes.Tweets != null)
+                    {
+                        tweetQuery.Includes.Tweets.AddRange(tweetResponse.Includes.Tweets);
+                    }
+
+                    if (tweetResponse.Includes.Media != null)
+                    {
+                        tweetQuery.Includes.Media.AddRange(tweetResponse.Includes.Media);
+                    }
+
+                    if (tweetResponse.Includes.Users != null)
+                    {
+                        tweetQuery.Includes.Users.AddRange(tweetResponse.Includes.Users);
+                    }
+                }
+            }
+
+            return tweetQuery;
         }
 
         public class FinalizedPhotoUploadWithSasUriMetadata : FinalizedPhotoUploadMetadata
