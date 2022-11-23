@@ -488,7 +488,13 @@ function initMap() {
     map.events.add('ready', function() {
         initControls();
         popup = new atlas.Popup();
-        reportedItemsPromise = getAllReportedItems();
+
+        // Only initially display items reported in the last month
+        const now = luxon.DateTime.now();
+        const lastMonth = now.minus({ months: 1 });
+        const searchParams = new URLSearchParams();
+        searchParams.set('minDate', lastMonth.toISODate());
+        reportedItemsPromise = searchReportedItems(searchParams);
         reportedItemsPromise
         .then(reportedItems => {
             filterLegendControl = new atlas.control.LegendControl({
