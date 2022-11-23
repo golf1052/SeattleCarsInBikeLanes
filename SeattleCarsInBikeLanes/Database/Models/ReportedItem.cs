@@ -15,6 +15,8 @@ namespace SeattleCarsInBikeLanes.Database.Models
         public Point? Location { get; set; }
         public List<string> ImageUrls { get; set; } = new List<string>();
         public List<string> ImgurUrls { get; set; } = new List<string>();
+        public string? TwitterLink { get; set; }
+        public string? MastodonLink { get; set; }
         public bool Latest { get; set; } = false;
     }
 }

@@ -45,6 +45,28 @@ function uploadTweet(metadata) {
     });
 }
 
+function postTweet(link) {
+    return fetch('api/AdminPage/PostTweet', {
+        method: 'POST',
+        body: JSON.stringify({ postUrl: link }),
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text();
+        }
+
+        return null;
+    })
+    .then(response => {
+        if (typeof response === 'string') {
+            throw new Error(response);
+        }
+    });
+}
+
 function deletePendingPhoto(metadata) {
     return fetch('api/AdminPage/DeletePendingPhoto',  {
         method: 'DELETE',
@@ -53,4 +75,18 @@ function deletePendingPhoto(metadata) {
             'Content-Type': 'application/json'
         }
     });
+}
+
+function displayError(text) {
+    const oldAlertDiv = document.getElementById('alertDiv');
+    if (oldAlertDiv) {
+        oldAlertDiv.remove();
+    }
+
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-danger';
+    alertDiv.setAttribute('role', 'alert');
+    alertDiv.setAttribute('id', 'alertDiv');
+    alertDiv.append(text);
+    document.getElementsByTagName('body')[0].append(alertDiv);
 }

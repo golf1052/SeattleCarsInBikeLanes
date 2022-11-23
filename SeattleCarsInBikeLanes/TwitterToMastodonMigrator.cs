@@ -40,7 +40,7 @@ namespace SeattleCarsInBikeLanes
 
         public async Task Run()
         {
-            MastodonClient mastodonClient = await mastodonClientProvider.GetClient(new Uri("https://social.ridetrans.it"));
+            MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
             TweetQuery tweets = await GetAllTweets();
             logger.LogInformation($"Found {tweets.Tweets!.Count} tweets");
             foreach (var tweet in tweets.Tweets!)
@@ -73,7 +73,7 @@ namespace SeattleCarsInBikeLanes
                     continue;
                 }
 
-                string text = FixTweetText(tweet.Text);
+                string text = helperMethods.FixTweetText(tweet.Text);
                 List<Stream> pictureStreams = new List<Stream>();
 
                 // If it's a regular tweet (ie not a quote tweet)
@@ -94,7 +94,7 @@ namespace SeattleCarsInBikeLanes
                             continue;
                         }
 
-                        var stream = await DownloadImage(twitterPictureUrl);
+                        var stream = await helperMethods.DownloadImage(twitterPictureUrl, httpClient);
                         if (stream == null)
                         {
                             logger.LogWarning($"Couldn't download picture with media key {mediaKey}. Id {tweet.ID} with text {tweet.Text}");
@@ -111,7 +111,7 @@ namespace SeattleCarsInBikeLanes
                         TweetReference tweetRef = tweet.ReferencedTweets[0];
                         if ("quoted" == tweetRef.Type)
                         {
-                            TweetQuery? quotedTweet = await GetQuoteTweet(tweetRef.ID!);
+                            TweetQuery? quotedTweet = await helperMethods.GetQuoteTweet(tweetRef.ID!, twitterContext);
                             if (quotedTweet != null)
                             {
                                 if (quotedTweet.Includes != null && quotedTweet.Includes.Media != null)
@@ -128,7 +128,7 @@ namespace SeattleCarsInBikeLanes
                                         string? quotedTweetPictureUrl = helperMethods.GetUrlForMediaKey(mediaKey, tweets.Includes.Media);
                                         if (quotedTweetPictureUrl != null)
                                         {
-                                            var stream = await DownloadImage(quotedTweetPictureUrl);
+                                            var stream = await helperMethods.DownloadImage(quotedTweetPictureUrl, httpClient);
                                             if (stream == null)
                                             {
                                                 logger.LogWarning($"Couldn't download picture with media key {mediaKey}. Id {tweet.ID} with text {tweet.Text}");
@@ -160,7 +160,7 @@ namespace SeattleCarsInBikeLanes
                         $"than 1 but the number of pictures doesn't match the number of reported items. " +
                         $"Reported items: {reportedItems.Count}. Pictures: {pictureStreams.Count}." +
                         $"Id {tweet.ID} with text {tweet.Text}");
-                    DisposePictureStreams(pictureStreams);
+                    helperMethods.DisposePictureStreams(pictureStreams);
                     continue;
                 }
 
@@ -254,21 +254,9 @@ namespace SeattleCarsInBikeLanes
                 {
                     logger.LogError(ex, $"Failed to publish status. Imgur links: {string.Join(' ', imgurLinks)} Attachment ids: {string.Join(' ', attachmentIds)} Id {tweet.ID} with text {tweet.Text}");
                 }
-                DisposePictureStreams(pictureStreams);
+                helperMethods.DisposePictureStreams(pictureStreams);
             }
             logger.LogInformation("Done migration!");
-        }
-
-        private async Task<TweetQuery?> GetQuoteTweet(string id)
-        {
-            TweetQuery? tweetResponse = await (from tweet in twitterContext.Tweets
-                                       where tweet.Type == TweetType.Lookup &&
-                                       tweet.Ids == id &&
-                                       tweet.Expansions == $"{ExpansionField.MediaKeys}" &&
-                                       tweet.MediaFields == MediaField.Url &&
-                                       tweet.TweetFields == $"{TweetField.CreatedAt}"
-                                       select tweet).SingleOrDefaultAsync();
-            return tweetResponse;
         }
 
         private async Task<TweetQuery> GetAllTweets()
@@ -338,43 +326,6 @@ namespace SeattleCarsInBikeLanes
             }
             allTweets.Tweets.Sort((t1, t2) => t1.CreatedAt!.Value.CompareTo(t2.CreatedAt!.Value));
             return allTweets;
-        }
-
-        private async Task<MemoryStream?> DownloadImage(string url)
-        {
-            MemoryStream stream = new MemoryStream();
-            HttpResponseMessage responseMessage = await httpClient.GetAsync(url);
-            if (!responseMessage.IsSuccessStatusCode)
-            {
-                return null;
-            }
-            await (await responseMessage.Content.ReadAsStreamAsync()).CopyToAsync(stream);
-            stream.Position = 0;
-            return stream;
-        }
-
-        private string FixTweetText(string text)
-        {
-            string fixedText = text;
-            if (text.Contains("&amp;"))
-            {
-                fixedText = fixedText.Replace("&amp;", "&");
-            }
-
-            int endLinkPosition = fixedText.IndexOf("http");
-            if (endLinkPosition != -1)
-            {
-                fixedText = fixedText.Substring(0, endLinkPosition);
-            }
-            return fixedText.Trim();
-        }
-
-        private void DisposePictureStreams(List<Stream> streams)
-        {
-            foreach (Stream stream in streams)
-            {
-                stream.Dispose();
-            }
         }
     }
 }

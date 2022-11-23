@@ -8,7 +8,6 @@ document.getElementById('downloadButton').addEventListener('click', () => {
     reportedItemsPromise
     .then(reportedItems => {
         const formattedItems = reportedItems.map(item => {
-            const tweetId = getTweetId(item.tweetId);
             let latitude = null;
             let longitude = null;
             if (item.location && item.location.position) {
@@ -22,10 +21,9 @@ document.getElementById('downloadButton').addEventListener('click', () => {
             } else if (item.imgurUrls && item.imgurUrls.length > 0) {
                 imageString = item.imgurUrls.join(';');
             }
-            
-            return {
-                tweet_id: tweetId,
-                link: `https://twitter.com/carbikelanesea/status/${tweetId}`,
+
+            const csvItem = {
+                item_id: item.tweetId,
                 tweet_posted_at: item.createdAt,
                 number_of_cars: item.numberOfCars,
                 date: item.date,
@@ -34,7 +32,17 @@ document.getElementById('downloadButton').addEventListener('click', () => {
                 latitude: latitude,
                 longitude: longitude,
                 image_urls: imageString
+            };
+
+            if (item.twitterLink) {
+                csvItem.twitterLink = item.twitterLink;
             }
+
+            if (item.mastodonLink) {
+                csvItem.mastodonLink = item.mastodonLink;
+            }
+            
+            return csvItem;
         });
     
         const newline = navigator.platform === 'Win32' ? 'windows' : 'unix';

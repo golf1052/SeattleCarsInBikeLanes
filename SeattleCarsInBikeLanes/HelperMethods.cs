@@ -32,7 +32,7 @@ namespace SeattleCarsInBikeLanes
             return $"https://twitter.com/{username}/status/{tweetId}";
         }
 
-        public async Task<List<ReportedItem>?> TweetToReportedItem(Tweet tweet,
+        public async Task<List<ReportedItem>?> TweetToReportedItems(Tweet tweet,
             List<TwitterMedia>? allMedia,
             MapsSearchClient mapsSearchClient)
         {
@@ -41,7 +41,34 @@ namespace SeattleCarsInBikeLanes
                 return null;
             }
 
-            List<string>? reportedBlocks = GetReportedBlocks(tweet.Text);
+            List<ReportedItem>? reportedItems = await TextToReportedItems(tweet.Text, mapsSearchClient);
+            if (reportedItems == null)
+            {
+                return null;
+            }
+
+            foreach (var reportedItem in reportedItems)
+            {
+                reportedItem.CreatedAt = tweet.CreatedAt.Value;
+                if (tweet.Attachments != null && tweet.Attachments.MediaKeys != null)
+                {
+                    foreach (var mediaKey in tweet.Attachments.MediaKeys)
+                    {
+                        string? url = GetUrlForMediaKey(mediaKey, allMedia);
+                        if (!string.IsNullOrWhiteSpace(url))
+                        {
+                            reportedItem.ImageUrls.Add(url);
+                        }
+                    }
+                }
+            }
+
+            return reportedItems;
+        }
+
+        public async Task<List<ReportedItem>?> TextToReportedItems(string text, MapsSearchClient mapsSearchClient)
+        {
+            List<string>? reportedBlocks = GetReportedBlocks(text);
             if (reportedBlocks == null)
             {
                 return null;
@@ -109,29 +136,16 @@ namespace SeattleCarsInBikeLanes
                     }
                 }
 
+                string id = Guid.NewGuid().ToString();
                 ReportedItem reportedItem = new ReportedItem()
                 {
-                    TweetId = $"{tweet.ID}.{reportedItemCount}",
-                    CreatedAt = tweet.CreatedAt.Value,
+                    TweetId = $"{id}.{reportedItemCount}",
                     NumberOfCars = numberOfCars,
                     Date = date,
                     Time = time,
                     LocationString = locationString,
                     Location = location
                 };
-
-                // Finally check for any images and add them
-                if (tweet.Attachments != null && tweet.Attachments.MediaKeys != null)
-                {
-                    foreach (var mediaKey in tweet.Attachments.MediaKeys)
-                    {
-                        string? url = GetUrlForMediaKey(mediaKey, allMedia);
-                        if (!string.IsNullOrWhiteSpace(url))
-                        {
-                            reportedItem.ImageUrls.Add(url);
-                        }
-                    }
-                }
 
                 reportedItems.Add(reportedItem);
                 reportedItemCount += 1;
@@ -279,7 +293,77 @@ namespace SeattleCarsInBikeLanes
 
         public string GetRealTweetId(ReportedItem item)
         {
-            return item.TweetId.Split('.')[0];
+            if (item.TwitterLink == null)
+            {
+                return item.TweetId.Split('.')[0];
+            }
+            else
+            {
+                return new Uri(item.TwitterLink).Segments.Last();
+            }
+        }
+
+        public async Task<TweetQuery?> GetQuoteTweet(string id, TwitterContext twitterContext)
+        {
+            TweetQuery? tweetResponse = await (from tweet in twitterContext.Tweets
+                                               where tweet.Type == TweetType.Lookup &&
+                                               tweet.Ids == id &&
+                                               tweet.Expansions == $"{ExpansionField.MediaKeys}" &&
+                                               tweet.MediaFields == MediaField.Url &&
+                                               tweet.TweetFields == $"{TweetField.CreatedAt}"
+                                               select tweet).SingleOrDefaultAsync();
+            return tweetResponse;
+        }
+
+        public string FixTweetText(string text)
+        {
+            string fixedText = text;
+            if (text.Contains("&amp;"))
+            {
+                fixedText = fixedText.Replace("&amp;", "&");
+            }
+
+            int endLinkPosition = fixedText.IndexOf("http");
+            if (endLinkPosition != -1)
+            {
+                fixedText = fixedText.Substring(0, endLinkPosition);
+            }
+            return fixedText.Trim();
+        }
+
+        public string FixTootText(string text)
+        {
+            string fixedText = text;
+            if (text.Contains("&amp;"))
+            {
+                fixedText = fixedText.Replace("&amp;", "&");
+            }
+
+            fixedText = fixedText.Replace("<p>", string.Empty);
+            fixedText = fixedText.Replace("</p>", string.Empty);
+            fixedText = fixedText.Replace("<br />", "\n");
+            return fixedText.Trim();
+        }
+
+        public async Task<MemoryStream?> DownloadImage(string url, HttpClient httpClient)
+        {
+            MemoryStream stream = new MemoryStream();
+            HttpResponseMessage responseMessage = await httpClient.GetAsync(url);
+            if (!responseMessage.IsSuccessStatusCode)
+            {
+                return null;
+            }
+            await (await responseMessage.Content.ReadAsStreamAsync()).CopyToAsync(stream);
+            stream.Position = 0;
+            return stream;
+        }
+
+        public void DisposePictureStreams(List<Stream> streams)
+        {
+            foreach (Stream stream in streams)
+            {
+                stream.Dispose();
+            }
         }
     }
 }

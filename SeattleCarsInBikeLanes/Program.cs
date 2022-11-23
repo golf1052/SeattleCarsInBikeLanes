@@ -201,15 +201,6 @@ namespace SeattleCarsInBikeLanes
             using (var serviceScope = app.Services.CreateScope())
             {
                 var serviceProvider = serviceScope.ServiceProvider;
-                TweetProcessor tweetProcessor = new TweetProcessor(
-                    serviceProvider.GetRequiredService<ILogger<TweetProcessor>>(),
-                    serviceProvider.GetRequiredService<TwitterContext>(),
-                    serviceProvider.GetRequiredService<MapsSearchClient>(),
-                    serviceProvider.GetRequiredService<ReportedItemsDatabase>(),
-                    serviceProvider.GetRequiredService<StatusResponse>(),
-                    TimeSpan.FromHours(1),
-                    serviceProvider.GetRequiredService<HelperMethods>());
-
                 InitialUploadPruner initialUploadPruner = new InitialUploadPruner(
                     serviceProvider.GetRequiredService<ILogger<InitialUploadPruner>>(),
                     serviceProvider.GetRequiredService<BlobContainerClient>(),

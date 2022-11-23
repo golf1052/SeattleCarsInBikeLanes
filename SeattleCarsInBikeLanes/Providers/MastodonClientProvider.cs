@@ -50,6 +50,13 @@ namespace SeattleCarsInBikeLanes.Providers
             return mastodonClient;
         }
 
+        public MastodonClient GetServerClient()
+        {
+            MastodonClient mastodonClient = new MastodonClient(new Uri("https://social.ridetrans.it"), httpClient, clientLogger);
+            mastodonClient.AccessToken = secretClient.GetSecret("social-ridetransit-access-token").Value.Value;
+            return mastodonClient;
+        }
+
         private async Task<MastodonClient> CreateClient(Uri endpointUri)
         {
             try

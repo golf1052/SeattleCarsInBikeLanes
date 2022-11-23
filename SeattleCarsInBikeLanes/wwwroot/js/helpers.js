@@ -147,8 +147,13 @@ function getTwitterUsername() {
     });
 }
 
-function getTweetId(databaseTweetId) {
-    return databaseTweetId.split('.')[0];
+function getTweetId(properties) {
+    if (!properties.twitterLink) {
+        return properties.tweetId.split('.')[0];
+    } else {
+        const splitPathname = new URL(properties.twitterLink).pathname.split('/');
+        return splitPathname[splitPathname.length - 1];
+    }
 }
 
 function showReportedItemPopup(properties, popup, map) {
@@ -158,7 +163,7 @@ function showReportedItemPopup(properties, popup, map) {
         content: ''
     });
     popup.open(map);
-    const tweetId = getTweetId(properties.tweetId);
+    const tweetId = getTweetId(properties);
     getTwitterOEmbed(tweetId)
     .then(html => {
         if (html) {

@@ -151,7 +151,7 @@ namespace SeattleCarsInBikeLanes
             List<ReportedItem> allItems = new List<ReportedItem>();
             foreach (var tweet in tweets.Tweets!)
             {
-                List<ReportedItem>? reportedItems = await helperMethods.TweetToReportedItem(tweet,
+                List<ReportedItem>? reportedItems = await helperMethods.TweetToReportedItems(tweet,
                     tweets.Includes?.Media,
                     mapsSearchClient);
 

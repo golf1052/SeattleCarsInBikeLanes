@@ -19,6 +19,17 @@
 <body>
   <div id="latestTweetTime"></div>
   <div id="lastCheckedTime"></div>
+  <div class="row">
+    <div class="col-auto">
+      <label for="postLinkInput" class="form-label">Post link</label>
+    </div>
+    <div class="col-8">
+      <input type="text" id="postLinkInput" class="form-control">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-success" id="postLinkButton">Post</button>
+    </div>
+  </div>
   <div id="cardsDiv"></div>
   <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.4/build/global/luxon.min.js"></script>
   <script src="js/admin-helpers.js"></script>
