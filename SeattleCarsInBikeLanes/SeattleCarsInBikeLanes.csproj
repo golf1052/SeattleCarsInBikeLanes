@@ -11,6 +11,7 @@
     <PackageReference Include="Azure.Maps.Search" Version="1.0.0-beta.1" />
     <PackageReference Include="Azure.Security.KeyVault.Secrets" Version="4.4.0" />
     <PackageReference Include="Azure.Storage.Blobs" Version="12.14.1" />
+    <PackageReference Include="golf1052.Mastodon" Version="0.1.0" />
     <PackageReference Include="idunno.Authentication.Basic" Version="2.2.3" />
     <PackageReference Include="Imgur.API" Version="5.0.0" />
     <PackageReference Include="linqtotwitter" Version="6.15.0" />
@@ -19,10 +20,6 @@
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.31.2" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     <PackageReference Include="System.ServiceModel.Syndication" Version="7.0.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\MastodonAPI\golf1052.Mastodon\golf1052.Mastodon.csproj" />
   </ItemGroup>
 
   <ItemGroup>
