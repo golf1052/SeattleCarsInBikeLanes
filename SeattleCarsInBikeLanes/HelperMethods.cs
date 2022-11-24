@@ -1,7 +1,9 @@
-﻿using Azure.Core.GeoJson;
+﻿using System.Text;
+using Azure.Core.GeoJson;
 using Azure.Maps.Search;
 using Azure.Maps.Search.Models;
 using Azure.Security.KeyVault.Secrets;
+using HtmlAgilityPack;
 using LinqToTwitter;
 using LinqToTwitter.Common;
 using Microsoft.Azure.Cosmos.Spatial;
@@ -334,16 +336,54 @@ namespace SeattleCarsInBikeLanes
 
         public string FixTootText(string text)
         {
-            string fixedText = text;
-            if (text.Contains("&amp;"))
+            HtmlDocument htmlDoc = new HtmlDocument();
+            htmlDoc.LoadHtml(text);
+            StringBuilder stringBuilder = new StringBuilder();
+            foreach (var node in htmlDoc.DocumentNode.Descendants())
             {
-                fixedText = fixedText.Replace("&amp;", "&");
+                if (node.NodeType == HtmlNodeType.Text)
+                {
+                    if (!AnyParentIsElement(node, "a"))
+                    {
+                        string innerText = node.InnerText;
+                        if (innerText.Contains("&amp;"))
+                        {
+                            innerText = innerText.Replace("&amp;", "&");
+                        }
+                        stringBuilder.Append(innerText);
+                    }
+                }
+                else if (node.NodeType == HtmlNodeType.Element)
+                {
+                    if (node.Name == "br")
+                    {
+                        stringBuilder.Append('\n');
+                    }
+                    else if (node.Name == "a")
+                    {
+                        string link = node.GetAttributeValue("href", string.Empty);
+                        if (!string.IsNullOrWhiteSpace(link))
+                        {
+                            stringBuilder.Append(link);
+                        }
+                    }
+                }
             }
 
-            fixedText = fixedText.Replace("<p>", string.Empty);
-            fixedText = fixedText.Replace("</p>", string.Empty);
-            fixedText = fixedText.Replace("<br />", "\n");
-            return fixedText.Trim();
+            return stringBuilder.ToString().Trim();
+        }
+
+        private bool AnyParentIsElement(HtmlNode node, string elementName)
+        {
+            if (node.ParentNode == null)
+            {
+                return false;
+            }
+            if (node.ParentNode.Name == elementName)
+            {
+                return true;
+            }
+            return AnyParentIsElement(node.ParentNode, elementName);
         }
 
         public async Task<MemoryStream?> DownloadImage(string url, HttpClient httpClient)
