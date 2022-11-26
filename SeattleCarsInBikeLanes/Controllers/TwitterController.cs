@@ -13,6 +13,7 @@ namespace SeattleCarsInBikeLanes.Controllers
     public class TwitterController : ControllerBase
     {
         private const string TwitterUsername = "carbikelanesea";
+        private const string RedirectUri = "https://seattle.carinbikelane.com/redirect";
 
         private readonly ILogger<RedirectController> logger;
         private readonly HttpClient httpClient;
@@ -51,7 +52,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             FormUrlEncodedContent content = new FormUrlEncodedContent(new Dictionary<string, string>()
             {
                 { "grant_type", "authorization_code" },
-                { "redirect_uri", "https://seattle.carinbikelane.com/redirect"},
+                { "redirect_uri", RedirectUri },
                 { "code_verifier", "plain" },
                 { "code", code }
             });
@@ -155,12 +156,12 @@ namespace SeattleCarsInBikeLanes.Controllers
 
         public class TwitterRefreshTokenRequest
         {
-            public string RefreshToken { get; set; }
+            public string RefreshToken { get; set; } = string.Empty;
         }
 
         public class GetTwitterUsernameRequest
         {
-            public string AccessToken { get; set; }
+            public string AccessToken { get; set; } = string.Empty;
         }
     }
 }

@@ -94,7 +94,8 @@ function createDesktopCard(metadata) {
 
     const locationRow = createTextInputRow('Location:', 'location', metadata.photoCrossStreet);
     const gpsRow = createTextInputRow('GPS:', 'gps', `${metadata.photoLatitude}, ${metadata.photoLongitude}`);
-    const attributionRow = createTextInputRow('Attribution:', 'submittedBy', metadata.submittedBy);
+    const twitterAttributionRow = createTextInputRow('Twitter Attribution:', 'twitterSubmittedBy', metadata.twitterSubmittedBy);
+    const mastodonAttributionRow = createTextInputRow('Mastodon Attribution:', 'mastodonSubmittedBy', metadata.mastodonSubmittedBy);
 
     const uploadButton = createSubmitButton('btn-success', 'Upload');
     uploadButton.className = 'btn btn-success me-4';
@@ -102,26 +103,29 @@ function createDesktopCard(metadata) {
     const buttonDiv = createElementWithClass('div', 'text-center');
     buttonDiv.append(uploadButton, deleteButton);
 
-    form.append(numberOfCarsRow, dateRow, timeRow, locationRow, gpsRow, attributionRow, buttonDiv);
+    form.append(numberOfCarsRow, dateRow, timeRow, locationRow, gpsRow, twitterAttributionRow, mastodonAttributionRow, buttonDiv);
 
     form.addEventListener('submit', (event) => {
         event.preventDefault();
         const submitButton = event.submitter;
-        const data = new FormData(event.target);
 
         if (submitButton.innerText === 'Upload') {
+            changeButtonToLoadingButton(submitButton, 'Uploading...');
             uploadTweet(metadata)
             .then(() => {
                 document.getElementById(metadata.photoId).remove();
             })
             .catch(error => {
+                changeLoadingButtonToRegularButton(submitButton, 'Upload');
             });
         } else if (submitButton.innerText === 'Delete') {
+            changeButtonToLoadingButton(submitButton, 'Deleting...');
             deletePendingPhoto(metadata)
             .then(() => {
                 document.getElementById(metadata.photoId).remove();
             })
             .catch(error => {
+                changeLoadingButtonToRegularButton(submitButton, 'Delete');
             });
         }
     });

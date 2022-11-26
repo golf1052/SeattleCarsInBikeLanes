@@ -156,6 +156,57 @@ function getTweetId(properties) {
     }
 }
 
+function getMastodonOAuthUrl(endpoint) {
+    return fetch('api/Mastodon/GetOAuthUrl', {
+        method: 'POST',
+        body: JSON.stringify({ serverUrl: endpoint }),
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text();
+        }
+
+        return response.json();
+    })
+    .then(response => {
+        if (typeof response === 'string') {
+            throw new Error(response);
+        }
+
+        return response.authUrl;
+    });
+}
+
+function getMastodonUsername() {
+    return fetch('api/Mastodon/GetMastodonUsername', {
+        method: 'POST',
+        body: JSON.stringify({
+            serverUrl: localStorage.getItem('mastodonEndpoint'),
+            accessToken: localStorage.getItem('mastodonAccessToken')
+        }),
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text();
+        }
+
+        return response.json();
+    })
+    .then(response => {
+        if (typeof response === 'string') {
+            throw new Error(response);
+        }
+
+        return response;
+    });
+}
+
 function showReportedItemPopup(properties, popup, map) {
     const position = atlas.data.Position.fromLatLng(properties.location.position);
     popup.setOptions({

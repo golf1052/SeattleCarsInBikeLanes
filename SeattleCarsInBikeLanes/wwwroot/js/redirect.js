@@ -1,3 +1,9 @@
+function displayError(errorMessage) {
+    const errorElement = document.createElement('h1');
+    errorElement.append(errorMessage);
+    document.getElementsByTagName('body')[0].appendChild(errorElement);
+}
+
 const url = new URL(window.location.href);
 if (url.searchParams.has('code')) {
     fetch(`api/Twitter/Redirect?code=${url.searchParams.get('code')}`, {
@@ -15,9 +21,10 @@ if (url.searchParams.has('code')) {
         localStorage.setItem('twitterRefreshToken', response.refreshToken);
         localStorage.setItem('twitterExpiresAt', response.expiresAt);
         window.location.href = '/';
+    })
+    .catch(error => {
+        displayError(error.message);
     });
 } else {
-    const errorElement = document.createElement('h1');
-    errorElement.append('Redirect failed, no code from Twitter');
-    document.getElementsByTagName('body')[0].appendChild(errorElement);
+    displayError('Redirect failed, no code from Twitter');
 }

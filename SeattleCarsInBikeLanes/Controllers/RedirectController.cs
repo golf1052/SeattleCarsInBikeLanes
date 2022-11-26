@@ -7,9 +7,15 @@ namespace SeattleCarsInBikeLanes.Controllers
     public class RedirectController : ControllerBase
     {
         [HttpGet("/redirect")]
-        public IActionResult Get()
+        public IActionResult GetTwitter()
         {
             return File("redirect.html", "text/html");
+        }
+
+        [HttpGet("/mastodonredirect")]
+        public IActionResult GetMastodon()
+        {
+            return File("mastodonredirect.html", "text/html");
         }
     }
 }

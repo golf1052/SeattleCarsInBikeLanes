@@ -5,10 +5,15 @@ namespace SeattleCarsInBikeLanes.Storage.Models
     public class FinalizedPhotoUploadMetadata : AbstractPhotoUploadMetadata
     {
         public int? NumberOfCars { get; set; }
-        public string? SubmittedBy { get; set; }
+        public string? TwitterSubmittedBy { get; set; }
+        public string? MastodonSubmittedBy { get; set; }
         public bool? Attribute { get; set; }
         public string? TwitterUsername { get; set; }
         public string? TwitterAccessToken { get; set; }
+        public string? MastodonEndpoint { get; set; }
+        public string? MastodonUsername { get; set; }
+        public string? MastodonFullUsername { get; set; }
+        public string? MastodonAccessToken { get; set; }
         
         public FinalizedPhotoUploadMetadata(int? numberOfCars,
             string photoId,
@@ -17,10 +22,15 @@ namespace SeattleCarsInBikeLanes.Storage.Models
             string photoLongitude,
             string photoCrossStreet,
             List<ImageTag> tags,
-            string submittedBy = "Submission",
+            string twitterSubmittedBy = "Submission",
+            string mastodonSubmittedBy = "Submission",
             bool? attribute = null,
             string? twitterUsername = null,
-            string? twitterAccessToken = null) : base(photoId,
+            string? twitterAccessToken = null,
+            string? mastodonEndpoint = null,
+            string? mastodonUsername = null,
+            string? mastodonFullUsername = null,
+            string? mastodonAccessToken = null) : base(photoId,
                 photoDateTime,
                 photoLatitude,
                 photoLongitude,
@@ -28,10 +38,15 @@ namespace SeattleCarsInBikeLanes.Storage.Models
                 tags)
         {
             NumberOfCars = numberOfCars;
-            SubmittedBy = submittedBy;
+            TwitterSubmittedBy = twitterSubmittedBy;
+            MastodonSubmittedBy = mastodonSubmittedBy;
             Attribute = attribute;
             TwitterUsername = twitterUsername;
             TwitterAccessToken = twitterAccessToken;
+            MastodonEndpoint = mastodonEndpoint;
+            MastodonUsername = mastodonUsername;
+            MastodonFullUsername = mastodonFullUsername;
+            MastodonAccessToken = mastodonAccessToken;
         }
     }
 }

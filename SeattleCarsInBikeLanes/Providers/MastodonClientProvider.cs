@@ -50,6 +50,23 @@ namespace SeattleCarsInBikeLanes.Providers
             return mastodonClient;
         }
 
+        public async Task<MastodonClient> GetUserClient(Uri endpointUri, string accessToken)
+        {
+            MastodonOAuthMapping? mapping = await mastodonOAuthMappingDatabase.GetItem(endpointUri.IdnHost);
+            if (mapping == null)
+            {
+                string errorMessage = $"{endpointUri} does not exist in DB. Not creating a new application because user is requesting.";
+                logger.LogError(errorMessage);
+                throw new Exception(errorMessage);
+            }
+
+            MastodonClient mastodonClient = new MastodonClient(endpointUri, httpClient, clientLogger);
+            mastodonClient.ClientId = secretClient.GetSecret($"{mapping.SecretPrefix}{ClientId}").Value.Value;
+            mastodonClient.ClientSecret = secretClient.GetSecret($"{mapping.SecretPrefix}{ClientSecret}").Value.Value;
+            mastodonClient.AccessToken = accessToken;
+            return mastodonClient;
+        }
+
         public MastodonClient GetServerClient()
         {
             MastodonClient mastodonClient = new MastodonClient(new Uri("https://social.ridetrans.it"), httpClient, clientLogger);
@@ -77,7 +94,8 @@ namespace SeattleCarsInBikeLanes.Providers
                 new List<string>()
                 {
                     "urn:ietf:wg:oauth:2.0:oob",
-                    "https://seattle.carinbikelane.com/mastodonredirect"
+                    "https://seattle.carinbikelane.com/mastodonredirect",
+                    "https://localhost:7152/mastodonredirect"
                 },
                 new List<string>() { "read:accounts", "crypto" },
                 Website);

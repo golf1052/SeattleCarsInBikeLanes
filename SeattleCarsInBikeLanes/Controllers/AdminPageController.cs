@@ -113,12 +113,56 @@ namespace SeattleCarsInBikeLanes.Controllers
                 carsString = "cars";
             }
 
-            string tweetBody = $"{metadata.NumberOfCars} {carsString}\n" +
+            string postBody = $"{metadata.NumberOfCars} {carsString}\n" +
                 $"Date: {metadata.PhotoDateTime.ToString("M/d/yyyy")}\n" +
                 $"Time: {metadata.PhotoDateTime.ToString("h:mm tt")}\n" +
                 $"Location: {metadata.PhotoCrossStreet}\n" +
-                $"GPS: {metadata.PhotoLatitude}, {metadata.PhotoLongitude}\n" +
-                $"{metadata.SubmittedBy}";
+                $"GPS: {metadata.PhotoLatitude}, {metadata.PhotoLongitude}";
+
+            string tweetBody = postBody;
+            if (!string.IsNullOrEmpty(metadata.TwitterSubmittedBy))
+            {
+                if (metadata.TwitterSubmittedBy.StartsWith("Submitted by"))
+                {
+                    tweetBody += $"\n{metadata.TwitterSubmittedBy}";
+                }
+                else if (!string.IsNullOrWhiteSpace(metadata.MastodonSubmittedBy) &&
+                    metadata.MastodonSubmittedBy.StartsWith("Submitted by") &&
+                    !string.IsNullOrWhiteSpace(metadata.MastodonEndpoint))
+                {
+                    Uri mastodonEndpoint = new Uri(metadata.MastodonEndpoint);
+                    tweetBody += $"\nSubmitted by https://{mastodonEndpoint.Host}/@{metadata.MastodonUsername}";
+                }
+                else
+                {
+                    tweetBody += $"\n{metadata.TwitterSubmittedBy}";
+                }
+            }
+            else
+            {
+                tweetBody += $"\nSubmission";
+            }
+
+            string tootBody = postBody;
+            if (!string.IsNullOrWhiteSpace(metadata.MastodonSubmittedBy))
+            {
+                if (metadata.MastodonSubmittedBy.StartsWith("Submitted by"))
+                {
+                    tootBody += $"\n{metadata.MastodonSubmittedBy}";
+                }
+                else if (!string.IsNullOrWhiteSpace(metadata.TwitterSubmittedBy) && metadata.TwitterSubmittedBy.StartsWith("Submitted by"))
+                {
+                    tootBody += $"\nSubmitted by https://twitter.com/{metadata.TwitterUsername}";
+                }
+                else
+                {
+                    tootBody += $"\n{metadata.MastodonSubmittedBy}";
+                }
+            }
+            else
+            {
+                tootBody += $"\nSubmission";
+            }
 
             BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata.PhotoId}.jpeg");
             var photoDownload = await photoBlobClient.DownloadContentAsync();
@@ -152,7 +196,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
             while (mastodonAttachment == null);
 
-            MastodonStatus mastodonStatus = await mastodonClient.PublishStatus(tweetBody, new List<string>() { mastodonAttachmentId }, "unlisted");
+            MastodonStatus mastodonStatus = await mastodonClient.PublishStatus(tootBody, new List<string>() { mastodonAttachmentId }, "unlisted");
 
             ReportedItem newReportedItem = new ReportedItem()
             {
@@ -597,10 +641,14 @@ namespace SeattleCarsInBikeLanes.Controllers
                 string photoLongitude,
                 string photoCrossStreet,
                 List<ImageTag> tags,
-                string submittedBy = "Submission",
+                string twitterSubmittedBy = "Submission",
+                string mastodonSubmittedBy = "Submission",
                 bool? attribute = null,
                 string? twitterUsername = null,
-                string? twitterAccessToken = null) :
+                string? twitterAccessToken = null,
+                string? mastodonEndpoint = null,
+                string? mastodonUsername = null,
+                string? mastodonAccessToken = null) :
                 base(numberOfCars,
                     photoId,
                     photoDateTime,
@@ -608,10 +656,14 @@ namespace SeattleCarsInBikeLanes.Controllers
                     photoLongitude,
                     photoCrossStreet,
                     tags,
-                    submittedBy,
+                    twitterSubmittedBy,
+                    mastodonSubmittedBy,
                     attribute,
                     twitterUsername,
-                    twitterAccessToken)
+                    twitterAccessToken,
+                    mastodonEndpoint,
+                    mastodonUsername,
+                    mastodonAccessToken)
             {
             }
         }

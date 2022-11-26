@@ -26,4 +26,9 @@ html, body {
 
 .twitter-button {
     background-color: #1DA1F2 !important;
+    margin-bottom: 4px;
+}
+
+.mastodon-button {
+    background-color: #6364FF !important;
 }

@@ -8,6 +8,8 @@ using Azure.Maps.Search.Models;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
+using golf1052.Mastodon;
+using golf1052.Mastodon.Models.Accounts;
 using ImageMagick;
 using LinqToTwitter;
 using LinqToTwitter.OAuth;
@@ -16,6 +18,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.CognitiveServices.Vision.ComputerVision;
 using Microsoft.Azure.CognitiveServices.Vision.ComputerVision.Models;
 using Microsoft.Azure.Cosmos.Spatial;
+using SeattleCarsInBikeLanes.Providers;
 using SeattleCarsInBikeLanes.Storage.Models;
 
 namespace SeattleCarsInBikeLanes.Controllers
@@ -34,16 +37,19 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly ComputerVisionClient computerVisionClient;
         private readonly MapsSearchClient mapsSearchClient;
         private readonly BlobContainerClient blobContainerClient;
+        private readonly MastodonClientProvider mastodonClientProvider;
 
         public UploadController(ILogger<UploadController> logger,
             ComputerVisionClient computerVisionClient,
             MapsSearchClient mapsSearchClient,
-            BlobContainerClient blobContainerClient)
+            BlobContainerClient blobContainerClient,
+            MastodonClientProvider mastodonClientProvider)
         {
             this.logger = logger;
             this.computerVisionClient = computerVisionClient;
             this.mapsSearchClient = mapsSearchClient;
             this.blobContainerClient = blobContainerClient;
+            this.mastodonClientProvider = mastodonClientProvider;
         }
 
         [HttpPost("Initial")]
@@ -167,43 +173,64 @@ namespace SeattleCarsInBikeLanes.Controllers
 
             if (metadata.Attribute != null && metadata.Attribute.Value)
             {
-                OAuth2Authorizer userAuth = new OAuth2Authorizer()
+                if (!string.IsNullOrWhiteSpace(metadata.TwitterAccessToken))
                 {
-                    CredentialStore = new OAuth2CredentialStore()
+                    OAuth2Authorizer userAuth = new OAuth2Authorizer()
                     {
-                        AccessToken = metadata.TwitterAccessToken
-                    }
-                };
-                TwitterContext twitterContext = new TwitterContext(userAuth);
-                try
-                {
-                    TwitterUserQuery? response = await (from user in twitterContext.TwitterUser
-                                                        where user.Type == UserType.Me
-                                                        select user).SingleOrDefaultAsync();
-                    TwitterUser? twitterUser = response?.Users?.SingleOrDefault();
-                    if (twitterUser != null)
-                    {
-                        if (twitterUser.Username != null && metadata.TwitterUsername != null &&
-                            twitterUser.Username != metadata.TwitterUsername)
+                        CredentialStore = new OAuth2CredentialStore()
                         {
-                            logger.LogWarning($"Metadata Twitter username dosen't match authenticated user." +
-                                $"Metadata username: {metadata.TwitterUsername}. Auth username: {twitterUser.Username}.");
-                            metadata.SubmittedBy = "Submission";
-                            metadata.Attribute = false;
-                            metadata.TwitterUsername = null;
+                            AccessToken = metadata.TwitterAccessToken
+                        }
+                    };
+                    TwitterContext twitterContext = new TwitterContext(userAuth);
+                    try
+                    {
+                        TwitterUserQuery? response = await (from user in twitterContext.TwitterUser
+                                                            where user.Type == UserType.Me
+                                                            select user).SingleOrDefaultAsync();
+                        TwitterUser? twitterUser = response?.Users?.SingleOrDefault();
+                        if (twitterUser != null)
+                        {
+                            if (twitterUser.Username != null && metadata.TwitterUsername != null &&
+                                twitterUser.Username != metadata.TwitterUsername)
+                            {
+                                logger.LogWarning($"Metadata Twitter username dosen't match authenticated user." +
+                                    $"Metadata username: {metadata.TwitterUsername}. Auth username: {twitterUser.Username}.");
+                                metadata.TwitterSubmittedBy = "Submission";
+                                metadata.Attribute = false;
+                                metadata.TwitterUsername = null;
+                            }
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Failed to verify authenticated Twitter user.");
+                        metadata.TwitterSubmittedBy = "Submission";
+                        metadata.Attribute = false;
+                        metadata.TwitterUsername = null;
+                    }
                 }
-                catch (Exception ex)
+
+                if (!string.IsNullOrWhiteSpace(metadata.MastodonEndpoint) && !string.IsNullOrWhiteSpace(metadata.MastodonAccessToken))
                 {
-                    logger.LogError(ex, "Failed to verify authenticated Twitter user.");
-                    metadata.SubmittedBy = "Submission";
-                    metadata.Attribute = false;
-                    metadata.TwitterUsername = null;
+                    Uri endpoint = new Uri(metadata.MastodonEndpoint);
+                    MastodonClient mastodonClient = await mastodonClientProvider.GetUserClient(endpoint, metadata.MastodonAccessToken);
+                    MastodonAccount mastodonAccount = await mastodonClient.VerifyCredentials();
+                    string mastodonUsername = $"@{mastodonAccount.Username}@{endpoint.Host}";
+                    if (mastodonUsername != metadata.MastodonFullUsername)
+                    {
+                        logger.LogWarning($"Metadata Mastodon username doesn't match authenticated user." +
+                            $"Metadata username: {metadata.MastodonFullUsername}. Auth username: {mastodonUsername}.");
+                        metadata.MastodonSubmittedBy = "Submission";
+                        metadata.Attribute = false;
+                        metadata.MastodonUsername = null;
+                        metadata.MastodonFullUsername = null;
+                    }
                 }
             }
 
             metadata.TwitterAccessToken = null;
+            metadata.MastodonAccessToken = null;
             string randomFileName = metadata.PhotoId;
             BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");
             await photoBlobClient.Move($"{FinalizedUploadPrefix}{randomFileName}.jpeg");
