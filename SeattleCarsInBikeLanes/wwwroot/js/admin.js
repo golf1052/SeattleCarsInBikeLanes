@@ -135,15 +135,18 @@ function createDesktopCard(metadata) {
     return card;
 }
 
-document.getElementById('postLinkButton').addEventListener('click', function() {
+document.getElementById('postLinkButton').addEventListener('click', function(event) {
+    changeButtonToLoadingButton(event.target, 'Posting...');
     const postLinkInput = document.getElementById('postLinkInput');
     const link = postLinkInput.value;
     postTweet(link)
     .then(() => {
         postLinkInput.value = '';
+        changeLoadingButtonToRegularButton(event.target, 'Post');
     })
     .catch(error => {
         displayError(error.message);
+        changeLoadingButtonToRegularButton(event.target, 'Post');
     });
 });
 

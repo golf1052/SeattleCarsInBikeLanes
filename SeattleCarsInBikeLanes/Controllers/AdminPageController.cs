@@ -280,26 +280,14 @@ namespace SeattleCarsInBikeLanes.Controllers
                     // If it's a regular tweet (ie not a quote tweet)
                     if (tweet.ReferencedTweets == null)
                     {
-                        if (tweet.Attachments == null || tweet.Attachments.MediaKeys == null || tweet.Attachments.MediaKeys.Count == 0)
+                        try
                         {
-                            return BadRequest($"Tweet does not contain any pictures. Id {tweet.ID} with text {tweet.Text}");
+                            pictureStreams = await GetPhotosFromRegularTweet(tweet, tweetQuery);
                         }
-
-                        foreach (var mediaKey in tweet.Attachments.MediaKeys)
+                        catch (Exception ex)
                         {
-                            string? twitterPictureUrl = helperMethods.GetUrlForMediaKey(mediaKey, tweetQuery.Includes!.Media);
-                            if (twitterPictureUrl == null)
-                            {
-                                return BadRequest($"Couldn't find media key {mediaKey}. Id {tweet.ID} with text {tweet.Text}");
-                            }
-
-                            var stream = await helperMethods.DownloadImage(twitterPictureUrl, httpClient);
-                            if (stream == null)
-                            {
-                                helperMethods.DisposePictureStreams(pictureStreams);
-                                return BadRequest($"Couldn't download picture with media key {mediaKey}. Id {tweet.ID} with text {tweet.Text}");
-                            }
-                            pictureStreams.Add(stream);
+                            logger.LogError(ex, null);
+                            return BadRequest(ex.Message);
                         }
                     }
                     // This gets images in quote tweets
@@ -330,7 +318,8 @@ namespace SeattleCarsInBikeLanes.Controllers
                                     Tweet? includesQuotedTweet = tweetQuery.Includes!.Tweets!.FirstOrDefault(t => t.ID == tweetRef.ID);
                                     if (includesQuotedTweet != null)
                                     {
-                                        if (includesQuotedTweet.Attachments != null && includesQuotedTweet.Attachments.MediaKeys != null)
+                                        if (includesQuotedTweet.Attachments != null && includesQuotedTweet.Attachments.MediaKeys != null &&
+                                            includesQuotedTweet.Attachments.MediaKeys.Count > 0)
                                         {
                                             foreach (var mediaKey in includesQuotedTweet.Attachments.MediaKeys)
                                             {
@@ -345,6 +334,18 @@ namespace SeattleCarsInBikeLanes.Controllers
                                                     }
                                                     pictureStreams.Add(stream);
                                                 }
+                                            }
+                                        }
+                                        else
+                                        {
+                                            try
+                                            {
+                                                pictureStreams = await GetPhotosFromRegularTweet(tweet, tweetQuery);
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                logger.LogError(ex, null);
+                                                return BadRequest(ex.Message);
                                             }
                                         }
                                     }
@@ -525,6 +526,33 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
 
             return NoContent();
+        }
+
+        private async Task<List<Stream>> GetPhotosFromRegularTweet(Tweet tweet, TweetQuery tweetQuery)
+        {
+            List<Stream> pictureStreams = new List<Stream>();
+            if (tweet.Attachments == null || tweet.Attachments.MediaKeys == null || tweet.Attachments.MediaKeys.Count == 0)
+            {
+                throw new Exception($"Tweet does not contain any pictures. Id {tweet.ID} with text {tweet.Text}");
+            }
+
+            foreach (var mediaKey in tweet.Attachments.MediaKeys)
+            {
+                string? twitterPictureUrl = helperMethods.GetUrlForMediaKey(mediaKey, tweetQuery.Includes!.Media);
+                if (twitterPictureUrl == null)
+                {
+                    throw new Exception($"Couldn't find media key {mediaKey}. Id {tweet.ID} with text {tweet.Text}");
+                }
+
+                var stream = await helperMethods.DownloadImage(twitterPictureUrl, httpClient);
+                if (stream == null)
+                {
+                    helperMethods.DisposePictureStreams(pictureStreams);
+                    throw new Exception($"Couldn't download picture with media key {mediaKey}. Id {tweet.ID} with text {tweet.Text}");
+                }
+                pictureStreams.Add(stream);
+            }
+            return pictureStreams;
         }
 
         private async Task UploadImagesToImgur(List<ReportedItem> reportedItems, List<Stream> pictureStreams)

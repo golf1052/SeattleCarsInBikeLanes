@@ -326,7 +326,7 @@ namespace SeattleCarsInBikeLanes
                 fixedText = fixedText.Replace("&amp;", "&");
             }
 
-            int endLinkPosition = fixedText.IndexOf("http");
+            int endLinkPosition = fixedText.LastIndexOf("http");
             if (endLinkPosition != -1)
             {
                 fixedText = fixedText.Substring(0, endLinkPosition);
