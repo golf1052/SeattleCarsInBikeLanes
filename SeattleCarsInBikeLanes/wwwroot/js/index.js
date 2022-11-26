@@ -171,7 +171,7 @@ function checkMastodonAuth() {
 
 function loginWithMastodon() {
     const serverInput = document.getElementById('mastodonServerInput');
-    let server = serverInput.value;
+    let server = serverInput.value.toLowerCase();
     if (!server.startsWith('https://')) {
         server = `https://${server}`;
     }

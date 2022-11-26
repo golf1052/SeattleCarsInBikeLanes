@@ -27,6 +27,8 @@ namespace SeattleCarsInBikeLanes.Controllers
                 throw new ArgumentNullException(nameof(request.ServerUrl));
             }
 
+            request.ServerUrl = request.ServerUrl.ToLower();
+
             Uri endpointUri;
             try
             {
@@ -60,6 +62,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         [HttpPost("redirect")]
         public async Task<MastodonToken> ProcessRedirect([FromQuery] string code, [FromBody] MastodonOAuthUrlRequest request)
         {
+            request.ServerUrl = request.ServerUrl.ToLower();
             MastodonClient mastodonClient = await mastodonClientProvider.GetClient(new Uri(request.ServerUrl));
             return await mastodonClient.ObtainToken("authorization_code", RedirectUrl, code, Scopes);
         }
