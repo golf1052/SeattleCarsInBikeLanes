@@ -87,13 +87,16 @@ function setTwitterButtonAsLoggedIn() {
 }
 
 function setTwitterButtonAsLoggedOut() {
-    const twitterButton = document.getElementById('twitterSignInButton');
-    const newTwitterButton = document.createElement('a');
-    newTwitterButton.className = 'btn btn-info twitter-button';
-    newTwitterButton.id = 'twitterSignInButton';
-    newTwitterButton.href = 'https://twitter.com/i/oauth2/authorize?response_type=code&client_id=RXYtYnN5b2hsMUo3ZjlSZ2p6bEE6MTpjaQ&redirect_uri=https://seattle.carinbikelane.com/redirect&scope=tweet.read%20users.read%20offline.access&state=randomstate&code_challenge=plain&code_challenge_method=plain';
-    newTwitterButton.innerText = 'Sign in with Twitter';
-    twitterButton.replaceWith(newTwitterButton);
+    getTwitterOAuthUrl()
+    .then(url => {
+        const twitterButton = document.getElementById('twitterSignInButton');
+        const newTwitterButton = document.createElement('a');
+        newTwitterButton.className = 'btn btn-info twitter-button';
+        newTwitterButton.id = 'twitterSignInButton';
+        newTwitterButton.href = url;
+        newTwitterButton.innerText = 'Sign in with Twitter';
+        twitterButton.replaceWith(newTwitterButton);
+    });
 }
 
 function setMastodonButtonAsLoggedIn() {
@@ -192,6 +195,11 @@ function loginWithMastodon() {
 }
 
 function initControls() {
+    getTwitterOAuthUrl()
+    .then(url => {
+        document.getElementById('twitterSignInButton').href = url;
+    });
+    
     document.getElementById('twitterLogoutButton').addEventListener('click', function() {
         clearTwitterAuth();
     });

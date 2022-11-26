@@ -10,13 +10,22 @@ namespace SeattleCarsInBikeLanes.Controllers
     [ApiController]
     public class MastodonController : ControllerBase
     {
-        private const string RedirectUrl = "https://seattle.carinbikelane.com/mastodonredirect";
         private readonly List<string> Scopes = new List<string>() { "read:accounts" };
         private readonly MastodonClientProvider mastodonClientProvider;
+        private readonly string redirectUrl;
 
-        public MastodonController(MastodonClientProvider mastodonClientProvider)
+        public MastodonController(MastodonClientProvider mastodonClientProvider,
+            IWebHostEnvironment environment)
         {
             this.mastodonClientProvider = mastodonClientProvider;
+            if (environment.IsDevelopment())
+            {
+                redirectUrl = "https://localhost:7152/mastodonredirect";
+            }
+            else
+            {
+                redirectUrl = "https://seattle.carinbikelane.com/mastodonredirect";
+            }
         }
 
         [HttpPost("GetOAuthUrl")]
@@ -42,7 +51,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             MastodonClient mastodonClient = await mastodonClientProvider.GetClient(endpointUri);
             return new MastodonOAuthUrlResponse()
             {
-                AuthUrl = mastodonClient.AuthorizeUser(RedirectUrl, Scopes)
+                AuthUrl = mastodonClient.AuthorizeUser(redirectUrl, Scopes)
             };
         }
 
@@ -64,7 +73,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         {
             request.ServerUrl = request.ServerUrl.ToLower();
             MastodonClient mastodonClient = await mastodonClientProvider.GetClient(new Uri(request.ServerUrl));
-            return await mastodonClient.ObtainToken("authorization_code", RedirectUrl, code, Scopes);
+            return await mastodonClient.ObtainToken("authorization_code", redirectUrl, code, Scopes);
         }
 
         public class MastodonOAuthUrlRequest

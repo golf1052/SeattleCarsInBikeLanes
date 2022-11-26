@@ -13,13 +13,14 @@ namespace SeattleCarsInBikeLanes.Controllers
     public class TwitterController : ControllerBase
     {
         private const string TwitterUsername = "carbikelanesea";
-        private const string RedirectUri = "https://seattle.carinbikelane.com/redirect";
 
         private readonly ILogger<RedirectController> logger;
         private readonly HttpClient httpClient;
         private readonly string authHeader;
+        private readonly string redirectUri;
 
         public TwitterController(ILogger<RedirectController> logger,
+            IWebHostEnvironment environment,
             HttpClient httpClient,
             SecretClient secretClient)
         {
@@ -28,6 +29,14 @@ namespace SeattleCarsInBikeLanes.Controllers
             string unencodedAuthHeader = $"{secretClient.GetSecret("twitter-oauth2-client-id").Value.Value}:" +
                 $"{secretClient.GetSecret("twitter-oauth2-client-secret").Value.Value}";
             authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes(unencodedAuthHeader));
+            if (environment.IsDevelopment())
+            {
+                redirectUri = "https://localhost:7152/redirect";
+            }
+            else
+            {
+                redirectUri = "https://seattle.carinbikelane.com/redirect";
+            }
         }
 
         [HttpGet("oembed")]
@@ -44,6 +53,12 @@ namespace SeattleCarsInBikeLanes.Controllers
             return await response.Content.ReadAsStringAsync();
         }
 
+        [HttpGet("OAuthUrl")]
+        public string GetOAuthUrl()
+        {
+            return $"https://twitter.com/i/oauth2/authorize?response_type=code&client_id=RXYtYnN5b2hsMUo3ZjlSZ2p6bEE6MTpjaQ&redirect_uri={redirectUri}&scope=tweet.read%20users.read%20offline.access&state=randomstate&code_challenge=plain&code_challenge_method=plain";
+        }
+
         [HttpPost("redirect")]
         public async Task<TwitterOAuthResponse?> ProcessRedirect([FromQuery] string code)
         {
@@ -52,7 +67,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             FormUrlEncodedContent content = new FormUrlEncodedContent(new Dictionary<string, string>()
             {
                 { "grant_type", "authorization_code" },
-                { "redirect_uri", RedirectUri },
+                { "redirect_uri", redirectUri },
                 { "code_verifier", "plain" },
                 { "code", code }
             });

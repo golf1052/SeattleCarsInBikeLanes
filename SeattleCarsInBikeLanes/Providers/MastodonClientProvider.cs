@@ -11,9 +11,6 @@ namespace SeattleCarsInBikeLanes.Providers
     {
         private const string ClientName = "SeattleCarInBikeLaneWebsite";
         private const string Website = "https://seattle.carinbikelane.com";
-        private const string ClientId = "-ClientId";
-        private const string ClientSecret = "-ClientSecret";
-        private const string AccessToken = "-AccessToken";
 
         private readonly ILogger<MastodonClientProvider> logger;
         private readonly MastodonOAuthMappingDatabase mastodonOAuthMappingDatabase;
@@ -21,7 +18,13 @@ namespace SeattleCarsInBikeLanes.Providers
         private readonly ILogger<MastodonClient> clientLogger;
         private readonly HttpClient httpClient;
 
+        private readonly string redirectUri;
+        private readonly string clientId;
+        private readonly string clientSecret;
+        private readonly string accessToken;
+
         public MastodonClientProvider(ILogger<MastodonClientProvider> logger,
+            IWebHostEnvironment environment,
             MastodonOAuthMappingDatabase mastodonOAuthMappingDatabase,
             SecretClient secretClient,
             ILogger<MastodonClient> clientLogger,
@@ -32,6 +35,21 @@ namespace SeattleCarsInBikeLanes.Providers
             this.secretClient = secretClient;
             this.clientLogger = clientLogger;
             this.httpClient = httpClient;
+
+            if (environment.IsDevelopment())
+            {
+                redirectUri = "https://localhost:7152/mastodonredirect";
+                clientId = "-ClientId-Dev";
+                clientSecret = "-ClientSecret-Dev";
+                accessToken = "-AccessToken-Dev";
+            }
+            else
+            {
+                redirectUri = "https://seattle.carinbikelane.com/mastodonredirect";
+                clientId = "-ClientId";
+                clientSecret = "-ClientSecret";
+                accessToken = "-AccessToken";
+            }
         }
 
         public async Task<MastodonClient> GetClient(Uri endpointUri)
@@ -44,9 +62,9 @@ namespace SeattleCarsInBikeLanes.Providers
             }
 
             MastodonClient mastodonClient = new MastodonClient(endpointUri, httpClient, clientLogger);
-            mastodonClient.ClientId = secretClient.GetSecret($"{mapping.SecretPrefix}{ClientId}").Value.Value;
-            mastodonClient.ClientSecret = secretClient.GetSecret($"{mapping.SecretPrefix}{ClientSecret}").Value.Value;
-            mastodonClient.AccessToken = secretClient.GetSecret($"{mapping.SecretPrefix}{AccessToken}").Value.Value;
+            mastodonClient.ClientId = secretClient.GetSecret($"{mapping.SecretPrefix}{clientId}").Value.Value;
+            mastodonClient.ClientSecret = secretClient.GetSecret($"{mapping.SecretPrefix}{clientSecret}").Value.Value;
+            mastodonClient.AccessToken = secretClient.GetSecret($"{mapping.SecretPrefix}{accessToken}").Value.Value;
             return mastodonClient;
         }
 
@@ -61,8 +79,8 @@ namespace SeattleCarsInBikeLanes.Providers
             }
 
             MastodonClient mastodonClient = new MastodonClient(endpointUri, httpClient, clientLogger);
-            mastodonClient.ClientId = secretClient.GetSecret($"{mapping.SecretPrefix}{ClientId}").Value.Value;
-            mastodonClient.ClientSecret = secretClient.GetSecret($"{mapping.SecretPrefix}{ClientSecret}").Value.Value;
+            mastodonClient.ClientId = secretClient.GetSecret($"{mapping.SecretPrefix}{clientId}").Value.Value;
+            mastodonClient.ClientSecret = secretClient.GetSecret($"{mapping.SecretPrefix}{clientSecret}").Value.Value;
             mastodonClient.AccessToken = accessToken;
             return mastodonClient;
         }
@@ -91,12 +109,7 @@ namespace SeattleCarsInBikeLanes.Providers
             
             MastodonClient mastodonClient = new MastodonClient(endpointUri, httpClient, clientLogger);
             MastodonApplication app = await mastodonClient.CreateApplication(ClientName,
-                new List<string>()
-                {
-                    "urn:ietf:wg:oauth:2.0:oob",
-                    "https://seattle.carinbikelane.com/mastodonredirect",
-                    "https://localhost:7152/mastodonredirect"
-                },
+                redirectUri,
                 new List<string>() { "read:accounts", "crypto" },
                 Website);
             
@@ -136,9 +149,9 @@ namespace SeattleCarsInBikeLanes.Providers
                 throw new Exception($"Failed to create OAuth mapping in database for {endpointUri}");
             }
 
-            secretClient.SetSecret($"{prefix}{ClientId}", app.ClientId);
-            secretClient.SetSecret($"{prefix}{ClientSecret}", app.ClientSecret);
-            secretClient.SetSecret($"{prefix}{AccessToken}", clientToken.AccessToken);
+            secretClient.SetSecret($"{prefix}{clientId}", app.ClientId);
+            secretClient.SetSecret($"{prefix}{clientSecret}", app.ClientSecret);
+            secretClient.SetSecret($"{prefix}{accessToken}", clientToken.AccessToken);
             return mastodonClient;
         }
     }

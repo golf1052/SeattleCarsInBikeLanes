@@ -189,7 +189,12 @@ namespace SeattleCarsInBikeLanes
             });
             services.AddSingleton(c =>
             {
+                return builder.Environment;
+            });
+            services.AddSingleton(c =>
+            {
                 return new MastodonClientProvider(c.GetRequiredService<ILogger<MastodonClientProvider>>(),
+                    c.GetRequiredService<IWebHostEnvironment>(),
                     c.GetRequiredService<MastodonOAuthMappingDatabase>(),
                     c.GetRequiredService<SecretClient>(),
                     c.GetRequiredService<ILogger<MastodonClient>>(),
