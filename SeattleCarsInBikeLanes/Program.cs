@@ -200,6 +200,11 @@ namespace SeattleCarsInBikeLanes
                     c.GetRequiredService<ILogger<MastodonClient>>(),
                     c.GetRequiredService<HttpClient>());
             });
+            services.AddSingleton(c =>
+            {
+                return new FeedProvider(c.GetRequiredService<ReportedItemsDatabase>(),
+                    c.GetRequiredService<BlobContainerClient>());
+            });
 
             var app = builder.Build();
 

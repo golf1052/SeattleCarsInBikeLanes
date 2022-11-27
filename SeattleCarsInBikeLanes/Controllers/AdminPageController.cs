@@ -2,8 +2,9 @@
 using Azure.Maps.Search;
 using Azure.Security.KeyVault.Secrets;
 using Azure.Storage.Blobs;
-using golf1052.Mastodon.Models.Statuses.Media;
 using golf1052.Mastodon;
+using golf1052.Mastodon.Models.Statuses;
+using golf1052.Mastodon.Models.Statuses.Media;
 using Imgur.API.Endpoints;
 using Imgur.API.Models;
 using LinqToTwitter;
@@ -15,10 +16,8 @@ using Microsoft.Azure.CognitiveServices.Vision.ComputerVision.Models;
 using Newtonsoft.Json;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.Database.Models;
-using SeattleCarsInBikeLanes.Storage.Models;
-using static System.Net.Mime.MediaTypeNames;
 using SeattleCarsInBikeLanes.Providers;
-using golf1052.Mastodon.Models.Statuses;
+using SeattleCarsInBikeLanes.Storage.Models;
 
 namespace SeattleCarsInBikeLanes.Controllers
 {
@@ -36,6 +35,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly HttpClient httpClient;
         private readonly MapsSearchClient mapsSearchClient;
         private readonly MastodonClientProvider mastodonClientProvider;
+        private readonly FeedProvider feedProvider;
 
         public AdminPageController(ILogger<AdminPageController> logger,
             HelperMethods helperMethods,
@@ -45,7 +45,8 @@ namespace SeattleCarsInBikeLanes.Controllers
             ReportedItemsDatabase reportedItemsDatabase,
             HttpClient httpClient,
             MapsSearchClient mapsSearchClient,
-            MastodonClientProvider mastodonClientProvider)
+            MastodonClientProvider mastodonClientProvider,
+            FeedProvider feedProvider)
         {
             this.logger = logger;
             this.helperMethods = helperMethods;
@@ -55,6 +56,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             this.httpClient = httpClient;
             this.mapsSearchClient = mapsSearchClient;
             this.mastodonClientProvider = mastodonClientProvider;
+            this.feedProvider = feedProvider;
 
             SingleUserAuthorizer auth = new SingleUserAuthorizer()
             {
@@ -217,6 +219,8 @@ namespace SeattleCarsInBikeLanes.Controllers
             {
                 logger.LogError($"Failed to add tweet to database: {newReportedItem.TweetId}");
             }
+
+            await feedProvider.AddReportedItemToFeed(newReportedItem);
 
             BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata.PhotoId}.json");
             await photoBlobClient.DeleteAsync();
@@ -411,6 +415,8 @@ namespace SeattleCarsInBikeLanes.Controllers
                             {
                                 logger.LogWarning($"Failed to update DB. DB ID {reportedItem.TweetId}. Imgur url: {string.Join(' ', reportedItem.ImgurUrls)}");
                             }
+
+                            await feedProvider.AddReportedItemToFeed(reportedItem);
                         }
                     }
                     catch (Exception ex)
@@ -516,6 +522,8 @@ namespace SeattleCarsInBikeLanes.Controllers
                         {
                             logger.LogWarning($"Failed to update DB. DB ID {reportedItem.TweetId}. Imgur url: {string.Join(' ', reportedItem.ImgurUrls)}");
                         }
+
+                        await feedProvider.AddReportedItemToFeed(reportedItem);
                     }
                 }
                 else
