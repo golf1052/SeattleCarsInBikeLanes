@@ -14,25 +14,25 @@ namespace SeattleCarsInBikeLanes.Controllers
             this.feedProvider = feedProvider;
         }
 
-        [HttpGet("rss")]
+        [HttpGet("/rss")]
         public async Task<IActionResult> GetRssFeed()
         {
             return Content(await feedProvider.GetRssFeed(), FeedProvider.RssContentType);
         }
 
-        [HttpGet("rss.xml")]
+        [HttpGet("/rss.xml")]
         public async Task<IActionResult> GetRssXmlFeed()
         {
             return Content(await feedProvider.GetRssFeed(), FeedProvider.RssContentType);
         }
 
-        [HttpGet("atom")]
+        [HttpGet("/atom")]
         public async Task<IActionResult> GetAtomFeed()
         {
             return Content(await feedProvider.GetAtomFeed(), FeedProvider.AtomContentType);
         }
 
-        [HttpGet("atom.xml")]
+        [HttpGet("/atom.xml")]
         public async Task<IActionResult> GetAtomXmlFeed()
         {
             return Content(await feedProvider.GetAtomFeed(), FeedProvider.AtomContentType);
