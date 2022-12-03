@@ -30,64 +30,6 @@ namespace SeattleCarsInBikeLanes.Controllers
             this.helperMethods = helperMethods;
         }
 
-        [HttpDelete("DeleteTweets")]
-        public async Task<string> DeleteTweets([FromBody] DeleteTweetsRequest request)
-        {
-            if (!helperMethods.IsAuthorized(request, secretClient))
-            {
-                Response.StatusCode = (int)HttpStatusCode.Unauthorized;
-                return string.Empty;
-            }
-
-            logger.LogInformation($"Starting deletion of tweet ids: {string.Join(", ", request.TweetIds)}");
-            string returnString;
-            List<ReportedItem>? items = await reportedItemsDatabase.GetItems(request.TweetIds);
-            if (items == null || items.Count == 0)
-            {
-                returnString = "0 tweets to delete found.";
-                logger.LogInformation(returnString);
-                return returnString;
-            }
-
-            int tweetsDeleted = 0;
-            bool deletedLatest = false;
-            foreach (var item in items)
-            {
-                bool deleted = await reportedItemsDatabase.DeleteItem(item);
-                if (deleted)
-                {
-                    tweetsDeleted += 1;
-                    if (item.Latest)
-                    {
-                        deletedLatest = true;
-                    }
-                }
-            }
-
-            if (deletedLatest)
-            {
-                logger.LogInformation("Deleted latest tweet. Marking new latest tweet.");
-                var allItems = await reportedItemsDatabase.GetAllItems();
-                if (allItems == null)
-                {
-                    logger.LogWarning("Could not get all items and therefore could not mark latest tweet.");
-                }
-                else
-                {
-                    if (allItems.Count > 0)
-                    {
-                        allItems = allItems.OrderByDescending(i => i.CreatedAt).ToList();
-                        allItems[0].Latest = true;
-                        await reportedItemsDatabase.UpdateReportedItem(allItems[0]);
-                    }
-                }
-            }
-
-            returnString = $"{request.TweetIds.Count} tweets requested. {tweetsDeleted} tweets deleted.";
-            logger.LogInformation(returnString);
-            return returnString;
-        }
-
         [HttpPatch("UpdateLocation")]
         public async Task<string> UpdateLocation([FromBody] UpdateReportedItemLocationRequest request)
         {
@@ -129,12 +71,6 @@ namespace SeattleCarsInBikeLanes.Controllers
                 return returnString;
             }
         }
-    }
-
-    public class DeleteTweetsRequest : AdminRequest
-    {
-        public string Password { get; set; } = string.Empty;
-        public List<string> TweetIds { get; set; } = new List<string>();
     }
 
     public class UpdateReportedItemLocationRequest : AdminRequest

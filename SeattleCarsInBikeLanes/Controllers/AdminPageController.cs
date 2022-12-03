@@ -536,6 +536,79 @@ namespace SeattleCarsInBikeLanes.Controllers
             return NoContent();
         }
 
+        [HttpDelete("/api/AdminPage/DeletePost")]
+        public async Task<IActionResult> DeletePost([FromBody] DeletePostRequest request)
+        {
+            string? identifier = null;
+            Uri uri;
+            try
+            {
+                uri = new Uri(request.PostIdentifier);
+                identifier = uri.Segments[uri.Segments.Length - 1];
+            }
+            catch (UriFormatException)
+            {
+            }
+
+            if (identifier == null)
+            {
+                identifier = request.PostIdentifier;
+            }
+
+            if (string.IsNullOrWhiteSpace(identifier))
+            {
+                return BadRequest("Post identifier must either be a URL, a tweet/toot id, or a GUID");
+            }
+
+            List<ReportedItem>? reportedItems = await reportedItemsDatabase.GetItemUsingIdentifier(identifier);
+            if (reportedItems == null || reportedItems.Count == 0)
+            {
+                return NotFound($"No posts found with identifier {identifier}");
+            }
+
+            ReportedItem reportedItem = reportedItems[0];
+            if (reportedItem.ImgurUrls != null && reportedItem.ImgurUrls.Count > 0)
+            {
+                foreach (var imgurUrl in reportedItem.ImgurUrls)
+                {
+                    Uri imgurUri = new Uri(imgurUrl);
+                    string imgurId = imgurUri.Segments[imgurUri.Segments.Length - 1];
+                    bool deletedImgurImage = await imgurImageEndpoint.DeleteImageAsync(imgurId);
+                    if (!deletedImgurImage)
+                    {
+                        logger.LogWarning($"Could not delete Imgur image {imgurUrl} for {reportedItem.TweetId}");
+                    }
+                }
+            }
+
+            if (reportedItem.TwitterLink != null)
+            {
+                Uri twitterLink = new Uri(reportedItem.TwitterLink);
+                string tweetId = twitterLink.Segments[twitterLink.Segments.Length - 1];
+                var deleteTweetResponse = await uploadTwitterContext.DeleteTweetAsync(tweetId);
+                if (deleteTweetResponse?.Data?.Deleted != true)
+                {
+                    logger.LogError($"Could not delete tweet: {reportedItem.TwitterLink}");
+                }
+            }
+
+            if (reportedItem.MastodonLink != null)
+            {
+                Uri mastodonLink = new Uri(reportedItem.MastodonLink);
+                string tootId = mastodonLink.Segments[mastodonLink.Segments.Length - 1];
+                MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
+                await mastodonClient.DeleteStatus(tootId);
+            }
+
+            bool deletedFromDatabase = await reportedItemsDatabase.DeleteItem(reportedItem);
+            if (!deletedFromDatabase)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, $"Failed to delete item from database. {reportedItem.TweetId}");
+            }
+
+            return NoContent();
+        }
+
         private async Task<List<Stream>> GetPhotosFromRegularTweet(Tweet tweet, TweetQuery tweetQuery)
         {
             List<Stream> pictureStreams = new List<Stream>();
@@ -707,6 +780,11 @@ namespace SeattleCarsInBikeLanes.Controllers
         public class PostTweetRequest
         {
             public string PostUrl { get; set; } = string.Empty;
+        }
+
+        public class DeletePostRequest
+        {
+            public string PostIdentifier { get; set; } = string.Empty;
         }
     }
 }

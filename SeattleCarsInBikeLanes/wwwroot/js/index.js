@@ -398,6 +398,9 @@ function initUpload1LegendHtml() {
                 
                 changeLoadingButtonToRegularButton(button, 'Process');
             });
+        } else {
+            document.getElementById('uploadForm1AlertDiv').append('Must select a picture before uploading.');
+            changeLoadingButtonToRegularButton(button, 'Process');
         }
     });
     form.removeAttribute('hidden');

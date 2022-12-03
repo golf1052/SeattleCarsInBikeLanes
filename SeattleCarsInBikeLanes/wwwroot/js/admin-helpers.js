@@ -68,9 +68,19 @@ function postTweet(link) {
 }
 
 function deletePendingPhoto(metadata) {
-    return fetch('api/AdminPage/DeletePendingPhoto',  {
+    return fetch('api/AdminPage/DeletePendingPhoto', {
         method: 'DELETE',
         body: JSON.stringify(metadata),
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    });
+}
+
+function deletePost(identifier) {
+    return fetch('api/AdminPage/DeletePost', {
+        method: 'DELETE',
+        body: JSON.stringify({ postIdentifier: identifier }),
         headers: {
             'Content-Type': 'application/json'
         }

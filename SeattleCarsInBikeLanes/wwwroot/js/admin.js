@@ -107,10 +107,26 @@ function createDesktopCard(metadata) {
 
     form.addEventListener('submit', (event) => {
         event.preventDefault();
+        const data = new FormData(event.target);
         const submitButton = event.submitter;
 
         if (submitButton.innerText === 'Upload') {
             changeButtonToLoadingButton(submitButton, 'Uploading...');
+            for (const [name, value] of data) {
+                if (name === 'numberOfCars') {
+                    const parsedNumberOfCars = parseInt(value);
+                    if (!isNaN(parsedNumberOfCars) && parsedNumberOfCars !== metadata.numberOfCars) {
+                        metadata.numberOfCars = parsedNumberOfCars;
+                    }
+                }
+
+                if (name === 'location') {
+                    if (value.trim() !== metadata.photoCrossStreet) {
+                        metadata.photoCrossStreet = value.trim();
+                    }
+                }
+            }
+
             uploadTweet(metadata)
             .then(() => {
                 document.getElementById(metadata.photoId).remove();
@@ -147,6 +163,21 @@ document.getElementById('postLinkButton').addEventListener('click', function(eve
     .catch(error => {
         displayError(error.message);
         changeLoadingButtonToRegularButton(event.target, 'Post');
+    });
+});
+
+document.getElementById('deletePostButton').addEventListener('click', function(event) {
+    changeButtonToLoadingButton(event.target, 'Deleting...');
+    const deletePostInput = document.getElementById('deletePostInput');
+    const identifier = deletePostInput.value;
+    deletePost(identifier)
+    .then(() => {
+        deletePostInput.value = '';
+        changeLoadingButtonToRegularButton(event.target, 'Delete');
+    })
+    .catch(error => {
+        displayError(error.message);
+        changeLoadingButtonToRegularButton(event.target, 'Delete');
     });
 });
 

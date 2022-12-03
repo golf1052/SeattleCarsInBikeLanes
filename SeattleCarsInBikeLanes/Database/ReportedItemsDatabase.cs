@@ -136,6 +136,17 @@ namespace SeattleCarsInBikeLanes.Database
             return await RunQuery(query);
         }
 
+        public async Task<List<ReportedItem>?> GetItemUsingIdentifier(string identifier)
+        {
+            IQueryable<ReportedItem> query = container.GetItemLinqQueryable<ReportedItem>()
+                .Where(i => i.TweetId.Contains(identifier) ||
+                    (i.TwitterLink != null && i.TwitterLink.Contains(identifier)) ||
+                    (i.MastodonLink != null && i.MastodonLink.Contains(identifier)));
+
+            using FeedIterator<ReportedItem> iterator = query.ToFeedIterator();
+            return await ProcessIterator(iterator);
+        }
+
         public async Task<List<ReportedItem>?> GetLatestItems(int? count)
         {
             if (count == null)
