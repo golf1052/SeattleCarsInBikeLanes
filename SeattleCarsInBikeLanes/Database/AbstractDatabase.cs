@@ -70,26 +70,26 @@ namespace SeattleCarsInBikeLanes.Database
             }
         }
 
-        protected async Task<List<ReportedItem>?> RunQuery(string? query = null)
+        protected async Task<List<T>?> RunQuery(string? query = null)
         {
-            using FeedIterator<ReportedItem> iterator = container.GetItemQueryIterator<ReportedItem>(query);
+            using FeedIterator<T> iterator = container.GetItemQueryIterator<T>(query);
             return await ProcessIterator(iterator);
         }
 
-        protected async Task<List<ReportedItem>?> RunQuery(QueryDefinition query)
+        protected async Task<List<T>?> RunQuery(QueryDefinition query)
         {
-            using FeedIterator<ReportedItem> iterator = container.GetItemQueryIterator<ReportedItem>(query);
+            using FeedIterator<T> iterator = container.GetItemQueryIterator<T>(query);
             return await ProcessIterator(iterator);
         }
 
-        protected async Task<List<ReportedItem>?> ProcessIterator(FeedIterator<ReportedItem> iterator)
+        protected async Task<List<T>?> ProcessIterator(FeedIterator<T> iterator)
         {
             try
             {
-                List<ReportedItem> items = new List<ReportedItem>();
+                List<T> items = new List<T>();
                 while (iterator.HasMoreResults)
                 {
-                    FeedResponse<ReportedItem> currentResults = await iterator.ReadNextAsync();
+                    FeedResponse<T> currentResults = await iterator.ReadNextAsync();
                     items.AddRange(currentResults);
                 }
                 return items;

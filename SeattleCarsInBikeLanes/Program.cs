@@ -215,6 +215,8 @@ namespace SeattleCarsInBikeLanes
                     serviceProvider.GetRequiredService<ILogger<InitialUploadPruner>>(),
                     serviceProvider.GetRequiredService<BlobContainerClient>(),
                     TimeSpan.FromMinutes(10));
+
+                //FixDBTimeOnly fix = new FixDBTimeOnly(serviceProvider.GetRequiredService<Microsoft.Azure.Cosmos.Database>());
             }
 
             // Configure the HTTP request pipeline.
