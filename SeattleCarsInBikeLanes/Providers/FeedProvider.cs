@@ -16,12 +16,15 @@ namespace SeattleCarsInBikeLanes.Providers
         private const string RssFilename = "rss.xml";
         private const string AtomFilename = "atom.xml";
 
+        private readonly ILogger<FeedProvider> logger;
         private readonly ReportedItemsDatabase reportedItemsDatabase;
         private readonly BlobContainerClient blobContainerClient;
 
-        public FeedProvider(ReportedItemsDatabase reportedItemsDatabase,
+        public FeedProvider(ILogger<FeedProvider> logger,
+            ReportedItemsDatabase reportedItemsDatabase,
             BlobContainerClient blobContainerClient)
         {
+            this.logger = logger;
             this.reportedItemsDatabase = reportedItemsDatabase;
             this.blobContainerClient = blobContainerClient;
         }
@@ -61,6 +64,36 @@ namespace SeattleCarsInBikeLanes.Providers
             SyndicationFeed atomFeed = atomFormatter.Feed;
             List<SyndicationItem> atomItems = atomFeed.Items.ToList();
             AddReportedItemToFeed(reportedItem, atomItems, true);
+            atomFeed.Items = atomItems;
+
+            using MemoryStream rssMemoryStream = WriteRssFeed(rssFeed);
+            using MemoryStream atomMemoryStream = WriteAtomFeed(atomFeed);
+
+            await rssFileBlob.UploadAsync(rssMemoryStream, new BlobHttpHeaders() { ContentType = RssContentType });
+            await atomFileBlob.UploadAsync(atomMemoryStream, new BlobHttpHeaders() { ContentType = AtomContentType });
+        }
+
+        public async Task RemoveReportedItemFromFeed(ReportedItem reportedItem)
+        {
+            BlobClient rssFileBlob = blobContainerClient.GetBlobClient(RssFilename);
+            BlobClient atomFileBlob = blobContainerClient.GetBlobClient(AtomFilename);
+            var rssDownload = await rssFileBlob.DownloadContentAsync();
+            var atomDownload = await atomFileBlob.DownloadContentAsync();
+
+            using XmlReader rssXmlReader = XmlReader.Create(rssDownload.Value.Content.ToStream());
+            Rss20FeedFormatter rssFormatter = new Rss20FeedFormatter();
+            rssFormatter.ReadFrom(rssXmlReader);
+            SyndicationFeed rssFeed = rssFormatter.Feed;
+            List<SyndicationItem> rssItems = rssFeed.Items.ToList();
+            RemoveReportedItemFromFeed(reportedItem, rssItems);
+            rssFeed.Items = rssItems;
+
+            using XmlReader atomXmlReader = XmlReader.Create(atomDownload.Value.Content.ToStream());
+            Atom10FeedFormatter atomFormatter = new Atom10FeedFormatter();
+            atomFormatter.ReadFrom(atomXmlReader);
+            SyndicationFeed atomFeed = atomFormatter.Feed;
+            List<SyndicationItem> atomItems = atomFeed.Items.ToList();
+            RemoveReportedItemFromFeed(reportedItem, atomItems);
             atomFeed.Items = atomItems;
 
             using MemoryStream rssMemoryStream = WriteRssFeed(rssFeed);
@@ -225,6 +258,20 @@ namespace SeattleCarsInBikeLanes.Providers
             {
                 feedItems.Add(item);
             }
+        }
+
+        private void RemoveReportedItemFromFeed(ReportedItem reportedItem, List<SyndicationItem> feedItems)
+        {
+            for (int i = 0; i < feedItems.Count; i++)
+            {
+                if (feedItems[i].Id == reportedItem.TweetId)
+                {
+                    feedItems.RemoveAt(i);
+                    return;
+                }
+            }
+
+            logger.LogWarning($"Did not find reported item to remove. Id {reportedItem.TweetId}");
         }
     }
 }

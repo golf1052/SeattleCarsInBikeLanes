@@ -600,6 +600,8 @@ namespace SeattleCarsInBikeLanes.Controllers
                 await mastodonClient.DeleteStatus(tootId);
             }
 
+            await feedProvider.RemoveReportedItemFromFeed(reportedItem);
+
             bool deletedFromDatabase = await reportedItemsDatabase.DeleteItem(reportedItem);
             if (!deletedFromDatabase)
             {
