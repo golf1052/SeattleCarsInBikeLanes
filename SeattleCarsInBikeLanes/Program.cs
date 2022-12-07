@@ -202,7 +202,8 @@ namespace SeattleCarsInBikeLanes
             });
             services.AddSingleton(c =>
             {
-                return new FeedProvider(c.GetRequiredService<ReportedItemsDatabase>(),
+                return new FeedProvider(c.GetRequiredService<ILogger<FeedProvider>>(),
+                    c.GetRequiredService<ReportedItemsDatabase>(),
                     c.GetRequiredService<BlobContainerClient>());
             });
 
