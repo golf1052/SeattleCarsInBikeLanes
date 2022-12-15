@@ -1,5 +1,19 @@
 const TwitterUsername = 'carbikelanesea';
 
+// Taken from https://stackoverflow.com/a/9039885/6681022
+function isiOS() {
+    return [
+        'iPad Simulator',
+        'iPhone Simulator',
+        'iPod Simulator',
+        'iPad',
+        'iPhone',
+        'iPod'
+      ].includes(navigator.platform)
+      // iPad on iOS 13 detection
+      || (navigator.userAgent.includes("Mac") && "ontouchend" in document);
+}
+
 function getAllReportedItems() {
     const url = 'api/reporteditems/all';
     return fetch(url)

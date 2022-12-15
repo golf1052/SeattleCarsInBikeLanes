@@ -222,6 +222,10 @@ function initControls() {
 }
 
 function initMapControls() {
+    if (isiOS()) {
+        document.getElementById('iOSNoteDiv').removeAttribute('hidden');
+    }
+    
     document.getElementById('toggleUploadButton').addEventListener('click', function() {
         toggleUploadLegendControl();
     });

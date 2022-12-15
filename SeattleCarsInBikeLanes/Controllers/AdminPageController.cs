@@ -309,7 +309,13 @@ namespace SeattleCarsInBikeLanes.Controllers
                                     {
                                         if (quotedTweet.Includes.Media != null)
                                         {
-                                            tweetQuery.Includes!.Media!.AddRange(quotedTweet.Includes.Media);
+                                            foreach (var media in quotedTweet.Includes.Media)
+                                            {
+                                                if (media.Type == TweetMediaType.Photo)
+                                                {
+                                                    tweetQuery.Includes!.Media!.Add(media);
+                                                }
+                                            }
                                         }
                                         
                                         if (quotedTweet.Includes.Users != null && quotedTweet.Includes.Users.Count > 0)
@@ -340,7 +346,9 @@ namespace SeattleCarsInBikeLanes.Controllers
                                                 }
                                             }
                                         }
-                                        else
+
+                                        // In case the quoted tweet only has a video or gif instead of pictures.
+                                        if (pictureStreams.Count == 0)
                                         {
                                             try
                                             {
@@ -572,7 +580,20 @@ namespace SeattleCarsInBikeLanes.Controllers
                 foreach (var imgurUrl in reportedItem.ImgurUrls)
                 {
                     Uri imgurUri = new Uri(imgurUrl);
-                    string imgurId = imgurUri.Segments[imgurUri.Segments.Length - 1];
+                    string imageHashUrl = imgurUri.Segments[imgurUri.Segments.Length - 1];
+                    string[] splitImageHashUrl = imageHashUrl.Split('.');
+                    string imgurId;
+                    if (splitImageHashUrl.Length == 2 || splitImageHashUrl.Length == 1)
+                    {
+                        imgurId = splitImageHashUrl[0];
+                    }
+                    else
+                    {
+                        string errorString = $"Unexpected imgur hash url {imgurUri}. Split length: {splitImageHashUrl.Length}";
+                        logger.LogError(errorString);
+                        throw new Exception(errorString);
+                    }
+
                     bool deletedImgurImage = await imgurImageEndpoint.DeleteImageAsync(imgurId);
                     if (!deletedImgurImage)
                     {
