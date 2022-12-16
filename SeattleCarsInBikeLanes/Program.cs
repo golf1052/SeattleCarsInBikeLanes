@@ -209,6 +209,12 @@ namespace SeattleCarsInBikeLanes
                     c.GetRequiredService<ReportedItemsDatabase>(),
                     c.GetRequiredService<BlobContainerClient>());
             });
+            services.AddSingleton(c =>
+            {
+                return new SlackbotProvider(c.GetRequiredService<ILogger<SlackbotProvider>>(),
+                    c.GetRequiredService<HttpClient>(),
+                    c.GetRequiredService<SecretClient>());
+            });
 
             var app = builder.Build();
 

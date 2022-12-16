@@ -406,5 +406,17 @@ namespace SeattleCarsInBikeLanes
                 stream.Dispose();
             }
         }
+
+        public string GetCarsString(int numberOfCars)
+        {
+            if (numberOfCars == 1)
+            {
+                return "car";
+            }
+            else
+            {
+                return "cars";
+            }
+        }
     }
 }

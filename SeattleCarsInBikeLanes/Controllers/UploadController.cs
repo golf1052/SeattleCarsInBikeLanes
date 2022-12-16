@@ -34,18 +34,24 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly MapsSearchClient mapsSearchClient;
         private readonly BlobContainerClient blobContainerClient;
         private readonly MastodonClientProvider mastodonClientProvider;
+        private readonly SlackbotProvider slackbotProvider;
+        private readonly HelperMethods helperMethods;
 
         public UploadController(ILogger<UploadController> logger,
             ComputerVisionClient computerVisionClient,
             MapsSearchClient mapsSearchClient,
             BlobContainerClient blobContainerClient,
-            MastodonClientProvider mastodonClientProvider)
+            MastodonClientProvider mastodonClientProvider,
+            SlackbotProvider slackbotProvider,
+            HelperMethods helperMethods)
         {
             this.logger = logger;
             this.computerVisionClient = computerVisionClient;
             this.mapsSearchClient = mapsSearchClient;
             this.blobContainerClient = blobContainerClient;
             this.mastodonClientProvider = mastodonClientProvider;
+            this.slackbotProvider = slackbotProvider;
+            this.helperMethods = helperMethods;
         }
 
         [HttpPost("Initial")]
@@ -236,6 +242,10 @@ namespace SeattleCarsInBikeLanes.Controllers
 
             BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.json");
             await metadataBlobClient.DeleteAsync();
+
+            // Ping me on Slack about the new submission
+            await slackbotProvider.SendSlackMessage($"New submission. {metadata.NumberOfCars} {helperMethods.GetCarsString(metadata.NumberOfCars.Value)} " +
+                $"@ {metadata.PhotoCrossStreet} submitted {DateTime.Now:s}");
 
             Response.StatusCode = (int)HttpStatusCode.NoContent;
         }
