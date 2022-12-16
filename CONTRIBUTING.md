@@ -15,6 +15,28 @@
   - No Azure Maps tiles and search.
   - No Cosmos DB. You can use the [emulator](https://learn.microsoft.com/en-us/azure/cosmos-db/local-emulator) and import the [sample data](./sampledbdata.json) into it using the [Cosmos DB data migration tool](https://github.com/azure/azure-documentdb-datamigrationtool).
 
+### Secrets List
+
+May or may not be up to date. Do a find all on "GetSecret" to confirm.
+
+- admin-password: Password to access the admin page (`/AdminPage`). You can configure this to whatever you want.
+- admin-username: Username to access the admin page (`/AdminPage`). You can configure this to whatever you want.
+- computervision: Api key for Computer Vision service. Used for extracting tags from uploaded images. Create your own Computer Vision service and enter your key.
+- imgur-access-token: Access token for Imgur API. Used for uploading images to Imgur. Create your own Imgur application using the docs [here](https://apidocs.imgur.com/).
+- imgur-client-id: Client ID for Imgur API. Used for uploading images to Imgur.
+- imgur-client-secret: Client secret for Imgur API. Used for uploading images to Imgur.
+- imgur-refresh-token: Refresh token for Imgur API. Used for uploading images to Imgur.
+- slack-user-id: User ID of Slack member who finalized uploaded messages are sent to.
+- slackbot-token: Legacy Slack bot token used for sending Slackbot messages.
+- social-ridetransit-access-token: Access token for Mastodon server client. Used for posting to https://social.ridetrans.it
+- twitter-bearer-token: Twitter bearer token. Used for pulling tweets from Twitter.
+- twitter-consumer-key: Twitter consumer key. Used for pulling tweets from Twitter.
+- twitter-consumer-key-secret: Twitter consumer key secret. Used for pulling tweets from Twitter.
+- twitter-oauth1-access-token: Twitter OAuth 1.0a access token. Used for uploading images to Twitter.
+- twitter-oauth1-access-token-secret: Twitter OAuth 1.0a access token secret. Used for uploading images to Twitter.
+- twitter-oauth2-client-id: Twitter OAuth 2.0 client id. Used for logging users into Twitter.
+- twitter-oauth2-client-secret: Twitter OAuth 2.0 client secret. Used for logging users into Twitter.
+
 ### Getting OAuth 1.0a Write Token for Twitter Photo/Tweet Uploads
 
 This token pair lasts forever or until it is revoked.
