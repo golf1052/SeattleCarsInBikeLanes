@@ -143,15 +143,18 @@ namespace SeattleCarsInBikeLanes.Providers
                 Host = endpointUri.IdnHost,
                 SecretPrefix = prefix
             };
+
+            // Set the secrets before creating the mapping just incase the secret set fails
+            secretClient.SetSecret($"{prefix}{clientId}", app.ClientId);
+            secretClient.SetSecret($"{prefix}{clientSecret}", app.ClientSecret);
+            secretClient.SetSecret($"{prefix}{accessToken}", clientToken.AccessToken);
+
             bool createdMapping = await mastodonOAuthMappingDatabase.AddItem(mapping, mapping.Host);
             if (!createdMapping)
             {
                 throw new Exception($"Failed to create OAuth mapping in database for {endpointUri}");
             }
 
-            secretClient.SetSecret($"{prefix}{clientId}", app.ClientId);
-            secretClient.SetSecret($"{prefix}{clientSecret}", app.ClientSecret);
-            secretClient.SetSecret($"{prefix}{accessToken}", clientToken.AccessToken);
             return mastodonClient;
         }
     }
