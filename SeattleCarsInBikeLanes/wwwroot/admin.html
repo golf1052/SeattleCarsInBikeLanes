@@ -17,8 +17,18 @@
 </head>
 
 <body>
-  <div id="latestTweetTime"></div>
-  <div id="lastCheckedTime"></div>
+  <div class="row">
+    <div class="col-aut">
+      <label for="postMonthlyStatsInput" class="form-label">Post monthly stats with most ridiculous tweet</label>
+    </div>
+    <div class="col-8">
+      <input type="text" id="postMonthlyStatsInput" class="form-control">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-info" id="postMonthlyStatsButton">Post</button>
+    </div>
+  </div>
+  <hr>
   <div class="row">
     <div class="col-auto">
       <label for="postLinkInput" class="form-label">Post link</label>

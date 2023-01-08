@@ -254,7 +254,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         {
             ReverseSearchCrossStreetOptions options = new ReverseSearchCrossStreetOptions()
             {
-                coordinates = new Azure.Core.GeoJson.GeoPosition(position.Longitude, position.Latitude),
+                Coordinates = new Azure.Core.GeoJson.GeoPosition(position.Longitude, position.Latitude),
             };
             var response = await mapsSearchClient.ReverseSearchCrossStreetAddressAsync(options);
             if (response == null || response.Value == null || response.Value.Addresses == null || response.Value.Addresses.Count == 0)

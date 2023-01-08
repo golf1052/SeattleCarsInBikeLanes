@@ -1,10 +1,3 @@
-function getStatus() {
-    return fetch('api/Status')
-    .then(response => {
-        return response.json();
-    });
-}
-
 function getPendingPhotos() {
     return fetch('api/AdminPage/PendingPhotos')
     .then(response => {
@@ -83,6 +76,28 @@ function deletePost(identifier) {
         body: JSON.stringify({ postIdentifier: identifier }),
         headers: {
             'Content-Type': 'application/json'
+        }
+    });
+}
+
+function postMonthlyStats(link) {
+    return fetch('api/AdminPage/PostMonthlyStats', {
+        method: 'POST',
+        body: JSON.stringify({ postIdentifier: identifier }),
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text();
+        }
+
+        return null;
+    })
+    .then(response => {
+        if (typeof response === 'string') {
+            throw new Error(response);
         }
     });
 }

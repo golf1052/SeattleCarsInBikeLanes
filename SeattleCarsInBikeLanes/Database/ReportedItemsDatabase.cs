@@ -181,5 +181,38 @@ namespace SeattleCarsInBikeLanes.Database
             }
             return allDeleted;
         }
+
+        /// <summary>
+        /// Get a list of reported items in the given date range (inclusive) with the most cars.
+        /// </summary>
+        /// <param name="startDate">Start date</param>
+        /// <param name="endDate">End date (inclusive)</param>
+        /// <returns>List of reported items in the given date range</returns>
+        public async Task<List<ReportedItem>> GetMostCars(DateOnly startDate, DateOnly endDate)
+        {
+            IQueryable<ReportedItem> query = container.GetItemLinqQueryable<ReportedItem>()
+                .Where(i => i.Date >= startDate && i.Date <= endDate)
+                .OrderByDescending(i => i.NumberOfCars);
+
+            using FeedIterator<ReportedItem> iterator = query.ToFeedIterator();
+            List<ReportedItem>? items = await ProcessIterator(iterator);
+            if (items == null || items.Count == 0)
+            {
+                throw new Exception("Found no reported items");
+            }
+
+            ReportedItem firstItem = items[0];
+            int range = 1;
+            for (int i = 1; i < items.Count; i++)
+            {
+                ReportedItem item = items[i];
+                if (item.NumberOfCars == firstItem.NumberOfCars)
+                {
+                    range = i + 1;
+                }
+            }
+
+            return items.GetRange(0, range);
+        }
     }
 }

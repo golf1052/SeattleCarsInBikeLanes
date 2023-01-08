@@ -547,34 +547,20 @@ namespace SeattleCarsInBikeLanes.Controllers
         [HttpDelete("/api/AdminPage/DeletePost")]
         public async Task<IActionResult> DeletePost([FromBody] DeletePostRequest request)
         {
-            string? identifier = null;
-            Uri uri;
+            ReportedItem? reportedItem;
             try
             {
-                uri = new Uri(request.PostIdentifier);
-                identifier = uri.Segments[uri.Segments.Length - 1];
+                reportedItem = await FindReportedItem(request.PostIdentifier);
+                if (reportedItem == null)
+                {
+                    return NotFound($"No posts found with identifier {request.PostIdentifier}");
+                }
             }
-            catch (UriFormatException)
+            catch (Exception ex)
             {
+                return BadRequest(ex.Message);
             }
 
-            if (identifier == null)
-            {
-                identifier = request.PostIdentifier;
-            }
-
-            if (string.IsNullOrWhiteSpace(identifier))
-            {
-                return BadRequest("Post identifier must either be a URL, a tweet/toot id, or a GUID");
-            }
-
-            List<ReportedItem>? reportedItems = await reportedItemsDatabase.GetItemUsingIdentifier(identifier);
-            if (reportedItems == null || reportedItems.Count == 0)
-            {
-                return NotFound($"No posts found with identifier {identifier}");
-            }
-
-            ReportedItem reportedItem = reportedItems[0];
             if (reportedItem.ImgurUrls != null && reportedItem.ImgurUrls.Count > 0)
             {
                 foreach (var imgurUrl in reportedItem.ImgurUrls)
@@ -630,6 +616,183 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
 
             return NoContent();
+        }
+
+        [HttpPost("/api/AdminPage/PostMonthlyStats")]
+        public async Task<IActionResult> PostMonthlyStats([FromBody] PostMonthlyStatsRequest request)
+        {
+            ReportedItem? mostRidiculousReportedItem;
+            try
+            {
+                mostRidiculousReportedItem = await FindReportedItem(request.PostIdentifier);
+                if (mostRidiculousReportedItem == null)
+                {
+                    return NotFound($"No posts found with identifier {request.PostIdentifier}");
+                }
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+
+            DateOnly lastMonth = DateOnly.FromDateTime(DateTime.Now).AddMonths(-1);
+            DateOnly startOfLastMonth = new DateOnly(lastMonth.Year, lastMonth.Month, 1);
+            DateOnly endOfLastMonth = new DateOnly(lastMonth.Year, lastMonth.Month, DateTime.DaysInMonth(lastMonth.Year, lastMonth.Month));
+
+            if (mostRidiculousReportedItem.Date == null || mostRidiculousReportedItem.Date < startOfLastMonth || mostRidiculousReportedItem.Date > endOfLastMonth)
+            {
+                return BadRequest($"Most ridiculous item didn't occur last month. Item date: {mostRidiculousReportedItem.Date}");
+            }
+
+            List<ReportedItem> mostCars = await reportedItemsDatabase.GetMostCars(startOfLastMonth, endOfLastMonth);
+            if (mostCars.Count > 1)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, $"{mostCars.Count} reports with {mostCars[0].NumberOfCars} cars.");
+            }
+
+            List<ReportedItem>? lastMonthItems = await reportedItemsDatabase.SearchItems(new Models.ReportedItemsSearchRequest()
+            {
+                MinDate = startOfLastMonth,
+                MaxDate = endOfLastMonth
+            });
+
+            if (lastMonthItems == null || lastMonthItems.Count == 0)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, "No reports for last month.");
+            }
+
+            int largestReportCount = 0;
+            List<ReportedItem> worstIntersectionItems = new List<ReportedItem>();
+            for (int i = 0; i < lastMonthItems.Count; i++)
+            {
+                ReportedItem searchItem = lastMonthItems[i];
+                if (searchItem.Location == null)
+                {
+                    continue;
+                }
+
+                int currentReportCount = 1;
+                List<ReportedItem> currentIntersectionItems = new List<ReportedItem>();
+                currentIntersectionItems.Add(searchItem);
+
+                for (int j = i + 1; j < lastMonthItems.Count; j++)
+                {
+                    ReportedItem currentItem = lastMonthItems[j];
+                    if (currentItem.Location == null)
+                    {
+                        continue;
+                    }
+
+                    // If the two locations are the same or are within 50 meters of each other (about half a block)
+                    if (searchItem.Location == currentItem.Location || searchItem.Location.DistanceTo(currentItem.Location) <= 50)
+                    {
+                        currentReportCount += 1;
+                        currentIntersectionItems.Add(currentItem);
+                    }
+                }
+
+                if (currentReportCount > 1 && currentReportCount > largestReportCount)
+                {
+                    largestReportCount = currentReportCount;
+                    worstIntersectionItems.Clear();
+                    worstIntersectionItems.AddRange(currentIntersectionItems);
+                }
+            }
+
+            if (worstIntersectionItems.Count == 0)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, "No worst intersection found.");
+            }
+
+            int worstIntersectionCarCount = worstIntersectionItems.Aggregate(0, (acc, cur) => cur.NumberOfCars + acc);
+
+            int largestNameCount = 0;
+            string worstIntersectionLocationString = string.Empty;
+            for (int i = 0; i < worstIntersectionItems.Count; i++)
+            {
+                ReportedItem searchItem = worstIntersectionItems[i];
+                int currentCount = 1;
+                string currentLocationString = searchItem.LocationString;
+
+                for (int j = i + 1; j < worstIntersectionItems.Count; j++)
+                {
+                    ReportedItem currentItem = worstIntersectionItems[j];
+                    if (searchItem.LocationString == currentItem.LocationString)
+                    {
+                        currentCount += 1;
+                    }
+                }
+
+                if (currentCount > largestNameCount)
+                {
+                    largestNameCount = currentCount;
+                    worstIntersectionLocationString = currentLocationString;
+                }
+            }
+
+            string introText = $"Stats for last month, the month of {lastMonth:MMMM}\n\n";
+            string mostCarsText = $"Most cars reported at once: {mostCars[0].NumberOfCars} cars";
+            string mostRidiculousText = $"Most ridiculous report: ";
+            string worstIntersectionText = $"Worst intersection of the month: {worstIntersectionLocationString} with {worstIntersectionItems.Count} reports and {worstIntersectionCarCount} cars";
+
+            // First post to Twitter
+            try
+            {
+                Tweet? firstTweet = await uploadTwitterContext.TweetAsync($"{introText}{mostCarsText} {mostCars[0].TwitterLink}");
+                Tweet? secondTweet = await uploadTwitterContext.ReplyAsync($"{mostRidiculousText} {mostRidiculousReportedItem.TwitterLink}", firstTweet!.ID!);
+                Tweet? thirdTweet = await uploadTwitterContext.ReplyAsync($"{worstIntersectionText}", secondTweet!.ID!);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to tweet stats.");
+            }
+
+            // Next post to Mastodon
+            MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
+            try
+            {
+                MastodonStatus firstToot = await mastodonClient.PublishStatus($"{introText}{mostCarsText} {mostCars[0].MastodonLink}");
+                MastodonStatus secondToot = await mastodonClient.PublishStatus($"{mostRidiculousText} {mostRidiculousReportedItem.MastodonLink}", inReplyToId: firstToot.Id);
+                MastodonStatus thirdToot = await mastodonClient.PublishStatus($"{worstIntersectionText}", inReplyToId: secondToot.Id);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to toot stats.");
+            }
+
+            return NoContent();
+        }
+
+        private async Task<ReportedItem?> FindReportedItem(string postIdentifier)
+        {
+            string? identifier = null;
+            Uri uri;
+            try
+            {
+                uri = new Uri(postIdentifier);
+                identifier = uri.Segments[uri.Segments.Length - 1];
+            }
+            catch (UriFormatException)
+            {
+            }
+
+            if (identifier == null)
+            {
+                identifier = postIdentifier;
+            }
+
+            if (string.IsNullOrWhiteSpace(identifier))
+            {
+                throw new Exception("Post identifier must either be a URL, a tweet/toot id, or a GUID");
+            }
+
+            List<ReportedItem>? reportedItems = await reportedItemsDatabase.GetItemUsingIdentifier(identifier);
+            if (reportedItems == null || reportedItems.Count == 0)
+            {
+                return null;
+            }
+
+            return reportedItems[0];
         }
 
         private async Task<List<Stream>> GetPhotosFromRegularTweet(Tweet tweet, TweetQuery tweetQuery)
@@ -806,6 +969,11 @@ namespace SeattleCarsInBikeLanes.Controllers
         }
 
         public class DeletePostRequest
+        {
+            public string PostIdentifier { get; set; } = string.Empty;
+        }
+
+        public class PostMonthlyStatsRequest
         {
             public string PostIdentifier { get; set; } = string.Empty;
         }

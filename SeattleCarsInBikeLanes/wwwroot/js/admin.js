@@ -130,6 +130,7 @@ function createDesktopCard(metadata) {
             uploadTweet(metadata)
             .then(() => {
                 document.getElementById(metadata.photoId).remove();
+                return displayPendingPhotos();
             })
             .catch(error => {
                 changeLoadingButtonToRegularButton(submitButton, 'Upload');
@@ -139,6 +140,7 @@ function createDesktopCard(metadata) {
             deletePendingPhoto(metadata)
             .then(() => {
                 document.getElementById(metadata.photoId).remove();
+                return displayPendingPhotos();
             })
             .catch(error => {
                 changeLoadingButtonToRegularButton(submitButton, 'Delete');
@@ -150,6 +152,21 @@ function createDesktopCard(metadata) {
     card.append(image, cardBody);
     return card;
 }
+
+document.getElementById('postMonthlyStatsButton').addEventListener('click', function(event) {
+    changeButtonToLoadingButton(event.target, 'Posting...');
+    const postMonthlyStatsInput = document.getElementById('postMonthlyStatsInput');
+    const link = postMonthlyStatsInput.value;
+    postMonthlyStats(link)
+    .then(() => {
+        postMonthlyStatsInput.value = '';
+        changeLoadingButtonToRegularButton(event.target, 'Post');
+    })
+    .catch(error => {
+        displayError(error.message);
+        changeLoadingButtonToRegularButton(event.target, 'Post');
+    });
+});
 
 document.getElementById('postLinkButton').addEventListener('click', function(event) {
     changeButtonToLoadingButton(event.target, 'Posting...');
@@ -181,32 +198,32 @@ document.getElementById('deletePostButton').addEventListener('click', function(e
     });
 });
 
-getStatus()
-.then(response => {
-    document.getElementById('latestTweetTime').innerText = `Latest tweet: ${luxon.DateTime.fromISO(response.latestTweet).toISO()}`;
-    document.getElementById('lastCheckedTime').innerText = `Last checked Twitter: ${luxon.DateTime.fromISO(response.lastChecked).toISO()}`;
-});
-
-getPendingPhotos()
-.then(response => {
+function displayPendingPhotos() {
     const cardsDiv = document.getElementById('cardsDiv');
-    if (response.length === 0) {
-        cardsDiv.append('No pending reported items.');
+    if (cardsDiv.childElementCount === 0) {
+        return getPendingPhotos()
+        .then(response => {
+            if (response.length === 0) {
+                cardsDiv.append('No pending reported items.');
+            } else {
+                for (let i = 0; i < response.length; i++) {
+                    let metadata = response[i];
+                    let card = createDesktopCard(metadata);
+                    cardsDiv.append(card);
+                }
+            }
+        })
+        .catch(error => {
+            const cardsDiv = document.getElementById('cardsDiv');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-danger';
+            alertDiv.setAttribute('role', 'alert');
+            alertDiv.append(error.message);
+            cardsDiv.append(alertDiv);
+        });
     } else {
-        for (let i = 0; i < response.length; i++) {
-            let metadata = response[i];
-            let card = createDesktopCard(metadata);
-            cardsDiv.append(card);
-        }
+        return Promise.resolve();
     }
-})
-.catch(error => {
-    const cardsDiv = document.getElementById('cardsDiv');
-    const alertDiv = document.createElement('div');
-    alertDiv.className = 'alert alert-danger';
-    alertDiv.setAttribute('role', 'alert');
-    alertDiv.append(error.message);
-    cardsDiv.append(alertDiv);
-});
+}
 
-
+displayPendingPhotos();
