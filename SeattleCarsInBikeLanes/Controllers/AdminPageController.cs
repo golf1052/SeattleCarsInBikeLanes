@@ -198,7 +198,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
             while (mastodonAttachment == null);
 
-            MastodonStatus mastodonStatus = await mastodonClient.PublishStatus(tootBody, new List<string>() { mastodonAttachmentId }, "unlisted");
+            MastodonStatus mastodonStatus = await mastodonClient.PublishStatus(tootBody, new List<string>() { mastodonAttachmentId }, null, "unlisted");
 
             ReportedItem newReportedItem = new ReportedItem()
             {
@@ -413,7 +413,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                     // Finally post the status to Mastodon with the images
                     try
                     {
-                        MastodonStatus status = await mastodonClient.PublishStatus(tweetText, attachmentIds, visibility: "unlisted");
+                        MastodonStatus status = await mastodonClient.PublishStatus(tweetText, attachmentIds, null, visibility: "unlisted");
                         helperMethods.DisposePictureStreams(pictureStreams);
                         foreach (var reportedItem in reportedItems)
                         {

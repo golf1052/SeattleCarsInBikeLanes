@@ -248,7 +248,7 @@ namespace SeattleCarsInBikeLanes
                 // Finally post the status to Mastodon with the images
                 try
                 {
-                    await mastodonClient.PublishStatus(text, attachmentIds, visibility: "unlisted");
+                    await mastodonClient.PublishStatus(text, attachmentIds, null, visibility: "unlisted");
                 }
                 catch (Exception ex)
                 {
