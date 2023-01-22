@@ -279,6 +279,27 @@ namespace SeattleCarsInBikeLanes.Controllers
                         reportedItem.TwitterLink = request.PostUrl;
                     }
 
+                    // If attributed to a Twitter user convert the @ mention to a link instead so there's proper attribution on Mastodon
+                    const string SubmittedBySearchText = "Submitted by @";
+                    if (tweetText.Contains(SubmittedBySearchText))
+                    {
+                        int usernameStartIndex = tweetText.IndexOf(SubmittedBySearchText) + SubmittedBySearchText.Length - 1;
+                        int potentialEndIndex = tweetText.IndexOf('\n', usernameStartIndex);
+                        if (potentialEndIndex == -1)
+                        {
+                            potentialEndIndex = tweetText.IndexOf(' ', usernameStartIndex);
+                        }
+                        
+                        if (potentialEndIndex == -1)
+                        {
+                            potentialEndIndex = tweetText.Length;
+                        }
+
+                        string username = tweetText[usernameStartIndex..potentialEndIndex];
+                        string linkUsername = $"https://twitter.com/{username[1..]}";
+                        tweetText = tweetText.Replace(username, linkUsername);
+                    }
+
                     List<Stream> pictureStreams = new List<Stream>();
 
                     // If it's a regular tweet (ie not a quote tweet)
