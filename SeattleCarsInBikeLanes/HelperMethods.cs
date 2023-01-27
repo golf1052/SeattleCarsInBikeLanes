@@ -224,7 +224,7 @@ namespace SeattleCarsInBikeLanes
 
             // Next check that this is a report tweet
             string[] splitFirstLine = splitTweet[0].Split(' ');
-            if (splitFirstLine.Length != 2 || !int.TryParse(splitFirstLine[0], out _) ||
+            if (splitFirstLine.Length >= 2 || !int.TryParse(splitFirstLine[0], out _) ||
                 !splitFirstLine[1].StartsWith("car", StringComparison.InvariantCultureIgnoreCase))
             {
                 return null;
