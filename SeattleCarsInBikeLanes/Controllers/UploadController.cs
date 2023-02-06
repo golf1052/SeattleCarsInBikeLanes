@@ -252,9 +252,12 @@ namespace SeattleCarsInBikeLanes.Controllers
 
         private async Task<ReverseSearchCrossStreetAddressResultItem?> ReverseSearchCrossStreet(Position position, MapsSearchClient mapsSearchClient)
         {
+            // Get top 3 results and find the closest cross street instead of the default because the API currently
+            // just returns 1 result and the 1st result it does return sometimes is not the closest cross street.
             ReverseSearchCrossStreetOptions options = new ReverseSearchCrossStreetOptions()
             {
                 Coordinates = new Azure.Core.GeoJson.GeoPosition(position.Longitude, position.Latitude),
+                Top = 3
             };
             var response = await mapsSearchClient.ReverseSearchCrossStreetAddressAsync(options);
             if (response == null || response.Value == null || response.Value.Addresses == null || response.Value.Addresses.Count == 0)
@@ -266,8 +269,13 @@ namespace SeattleCarsInBikeLanes.Controllers
                 }
                 return null;
             }
-
-            var item = response.Value.Addresses[0];
+            
+            var item = response.Value.Addresses.OrderBy(a =>
+            {
+                string[] splitAddressPosition = a.Position.Split(',');
+                Position addressPosition = new Position(double.Parse(splitAddressPosition[1]), double.Parse(splitAddressPosition[0]));
+                return position.DistanceTo(addressPosition);
+            }).First();
             return item;
         }
 
