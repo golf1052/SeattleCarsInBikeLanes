@@ -83,7 +83,7 @@ function deletePost(identifier) {
 function postMonthlyStats(link) {
     return fetch('api/AdminPage/PostMonthlyStats', {
         method: 'POST',
-        body: JSON.stringify({ postIdentifier: identifier }),
+        body: JSON.stringify({ postIdentifier: link }),
         headers: {
             'Content-Type': 'application/json'
         }
