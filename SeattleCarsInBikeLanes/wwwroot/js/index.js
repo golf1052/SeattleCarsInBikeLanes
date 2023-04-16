@@ -590,6 +590,12 @@ function initMap() {
         initMapControls();
         popup = new atlas.Popup();
 
+        map.controls.add(new atlas.control.StyleControl({
+            mapStyles: ['road', 'night', 'satellite_road_labels', 'grayscale_dark', 'grayscale_light', 'road_shaded_relief', 'high_contrast_dark', 'high_contrast_light']
+        }), {
+            position: 'top-left'
+        });
+
         // Only initially display items reported in the last month
         const now = luxon.DateTime.now();
         const lastMonth = now.minus({ months: 1 });
