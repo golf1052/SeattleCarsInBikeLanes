@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seattle Bike Lane Guesser</title>
+  <link rel="stylesheet" href="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3.0.0-preview.6/atlas.min.css" type="text/css" />
+  <script src="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3.0.0-preview.6/atlas.min.js"></script>
+  <link rel="stylesheet" href="css/azure-maps-layer-legend.min.css">
+  <script src="https://unpkg.com/@popperjs/core@2"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4"
+    crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.4/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="css/guess-game.css">
+</head>
+<body>
+  <div id="wrapper" class="wrapper" hidden>
+    <nav class="navbar bg-light navbar-expand sticky-top">
+      <div class="container-fluid">
+        <div class="collapse navbar-collapse" id="navContent">
+          <button class="btn btn-success" id="startGameButton" hidden>Start game</button>
+          <button class="btn btn-info" id="startRoundButton" hidden>Start round</button>
+          <button class="btn btn-warning" id="lockInButton" hidden>Lock in</button>
+          <span id="gameCodeText" class="navbar-text mx-1" hidden></span>
+          <button id="shareButton" type="button" class="btn btn-primary btn-small mx-1" hidden>
+            <i id="shareIcon" class="bi-share"></i>
+          </button>
+          <span id="roundText" class="navbar-text mx-1"></span>
+          <span id="roundTimeText" class="navbar-text mx-1"></span>
+        </div>
+        <button id="helpButton" type="button" class="btn btn-info btn-small mx-1">
+          <i class="bi-question" style="color: white;"></i>
+        </button>
+      </div>
+    </nav>
+    <div id="map"></div>
+  </div>
+  <div id="newGameContainer" class="container text-center">
+    <div id="alertDiv" class="alert alert-danger" role="alert" hidden></div>
+    <div class="row mb-3">
+      <h1>Seattle Bike Lane Guesser</h1>
+      <p>Guess the location of the car in the bike lane</p>
+    </div>
+    <div class="row mb-3">
+      <h2>Username</h2>
+      <input id="usernameInput" type="text" class="form-control">
+    </div>
+    <hr>
+    <div class="row mb-3">
+      <h2>Start new game</h2>
+      <input id="numberOfRoundsInput" type="number" class="form-control mb-3" placeholder="Number of rounds" min="1" max="50" required>
+      <button id="newGameButton" class="btn btn-success">New Game</button>
+    </div>
+    <hr>
+    <div class="row mb-3">
+      <h2>Join game</h2>
+      <input id="gameCodeInput" type="text" class="form-control mb-3" placeholder="9 digit game code" required>
+      <button id="joinGameButton" class="btn btn-primary">Join Game</button>
+    </div>
+  </div>
+  <div id="preRoundModal" class="modal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div id="preRoundModalBody" class="modal-body"></div>
+      </div>
+    </div>
+  </div>
+  <div id="endGameModal" class="modal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h1 id="endGameModalTitle" class="modal-title"></h1>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div id="endGameModalBody" class="modal-body"></div>
+      </div>
+    </div>
+  </div>
+  <div id="disconnectionModal" class="modal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h1 id="disconnectionModalTitle" class="modal-title"></h1>
+        </div>
+        <div id="disconnectionModalBody" class="modal-body"></div>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@7.0.4/dist/browser/signalr.min.js" integrity="sha256-+WZktkciE0d7OiYz/DFQLo+R5hNVpnEDV916E8De14s=" crossorigin="anonymous"></script>
+  <script src="js/azure-maps-layer-legend.min.js"></script>
+  <script src="js/guess-game-help.js"></script>
+  <script src="js/guess-game.js"></script>
+</body>
+</html>

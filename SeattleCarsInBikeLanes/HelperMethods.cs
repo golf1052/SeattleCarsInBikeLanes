@@ -418,5 +418,37 @@ namespace SeattleCarsInBikeLanes
                 return "cars";
             }
         }
+
+        public async Task<ReverseSearchCrossStreetAddressResultItem?> ReverseSearchCrossStreet(Position position, MapsSearchClient mapsSearchClient)
+        {
+            // Get top 3 results and find the closest cross street instead of the default because the API currently
+            // just returns 1 result and the 1st result it does return sometimes is not the closest cross street.
+            ReverseSearchCrossStreetOptions options = new ReverseSearchCrossStreetOptions()
+            {
+                Coordinates = new GeoPosition(position.Longitude, position.Latitude),
+                Top = 3
+            };
+            var response = await mapsSearchClient.ReverseSearchCrossStreetAddressAsync(options);
+            if (response == null || response.Value == null || response.Value.Addresses == null || response.Value.Addresses.Count == 0)
+            {
+                if (response != null)
+                {
+                    var rawResponse = response.GetRawResponse();
+                    if (Program.Logger != null)
+                    {
+                        Program.Logger.LogError($"Failed to reverse search cross street address. Is error: {rawResponse.IsError}. Status code: {rawResponse.Status}. Reason phrase: {rawResponse.ReasonPhrase}.");
+                    }
+                }
+                return null;
+            }
+
+            var item = response.Value.Addresses.OrderBy(a =>
+            {
+                string[] splitAddressPosition = a.Position.Split(',');
+                Position addressPosition = new Position(double.Parse(splitAddressPosition[1]), double.Parse(splitAddressPosition[0]));
+                return position.DistanceTo(addressPosition);
+            }).First();
+            return item;
+        }
     }
 }

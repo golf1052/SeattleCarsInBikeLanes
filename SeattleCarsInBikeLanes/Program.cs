@@ -16,6 +16,7 @@ using Microsoft.Azure.CognitiveServices.Vision.ComputerVision;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Cosmos.Spatial;
 using SeattleCarsInBikeLanes.Database;
+using SeattleCarsInBikeLanes.GuessGame;
 using SeattleCarsInBikeLanes.Models;
 using SeattleCarsInBikeLanes.Models.TypeConverters;
 using SeattleCarsInBikeLanes.Providers;
@@ -24,6 +25,8 @@ namespace SeattleCarsInBikeLanes
 {
     public class Program
     {
+        public static ILogger? Logger = null;
+
         public static void Main(string[] args)
         {
             MagickNET.Initialize();
@@ -48,6 +51,7 @@ namespace SeattleCarsInBikeLanes
             });
 
             builder.Services.AddControllers();
+            builder.Services.AddSignalR();
 
             builder.Services.AddAuthentication(BasicAuthenticationDefaults.AuthenticationScheme)
                 .AddBasic(options =>
@@ -215,8 +219,10 @@ namespace SeattleCarsInBikeLanes
                     c.GetRequiredService<HttpClient>(),
                     c.GetRequiredService<SecretClient>());
             });
+            services.AddSingleton<GuessGameManager>();
 
             var app = builder.Build();
+            Logger = app.Logger;
 
             using (var serviceScope = app.Services.CreateScope())
             {
@@ -242,6 +248,8 @@ namespace SeattleCarsInBikeLanes
             app.UseAuthorization();
 
             app.MapControllers();
+
+            app.MapHub<GuessGameHub>("/GuessGameHub");
 
             app.Run();
         }

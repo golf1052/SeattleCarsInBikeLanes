@@ -1,0 +1,30 @@
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#map {
+    flex: 1 1 auto;
+}
+
+.bottom-right > .atlas-legend-control-container {
+    max-width: none !important;
+    max-height: none !important;
+}
+
+.bottom-right .atlas-layer-legend-card {
+    max-width: none !important;
+    max-height: none !important;
+}
+
+.bottom-right > .atlas-legend-control-container, .top-left > .atlas-legend-control-container {
+    border-color: cornflowerblue;
+    border-width: medium;
+    border-style: solid;
+}

@@ -25,6 +25,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\MastodonAPI\golf1052.Mastodon\golf1052.Mastodon.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="exiftool\exiftool.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
