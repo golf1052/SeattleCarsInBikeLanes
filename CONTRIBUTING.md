@@ -45,6 +45,12 @@ This token pair lasts forever or until it is revoked.
 2. [GET oauth/authorize](https://developer.twitter.com/en/docs/authentication/api-reference/authorize). Login with Twitter account
 3. [POST oauth/access_token](https://developer.twitter.com/en/docs/authentication/api-reference/access_token). `oauth_token` is from step 1. `oauth_verifier` is PIN returned from step 2.
 
+### Running Profiler in Visual Studio
+
+1. Ensure VSStandardCollectorService150 (Visual Studio Standard Collector Service 150) service is running
+2. In Program.cs update the AuthorityHost URL to use the tenant ID instead of common
+3. Finally exclude all credential types except for InteractiveBrowserCredentials. That must be specifically included. 
+
 ## Useful Links
 
 - [Azure Maps Samples](https://samples.azuremaps.com/)

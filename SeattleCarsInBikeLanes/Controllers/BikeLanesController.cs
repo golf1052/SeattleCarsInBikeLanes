@@ -1,7 +1,6 @@
 ﻿using System.Net;
-using LinqToTwitter;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json.Linq;
 
 namespace SeattleCarsInBikeLanes.Controllers
@@ -14,10 +13,13 @@ namespace SeattleCarsInBikeLanes.Controllers
         private const string MultiUseTrailsUrl = "https://gisrevprxy.seattle.gov/arcgis/rest/services/SDOT_EXT/BikeMap/MapServer/19/query";
 
         private readonly HttpClient httpClient;
+        private readonly IMemoryCache cache;
 
-        public BikeLanesController(HttpClient httpClient)
+        public BikeLanesController(HttpClient httpClient,
+            IMemoryCache cache)
         {
             this.httpClient = httpClient;
+            this.cache = cache;
         }
 
         [HttpGet]
@@ -25,11 +27,21 @@ namespace SeattleCarsInBikeLanes.Controllers
         {
             if (type == "bikelanes")
             {
-                return (await GetAllGeometry(ExistingBikeLaneFacilitiesUrl)).ToString(Newtonsoft.Json.Formatting.None);
+                var cachedValue = await cache.GetOrCreateAsync(type, async cacheEntry =>
+                {
+                    cacheEntry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1);
+                    return (await GetAllGeometry(ExistingBikeLaneFacilitiesUrl)).ToString(Newtonsoft.Json.Formatting.None);
+                });
+                return cachedValue!;
             }
             else if (type == "trails")
             {
-                return (await GetAllGeometry(MultiUseTrailsUrl)).ToString(Newtonsoft.Json.Formatting.None);
+                var cachedValue = await cache.GetOrCreateAsync(type, async cacheEntry =>
+                {
+                    cacheEntry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1);
+                    return (await GetAllGeometry(MultiUseTrailsUrl)).ToString(Newtonsoft.Json.Formatting.None);
+                });
+                return cachedValue!;
             }
             else
             {

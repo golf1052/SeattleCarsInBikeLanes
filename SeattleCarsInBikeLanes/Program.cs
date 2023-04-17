@@ -40,6 +40,8 @@ namespace SeattleCarsInBikeLanes
             // Add Application Insights (required for App Service logging)
             builder.Services.AddApplicationInsightsTelemetry();
 
+            builder.Services.AddMemoryCache();
+
             builder.Services.AddCors(options =>
             {
                 options.AddDefaultPolicy(policy =>
