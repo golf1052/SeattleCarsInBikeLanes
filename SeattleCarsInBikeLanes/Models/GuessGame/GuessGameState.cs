@@ -213,6 +213,7 @@ namespace SeattleCarsInBikeLanes.Models.GuessGame
                 throw new Exception("Game must be started before round can be ended.");
             }
 
+            LockIns.Clear();
             CurrentRoundEndTime = null;
             var endRoundInfo = CalculateRoundScores();
             await Hub.Clients.Group(Code).SendAsync("EndRound", endRoundInfo);
