@@ -668,7 +668,10 @@ namespace SeattleCarsInBikeLanes.Controllers
             List<ReportedItem> mostCars = await reportedItemsDatabase.GetMostCars(startOfLastMonth, endOfLastMonth);
             if (mostCars.Count > 1)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, $"{mostCars.Count} reports with {mostCars[0].NumberOfCars} cars.");
+                if (mostCars[0].NumberOfCars <= 2)
+                {
+                    return StatusCode((int)HttpStatusCode.InternalServerError, $"{mostCars.Count} reports with {mostCars[0].NumberOfCars} cars.");
+                }
             }
 
             List<ReportedItem>? lastMonthItems = await reportedItemsDatabase.SearchItems(new Models.ReportedItemsSearchRequest()
@@ -760,7 +763,16 @@ namespace SeattleCarsInBikeLanes.Controllers
             try
             {
                 Tweet? firstTweet = await uploadTwitterContext.TweetAsync($"{introText}{mostCarsText} {mostCars[0].TwitterLink}");
-                Tweet? secondTweet = await uploadTwitterContext.ReplyAsync($"{mostRidiculousText} {mostRidiculousReportedItem.TwitterLink}", firstTweet!.ID!);
+                Tweet? latestTweet = firstTweet;
+                if (mostCars.Count > 1)
+                {
+                    for (int i = 1; i < mostCars.Count; i++)
+                    {
+                        var item = mostCars[i];
+                        latestTweet = await uploadTwitterContext.ReplyAsync($"{mostCarsText} {item.TwitterLink}", latestTweet!.ID!);
+                    }
+                }
+                Tweet? secondTweet = await uploadTwitterContext.ReplyAsync($"{mostRidiculousText} {mostRidiculousReportedItem.TwitterLink}", latestTweet!.ID!);
                 Tweet? thirdTweet = await uploadTwitterContext.ReplyAsync($"{worstIntersectionText}", secondTweet!.ID!);
             }
             catch (Exception ex)
@@ -773,7 +785,16 @@ namespace SeattleCarsInBikeLanes.Controllers
             try
             {
                 MastodonStatus firstToot = await mastodonClient.PublishStatus($"{introText}{mostCarsText} {mostCars[0].MastodonLink}");
-                MastodonStatus secondToot = await mastodonClient.PublishStatus($"{mostRidiculousText} {mostRidiculousReportedItem.MastodonLink}", inReplyToId: firstToot.Id);
+                MastodonStatus latestToot = firstToot;
+                if (mostCars.Count > 1)
+                {
+                    for (int i = 1; i < mostCars.Count; i++)
+                    {
+                        var item = mostCars[i];
+                        latestToot = await mastodonClient.PublishStatus($"{mostCarsText} {item.MastodonLink}", inReplyToId: latestToot.Id);
+                    }
+                }
+                MastodonStatus secondToot = await mastodonClient.PublishStatus($"{mostRidiculousText} {mostRidiculousReportedItem.MastodonLink}", inReplyToId: latestToot.Id);
                 MastodonStatus thirdToot = await mastodonClient.PublishStatus($"{worstIntersectionText}", inReplyToId: secondToot.Id);
             }
             catch (Exception ex)
