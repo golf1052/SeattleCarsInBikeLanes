@@ -38,10 +38,16 @@ function uploadTweet(metadata) {
     });
 }
 
-function postTweet(link) {
+function postTweet(link, body, images, tweetLink, quoteTweetLink) {
     return fetch('api/AdminPage/PostTweet', {
         method: 'POST',
-        body: JSON.stringify({ postUrl: link }),
+        body: JSON.stringify({
+            postUrl: link,
+            tweetBody: body,
+            tweetImages: images,
+            tweetLink: tweetLink,
+            quoteTweetLink: quoteTweetLink
+        }),
         headers: {
             'Content-Type': 'application/json'
         }

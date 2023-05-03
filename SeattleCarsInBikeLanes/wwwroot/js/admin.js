@@ -127,6 +127,14 @@ function createDesktopCard(metadata) {
                 }
             }
 
+            if (!metadata.twitterSubmittedBy) {
+                metadata.twitterSubmittedBy = 'Submission';
+            }
+            
+            if (!metadata.mastodonSubmittedBy) {
+                metadata.mastodonSubmittedBy = 'Submission';
+            }
+
             uploadTweet(metadata)
             .then(() => {
                 document.getElementById(metadata.photoId).remove();
@@ -180,6 +188,26 @@ document.getElementById('postLinkButton').addEventListener('click', function(eve
     .catch(error => {
         displayError(error.message);
         changeLoadingButtonToRegularButton(event.target, 'Post');
+    });
+});
+
+document.getElementById('postTweetButton').addEventListener('click', function(event) {
+    changeButtonToLoadingButton(event.target, 'Posting...');
+    const tweetTextArea = document.getElementById('tweetTextArea');
+    const tweetImagesTextArea = document.getElementById('tweetImagesTextArea');
+    const postTweetInput = document.getElementById('postTweetInput');
+    const quoteTweetInput = document.getElementById('quoteTweetInput');
+    postTweet('', tweetTextArea.value, tweetImagesTextArea.value, postTweetInput.value, quoteTweetInput.value)
+    .then(() => {
+        tweetTextArea.value = '';
+        tweetImagesTextArea.value = '';
+        postTweetInput.value = '';
+        quoteTweetInput.value = '';
+        changeLoadingButtonToRegularButton(event.target, 'Post tweet');
+    })
+    .catch(error => {
+        displayError(error.message);
+        changeLoadingButtonToRegularButton(event.target, 'Post tweet');
     });
 });
 

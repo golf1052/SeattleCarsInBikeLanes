@@ -242,224 +242,130 @@ namespace SeattleCarsInBikeLanes.Controllers
         [HttpPost("/api/AdminPage/PostTweet")]
         public async Task<IActionResult> PostTweet([FromBody] PostTweetRequest request)
         {
-            if (string.IsNullOrWhiteSpace(request.PostUrl))
+            if (string.IsNullOrWhiteSpace(request.PostUrl) &&
+                string.IsNullOrWhiteSpace(request.TweetBody) && string.IsNullOrWhiteSpace(request.TweetImages) && string.IsNullOrWhiteSpace(request.TweetLink))
             {
-                return BadRequest("Post URL is required.");
+                return BadRequest("Post URL or tweet body, tweet images, and tweet link is required.");
             }
 
             MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
 
-            if (request.PostUrl.Contains("twitter.com"))
+            if (!string.IsNullOrWhiteSpace(request.TweetBody) && !string.IsNullOrWhiteSpace(request.TweetImages) && !string.IsNullOrWhiteSpace(request.TweetLink))
             {
-                Uri postUri = new Uri(request.PostUrl);
-                if (ulong.TryParse(postUri.Segments.Last(), out ulong tweetIdNumber))
+                string tweetText = helperMethods.FixTweetText(request.TweetBody);
+                List<ReportedItem>? reportedItems = await helperMethods.TextToReportedItems(tweetText, mapsSearchClient);
+                if (reportedItems == null)
                 {
-                    TweetQuery? tweetQuery = await GetTweet(tweetIdNumber);
-                    if (tweetQuery == null || tweetQuery.Tweets == null || tweetQuery.Tweets.Count == 0)
+                    return BadRequest($"Couldn't find any reported items in tweet text.");
+                }
+
+                foreach (var reportedItem in reportedItems)
+                {
+                    reportedItem.CreatedAt = DateTime.UtcNow; // It's not actually now but we can't get the real time from the tweet.
+                    reportedItem.TwitterLink = request.TweetLink;
+                }
+
+                // If attributed to a Twitter user convert the @ mention to a link instead so there's proper attribution on Mastodon
+                const string SubmittedBySearchText = "Submitted by @";
+                if (tweetText.Contains(SubmittedBySearchText))
+                {
+                    int usernameStartIndex = tweetText.IndexOf(SubmittedBySearchText) + SubmittedBySearchText.Length - 1;
+                    int potentialEndIndex = tweetText.IndexOf('\n', usernameStartIndex);
+                    if (potentialEndIndex == -1)
                     {
-                        return NotFound($"Could not find tweet {request.PostUrl}");
+                        potentialEndIndex = tweetText.IndexOf(' ', usernameStartIndex);
                     }
 
-                    Tweet tweet = tweetQuery.Tweets[0];
-                    if (string.IsNullOrWhiteSpace(tweet.Text))
+                    if (potentialEndIndex == -1)
                     {
-                        return BadRequest($"Tweet has no text. {request.PostUrl} with text {tweet.Text}");
+                        potentialEndIndex = tweetText.Length;
                     }
 
-                    string tweetText = helperMethods.FixTweetText(tweet.Text);
-                    List<ReportedItem>? reportedItems = await helperMethods.TextToReportedItems(tweetText, mapsSearchClient);
-                    if (reportedItems == null)
-                    {
-                        return BadRequest($"Couldn't find any reported items in tweet text. {request.PostUrl} with text {tweet.Text}");
-                    }
-                    
-                    foreach (var reportedItem in reportedItems)
-                    {
-                        reportedItem.CreatedAt = tweet.CreatedAt!.Value;
-                        reportedItem.TwitterLink = request.PostUrl;
-                    }
+                    string username = tweetText[usernameStartIndex..potentialEndIndex];
+                    string linkUsername = $"https://twitter.com/{username[1..]}";
+                    tweetText = tweetText.Replace(username, linkUsername);
+                }
 
-                    // If attributed to a Twitter user convert the @ mention to a link instead so there's proper attribution on Mastodon
-                    const string SubmittedBySearchText = "Submitted by @";
-                    if (tweetText.Contains(SubmittedBySearchText))
+                if (!string.IsNullOrWhiteSpace(request.QuoteTweetLink))
+                {
+                    tweetText += $"\n{request.QuoteTweetLink}";
+                }
+
+                List<Stream> pictureStreams = new List<Stream>();
+                if (!string.IsNullOrWhiteSpace(request.TweetImages))
+                {
+                    string[] splitTweetImages = request.TweetImages.Split('\n');
+                    foreach (string imageLink in splitTweetImages)
                     {
-                        int usernameStartIndex = tweetText.IndexOf(SubmittedBySearchText) + SubmittedBySearchText.Length - 1;
-                        int potentialEndIndex = tweetText.IndexOf('\n', usernameStartIndex);
-                        if (potentialEndIndex == -1)
+                        Stream? pictureStream = await helperMethods.DownloadImage(imageLink, httpClient);
+                        if (pictureStream == null)
                         {
-                            potentialEndIndex = tweetText.IndexOf(' ', usernameStartIndex);
-                        }
-                        
-                        if (potentialEndIndex == -1)
-                        {
-                            potentialEndIndex = tweetText.Length;
+                            return BadRequest($"Couldn't get stream from image link {imageLink}");
                         }
 
-                        string username = tweetText[usernameStartIndex..potentialEndIndex];
-                        string linkUsername = $"https://twitter.com/{username[1..]}";
-                        tweetText = tweetText.Replace(username, linkUsername);
+                        pictureStreams.Add(pictureStream);
                     }
+                }
 
-                    List<Stream> pictureStreams = new List<Stream>();
+                if (pictureStreams.Count == 0)
+                {
+                    return BadRequest($"No picture streams for tweet.");
+                }
 
-                    // If it's a regular tweet (ie not a quote tweet)
-                    if (tweet.ReferencedTweets == null)
-                    {
-                        try
-                        {
-                            pictureStreams = await GetPhotosFromRegularTweet(tweet, tweetQuery);
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.LogError(ex, null);
-                            return BadRequest(ex.Message);
-                        }
-                    }
-                    // This gets images in quote tweets
-                    else if (tweet.ReferencedTweets != null)
-                    {
-                        if (tweet.ReferencedTweets.Count == 1)
-                        {
-                            TweetReference tweetRef = tweet.ReferencedTweets[0];
-                            if ("quoted" == tweetRef.Type)
-                            {
-                                TweetQuery? quotedTweet = await helperMethods.GetQuoteTweet(tweetRef.ID!, uploadTwitterContext);
-                                if (quotedTweet != null)
-                                {
-                                    if (quotedTweet.Includes != null)
-                                    {
-                                        if (quotedTweet.Includes.Media != null)
-                                        {
-                                            foreach (var media in quotedTweet.Includes.Media)
-                                            {
-                                                if (media.Type == TweetMediaType.Photo)
-                                                {
-                                                    tweetQuery.Includes!.Media!.Add(media);
-                                                }
-                                            }
-                                        }
-                                        
-                                        if (quotedTweet.Includes.Users != null && quotedTweet.Includes.Users.Count > 0)
-                                        {
-                                            // If this is a quote tweet try to include a link to the quoted tweet for proper attribution.
-                                            tweetText += $"\nhttps://twitter.com/{quotedTweet.Includes.Users[0].Username}/status/{tweetRef.ID}";
-                                        }
-                                    }
+                // First upload the pictures to imgur
+                await UploadImagesToImgur(reportedItems, pictureStreams);
 
-                                    Tweet? includesQuotedTweet = tweetQuery.Includes!.Tweets!.FirstOrDefault(t => t.ID == tweetRef.ID);
-                                    if (includesQuotedTweet != null)
-                                    {
-                                        if (includesQuotedTweet.Attachments != null && includesQuotedTweet.Attachments.MediaKeys != null &&
-                                            includesQuotedTweet.Attachments.MediaKeys.Count > 0)
-                                        {
-                                            foreach (var mediaKey in includesQuotedTweet.Attachments.MediaKeys)
-                                            {
-                                                string? quotedTweetPictureUrl = helperMethods.GetUrlForMediaKey(mediaKey, tweetQuery.Includes.Media);
-                                                if (quotedTweetPictureUrl != null)
-                                                {
-                                                    var stream = await helperMethods.DownloadImage(quotedTweetPictureUrl, httpClient);
-                                                    if (stream == null)
-                                                    {
-                                                        helperMethods.DisposePictureStreams(pictureStreams);
-                                                        return BadRequest($"Couldn't download picture with media key {mediaKey}. Id {tweet.ID} with text {tweet.Text}");
-                                                    }
-                                                    pictureStreams.Add(stream);
-                                                }
-                                            }
-                                        }
+                List<string> attachmentIds = new List<string>();
 
-                                        // In case the quoted tweet only has a video or gif instead of pictures.
-                                        if (pictureStreams.Count == 0)
-                                        {
-                                            try
-                                            {
-                                                pictureStreams = await GetPhotosFromRegularTweet(tweet, tweetQuery);
-                                            }
-                                            catch (Exception ex)
-                                            {
-                                                logger.LogError(ex, null);
-                                                return BadRequest(ex.Message);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        else if (tweet.ReferencedTweets.Count > 1)
-                        {
-                            return BadRequest($"Number of referenced tweets is greater than 1. Id {tweet.ID} with text {tweet.Text}");
-                        }
-                    }
-
-                    if (pictureStreams.Count == 0)
-                    {
-                        return BadRequest($"No picture streams for tweet. Id {tweet.ID} with text {tweet.Text}");
-                    }
-
-                    if (reportedItems.Count > 1 && pictureStreams.Count != reportedItems.Count)
-                    {
-                        helperMethods.DisposePictureStreams(pictureStreams);
-                        return BadRequest($"Skipping transfer of tweet because the number of reported items is greater " +
-                            $"than 1 but the number of pictures doesn't match the number of reported items. " +
-                            $"Reported items: {reportedItems.Count}. Pictures: {pictureStreams.Count}." +
-                            $"Id {tweet.ID} with text {tweet.Text}");
-                    }
-
-                    // First upload the pictures to imgur
-                    await UploadImagesToImgur(reportedItems, pictureStreams);
-
-                    List<string> attachmentIds = new List<string>();
-
-                    // Next upload the images to Mastodon
-                    foreach (var stream in pictureStreams)
-                    {
-                        try
-                        {
-                            MastodonAttachment? attachment = await mastodonClient.UploadMedia(stream);
-                            attachmentIds.Add(attachment.Id);
-                            string attachmentId = attachment.Id;
-                            do
-                            {
-                                attachment = await mastodonClient.GetAttachment(attachmentId);
-                                await Task.Delay(500);
-                            }
-                            while (attachment == null);
-                        }
-                        catch (Exception ex)
-                        {
-                            throw new ArgumentException($"Failed to upload image to Mastodon. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Id {tweet.ID} with text {tweet.Text}", ex);
-                        }
-                    }
-
-                    // Finally post the status to Mastodon with the images
+                // Next upload the images to Mastodon
+                foreach (var stream in pictureStreams)
+                {
                     try
                     {
-                        MastodonStatus status = await mastodonClient.PublishStatus(tweetText, attachmentIds, null, visibility: "unlisted");
-                        helperMethods.DisposePictureStreams(pictureStreams);
-                        foreach (var reportedItem in reportedItems)
+                        MastodonAttachment? attachment = await mastodonClient.UploadMedia(stream);
+                        attachmentIds.Add(attachment.Id);
+                        string attachmentId = attachment.Id;
+                        do
                         {
-                            reportedItem.MastodonLink = status.Url;
-                            bool addedItem = await reportedItemsDatabase.AddReportedItem(reportedItem);
-                            if (!addedItem)
-                            {
-                                logger.LogWarning($"Failed to update DB. DB ID {reportedItem.TweetId}. Imgur url: {string.Join(' ', reportedItem.ImgurUrls)}");
-                            }
-
-                            await feedProvider.AddReportedItemToFeed(reportedItem);
+                            attachment = await mastodonClient.GetAttachment(attachmentId);
+                            await Task.Delay(500);
                         }
+                        while (attachment == null);
                     }
                     catch (Exception ex)
                     {
-                        helperMethods.DisposePictureStreams(pictureStreams);
-                        string error = $"Failed to publish status. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Attachment ids: {string.Join(' ', attachmentIds)} Id {tweet.ID} with text {tweet.Text}";
-                        logger.LogError(ex, error);
-                        return StatusCode((int)HttpStatusCode.InternalServerError, error);
+                        throw new ArgumentException($"Failed to upload image to Mastodon. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Text {request.TweetBody}", ex);
                     }
                 }
-                else
+
+                // Finally post the status to Mastodon with the images
+                try
                 {
-                    return BadRequest($"Could not find tweet id in link. {request.PostUrl}");
+                    MastodonStatus status = await mastodonClient.PublishStatus(tweetText, attachmentIds, null, visibility: "unlisted");
+                    helperMethods.DisposePictureStreams(pictureStreams);
+                    foreach (var reportedItem in reportedItems)
+                    {
+                        reportedItem.MastodonLink = status.Url;
+                        bool addedItem = await reportedItemsDatabase.AddReportedItem(reportedItem);
+                        if (!addedItem)
+                        {
+                            logger.LogWarning($"Failed to update DB. DB ID {reportedItem.TweetId}. Imgur url: {string.Join(' ', reportedItem.ImgurUrls)}");
+                        }
+
+                        await feedProvider.AddReportedItemToFeed(reportedItem);
+                    }
                 }
+                catch (Exception ex)
+                {
+                    helperMethods.DisposePictureStreams(pictureStreams);
+                    string error = $"Failed to publish status. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Attachment ids: {string.Join(' ', attachmentIds)} Text {request.TweetBody}";
+                    logger.LogError(ex, error);
+                    return StatusCode((int)HttpStatusCode.InternalServerError, error);
+                }
+            }
+            else if (request.PostUrl.Contains("twitter.com"))
+            {
+                throw new Exception("Reading tweets from Twitter no longer works. Please copy/paste the tweet body, image links, and tweet link into the appropriate locations.");
             }
             else if (request.PostUrl.Contains("social.ridetrans.it"))
             {
@@ -1008,6 +914,10 @@ namespace SeattleCarsInBikeLanes.Controllers
         public class PostTweetRequest
         {
             public string PostUrl { get; set; } = string.Empty;
+            public string TweetBody { get; set; } = string.Empty;
+            public string TweetImages { get; set; } = string.Empty;
+            public string TweetLink { get; set; } = string.Empty;
+            public string QuoteTweetLink { get; set; } = string.Empty;
         }
 
         public class DeletePostRequest

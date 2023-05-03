@@ -75,6 +75,10 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
 
             JObject responseObject = JObject.Parse(await response.Content.ReadAsStringAsync());
+            if (responseObject["error"] != null)
+            {
+                throw new Exception($"Error when fetching object ids for {baseUrl} {responseObject["error"]!["message"]}");
+            }
             return responseObject["objectIds"]!.ToObject<List<int>>()!;
         }
 
