@@ -375,7 +375,7 @@ function initFilterLegendHtml() {
 function initUpload1LegendHtml() {
     document.getElementById('photoFileInput').value = '';
     const form = document.getElementById('uploadForm1');
-    form.addEventListener('submit', function(event) {
+    const upload1Event = function(event) {
         event.preventDefault();
         const button = event.submitter;
         changeButtonToLoadingButton(button, 'Processing...');
@@ -384,6 +384,7 @@ function initUpload1LegendHtml() {
         if (files.length === 1 && files[0][1].size > 0) {
             uploadImage(files[0][1])
             .then(response => {
+                form.removeEventListener('submit', upload1Event);
                 form.setAttribute('hidden', '');
                 const body = document.getElementsByTagName('body')[0];
                 body.appendChild(form);
@@ -406,7 +407,8 @@ function initUpload1LegendHtml() {
             document.getElementById('uploadForm1AlertDiv').append('Must select a picture before uploading.');
             changeLoadingButtonToRegularButton(button, 'Process');
         }
-    });
+    };
+    form.addEventListener('submit', upload1Event);
     form.removeAttribute('hidden');
     return form;
 }
@@ -414,10 +416,15 @@ function initUpload1LegendHtml() {
 function initUpload2LegendHtml(metadata) {
     document.getElementById('photo').src = metadata.uri;
     const dateTime = luxon.DateTime.fromISO(metadata.photoDateTime);
+    document.getElementById('photoNumberOfCarsInput').value = '';
     document.getElementById('photoDateInput').value = dateTime.toISODate();
     document.getElementById('photoTimeInput').value = dateTime.toLocaleString(luxon.DateTime.TIME_24_SIMPLE);
     document.getElementById('photoLocationInput').value = metadata.photoCrossStreet;
     document.getElementById('photoGPSInput').value = `${metadata.photoLatitude}, ${metadata.photoLongitude}`;
+    document.getElementById('twitterSubmittedByInput').value = '';
+    document.getElementById('mastodonSubmittedByInput').value = '';
+    document.getElementById('attributeDiv').setAttribute('hidden', '');
+    document.getElementById('attributeCheckbox').checked = false;
     if ((localStorage.getItem('twitterAccessToken') && loggedInTwitterUsername) || (localStorage.getItem('mastodonAccessToken') && loggedInMastodonFullUsername)) {
         if (localStorage.getItem('twitterAccessToken') && loggedInTwitterUsername) {
             document.getElementById('twitterSubmittedByInput').value = 'Submission';
@@ -470,7 +477,7 @@ function initUpload2LegendHtml(metadata) {
     });
 
     const form = document.getElementById('uploadForm2');
-    form.addEventListener('submit', function(event) {
+    const upload2Event = function(event) {
         event.preventDefault();
         const button = event.submitter;
         changeButtonToLoadingButton(button, 'Uploading...');
@@ -531,6 +538,7 @@ function initUpload2LegendHtml(metadata) {
                 zoom: 11
             });
 
+            form.removeEventListener('submit', upload2Event);
             form.setAttribute('hidden', '');
             const body = document.getElementsByTagName('body')[0];
             body.appendChild(form);
@@ -543,7 +551,8 @@ function initUpload2LegendHtml(metadata) {
                 }]
             });
         });
-    });
+    };
+    form.addEventListener('submit', upload2Event);
     form.removeAttribute('hidden');
     return form;
 }
