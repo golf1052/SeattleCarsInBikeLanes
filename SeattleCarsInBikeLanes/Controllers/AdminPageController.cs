@@ -170,7 +170,16 @@ namespace SeattleCarsInBikeLanes.Controllers
             var photoDownload = await photoBlobClient.DownloadContentAsync();
             var photoBytes = photoDownload.Value.Content.ToArray();
 
-            var imgurUpload = await imgurImageEndpoint.UploadImageAsync(new MemoryStream(photoBytes));
+            IImage? imgurUpload = null;
+            try
+            {
+                imgurUpload = await imgurImageEndpoint.UploadImageAsync(new MemoryStream(photoBytes));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"Failed to upload image to Imgur for {metadata.PhotoId}.");
+                throw;
+            }
 
             Media? twitterMedia = await uploadTwitterContext.UploadMediaAsync(photoBytes, "image/jpg", "tweet_image");
             if (twitterMedia == null)
