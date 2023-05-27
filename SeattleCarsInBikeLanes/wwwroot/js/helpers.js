@@ -43,10 +43,14 @@ function searchReportedItems(searchParams) {
     });
 }
 
-function uploadImage(file) {
+function uploadImage(files) {
+    const data = new FormData();
+    for (const file of files) {
+        data.append('files', file);
+    }
     return fetch(`api/Upload/Initial`, {
         method: 'POST',
-        body: file
+        body: data
     })
     .then(response => {
         if (!response.ok) {

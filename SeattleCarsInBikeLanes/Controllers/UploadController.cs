@@ -1,6 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Net;
-using System.Security.Cryptography;
 using System.Text;
 using Azure.Maps.Search;
 using Azure.Maps.Search.Models;
@@ -55,34 +53,69 @@ namespace SeattleCarsInBikeLanes.Controllers
         }
 
         [HttpPost("Initial")]
-        public async Task<IActionResult> UploadPhoto()
+        public async Task<IActionResult> UploadPhoto([FromForm]List<IFormFile> files)
         {
-            if (Request.ContentLength == 0)
+            if (Request.ContentLength == 0 || files == null || files.Count == 0)
             {
-                return BadRequest("Error: No photo uploaded.");
+                string error = "Error: No photo uploaded.";
+                logger.LogError(error);
+                return BadRequest(error);
             }
 
+            if (files.Count > 4)
+            {
+                string error = "Cannot upload more than 4 images on a report";
+                logger.LogError(error);
+                return BadRequest(error);
+            }
+
+            string submissionId = helperMethods.GetRandomFileName();
+
+            List<InitialPhotoUploadWithSasUriMetadata> metadata = new List<InitialPhotoUploadWithSasUriMetadata>();
+            Dictionary<int, string> exceptions = new Dictionary<int, string>();
+            for (int i = 0; i < files.Count; i++)
+            {
+                IFormFile? file = files[i];
+                try
+                {
+                    InitialPhotoUploadWithSasUriMetadata data = await ProcessInitialUpload(file, submissionId, i);
+                    metadata.Add(data);
+                }
+                catch (Exception ex)
+                {
+                    exceptions.Add(i, ex.Message);
+                }
+            }
+
+            if (exceptions.Count > 0)
+            {
+                // return a bad request with a string containing each exception and the photo number on a new line
+                StringBuilder requestBuilder = new StringBuilder();
+                foreach (var exception in exceptions)
+                {
+                    requestBuilder.AppendLine($"Photo {exception.Key + 1}: {exception.Value}");
+                }
+                string requestString = requestBuilder.ToString();
+                logger.LogError(requestString);
+                return BadRequest(requestString);
+            }
+
+            return Ok(metadata);
+        }
+
+        private async Task<InitialPhotoUploadWithSasUriMetadata> ProcessInitialUpload(IFormFile file, string submissionId, int index)
+        {
             string tempFile = Path.GetTempFileName();
             try
             {
                 using var fileStream1 = System.IO.File.OpenWrite(tempFile);
-                await Request.BodyReader.CopyToAsync(fileStream1);
+                await file.CopyToAsync(fileStream1);
                 fileStream1.Dispose();
                 DateTime? photoDate = GetPhotoDate(tempFile);
-                if (photoDate == null)
-                {
-                    return BadRequest("Error: Photo does not contain a date taken.");
-                }
-
                 Position? photoLocation = GetPhotoLocation(tempFile);
-                if (photoLocation == null)
+                if (photoLocation != null && !SeattleBoundingBox.Contains(photoLocation))
                 {
-                    return BadRequest("Error: Photo does not contain a location.");
-                }
-
-                if (!SeattleBoundingBox.Contains(photoLocation))
-                {
-                    return BadRequest("Error: Photo not taken in Seattle.");
+                    throw new Exception("Error: Photo not taken in Seattle.");
                 }
 
                 // Ensure image is jpeg and is small enough to upload to Computer Vision
@@ -114,33 +147,45 @@ namespace SeattleCarsInBikeLanes.Controllers
 
                 if (imageAnalysisResults.Adult.IsAdultContent || imageAnalysisResults.Adult.IsGoryContent || imageAnalysisResults.Adult.IsRacyContent)
                 {
-                    return BadRequest("Error: Photo does not pass content check.");
+                    throw new Exception("Error: Photo does not pass content check.");
                 }
 
-                StringBuilder randomFileNameBuilder = new StringBuilder();
-                for (int i = 0; i < 32; i++)
+                string randomFileName = helperMethods.GetRandomFileName();
+
+                ReverseSearchCrossStreetAddressResultItem? crossStreetItem = null;
+                string? crossStreet = null;
+                if (photoLocation != null)
                 {
-                    // Create 32 character filename with chars between a-z.
-                    char randomChar = (char)RandomNumberGenerator.GetInt32(97, 123);
-                    randomFileNameBuilder.Append(randomChar);
+                    crossStreetItem = await helperMethods.ReverseSearchCrossStreet(photoLocation, mapsSearchClient);
+                    if (crossStreetItem == null)
+                    {
+                        throw new Exception("Error: Could not determine cross street.");
+                    }
+                    else
+                    {
+                        crossStreet = crossStreetItem.Address.StreetName;
+                    }
                 }
 
-                string randomFileName = randomFileNameBuilder.ToString();
-
-                var crossStreetItem = await helperMethods.ReverseSearchCrossStreet(photoLocation, mapsSearchClient);
-                if (crossStreetItem == null)
+                InitialPhotoUploadMetadata metadata;
+                if (photoDate != null && photoLocation != null && crossStreet != null)
                 {
-                    return StatusCode((int)HttpStatusCode.InternalServerError, "Error: Could not determine cross street.");
+                    metadata = new InitialPhotoUploadMetadata(randomFileName,
+                        submissionId,
+                        index,
+                        photoDate.Value,
+                        photoLocation.Latitude.ToString("#.#####"),
+                        photoLocation.Longitude.ToString("#.#####"),
+                        crossStreet,
+                        imageAnalysisResults.Tags.ToList());
                 }
-
-                string crossStreet = crossStreetItem.Address.StreetName;
-
-                InitialPhotoUploadMetadata metadata = new InitialPhotoUploadMetadata(randomFileName,
-                    photoDate.Value,
-                    photoLocation.Latitude.ToString("#.#####"),
-                    photoLocation.Longitude.ToString("#.#####"),
-                    crossStreet,
-                    imageAnalysisResults.Tags.ToList());
+                else
+                {
+                    metadata = new InitialPhotoUploadMetadata(randomFileName,
+                        submissionId,
+                        index,
+                        imageAnalysisResults.Tags.ToList());
+                }
 
                 BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");
                 using var fileStream3 = System.IO.File.OpenRead(tempFile);
@@ -151,12 +196,12 @@ namespace SeattleCarsInBikeLanes.Controllers
                 await metadataBlobClient.UploadAsync(new BinaryData(metadata));
 
                 Uri sasUri = await photoBlobClient.GenerateUserDelegationReadOnlySasUri(DateTimeOffset.UtcNow.AddMinutes(10));
-                return Ok(InitialPhotoUploadWithSasUriMetadata.FromMetadata(sasUri.ToString(), metadata));
+                return InitialPhotoUploadWithSasUriMetadata.FromMetadata(sasUri.ToString(), metadata);
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failure during photo upload");
-                return StatusCode((int)HttpStatusCode.InternalServerError, "Failure during photo upload.");
+                throw new Exception("Failure during photo upload.");
             }
             finally
             {
@@ -165,12 +210,58 @@ namespace SeattleCarsInBikeLanes.Controllers
         }
 
         [HttpPost("Finalize")]
-        public async Task FinalizeUpload([FromBody] FinalizedPhotoUploadMetadata metadata)
+        public async Task<IActionResult> FinalizeUpload([FromBody] List<FinalizedPhotoUploadMetadata> data)
         {
+            if (data.Count == 0)
+            {
+                string error = "Expected at least 1 metadata object";
+                logger.LogError(error);
+                return BadRequest(error);
+            }
+
+            FinalizedPhotoUploadMetadata metadata = data[0];
+            if (!metadata.PhotoDateTime.HasValue)
+            {
+                string error = "Please select the date and time the report happened.";
+                logger.LogError(error);
+                return BadRequest(error);
+            }
+            if (string.IsNullOrWhiteSpace(metadata.PhotoLatitude) || string.IsNullOrEmpty(metadata.PhotoLongitude))
+            {
+                string error = "Please select the location the report happened.";
+                logger.LogError(error);
+                return BadRequest(error);
+            }
+            Position photoLocation = new Position(double.Parse(metadata.PhotoLongitude!), double.Parse(metadata.PhotoLatitude!));
+            if (!SeattleBoundingBox.Contains(photoLocation))
+            {
+                string error = "Photo not taken in Seattle.";
+                logger.LogError(error);
+                return BadRequest(error);
+            }
+
+            if (string.IsNullOrWhiteSpace(metadata.PhotoCrossStreet))
+            {
+                ReverseSearchCrossStreetAddressResultItem? crossStreetItem = null;
+                crossStreetItem = await helperMethods.ReverseSearchCrossStreet(photoLocation, mapsSearchClient);
+                if (crossStreetItem == null)
+                {
+                    logger.LogWarning($"Couldn't find cross street for {metadata.PhotoLatitude}, {metadata.PhotoLongitude}");
+                }
+                else
+                {
+                    foreach (var d in data)
+                    {
+                        d.PhotoCrossStreet = crossStreetItem.Address.StreetName;
+                    }
+                }
+            }
+
             if (metadata.NumberOfCars == null || metadata.NumberOfCars < 1)
             {
-                Response.StatusCode = (int)HttpStatusCode.BadRequest;
-                return;
+                string error = "Number of cars must be at least 1.";
+                logger.LogError(error);
+                return BadRequest(error);
             }
 
             if (metadata.Attribute != null && metadata.Attribute.Value)
@@ -198,18 +289,25 @@ namespace SeattleCarsInBikeLanes.Controllers
                             {
                                 logger.LogWarning($"Metadata Twitter username dosen't match authenticated user." +
                                     $"Metadata username: {metadata.TwitterUsername}. Auth username: {twitterUser.Username}.");
-                                metadata.TwitterSubmittedBy = "Submission";
-                                metadata.Attribute = false;
-                                metadata.TwitterUsername = null;
+
+                                foreach (var d in data)
+                                {
+                                    d.TwitterSubmittedBy = "Submission";
+                                    d.Attribute = false;
+                                    d.TwitterUsername = null;
+                                }
                             }
                         }
                     }
                     catch (Exception ex)
                     {
                         logger.LogError(ex, "Failed to verify authenticated Twitter user.");
-                        metadata.TwitterSubmittedBy = "Submission";
-                        metadata.Attribute = false;
-                        metadata.TwitterUsername = null;
+                        foreach (var d in data)
+                        {
+                            d.TwitterSubmittedBy = "Submission";
+                            d.Attribute = false;
+                            d.TwitterUsername = null;
+                        }
                     }
                 }
 
@@ -223,31 +321,38 @@ namespace SeattleCarsInBikeLanes.Controllers
                     {
                         logger.LogWarning($"Metadata Mastodon username doesn't match authenticated user." +
                             $"Metadata username: {metadata.MastodonFullUsername}. Auth username: {mastodonUsername}.");
-                        metadata.MastodonSubmittedBy = "Submission";
-                        metadata.Attribute = false;
-                        metadata.MastodonUsername = null;
-                        metadata.MastodonFullUsername = null;
+                        foreach (var d in data)
+                        {
+                            d.MastodonSubmittedBy = "Submission";
+                            d.Attribute = false;
+                            d.MastodonUsername = null;
+                            d.MastodonFullUsername = null;
+                        }
                     }
                 }
             }
 
-            metadata.TwitterAccessToken = null;
-            metadata.MastodonAccessToken = null;
-            string randomFileName = metadata.PhotoId;
-            BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");
-            await photoBlobClient.Move($"{FinalizedUploadPrefix}{randomFileName}.jpeg");
+            foreach (var d in data)
+            {
+                d.TwitterAccessToken = null;
+                d.MastodonAccessToken = null;
 
-            BlobClient newMetadataBlobClient = blobContainerClient.GetBlobClient($"{FinalizedUploadPrefix}{randomFileName}.json");
-            await newMetadataBlobClient.UploadAsync(new BinaryData(metadata));
+                string randomFileName = d.PhotoId;
+                BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");
+                await photoBlobClient.Move($"{FinalizedUploadPrefix}{randomFileName}.jpeg");
 
-            BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.json");
-            await metadataBlobClient.DeleteAsync();
+                BlobClient newMetadataBlobClient = blobContainerClient.GetBlobClient($"{FinalizedUploadPrefix}{randomFileName}.json");
+                await newMetadataBlobClient.UploadAsync(new BinaryData(d));
+
+                BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.json");
+                await metadataBlobClient.DeleteAsync();
+            }
 
             // Ping me on Slack about the new submission
             await slackbotProvider.SendSlackMessage($"New submission. {metadata.NumberOfCars} {helperMethods.GetCarsString(metadata.NumberOfCars.Value)} " +
                 $"@ {metadata.PhotoCrossStreet} submitted {DateTime.Now:s}");
 
-            Response.StatusCode = (int)HttpStatusCode.NoContent;
+            return NoContent();
         }
 
         private DateTime? GetPhotoDate(string path)
@@ -346,7 +451,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             if (process.ExitCode != 0)
             {
                 // error
-                logger.LogInformation($"Could not get EXIF data for photo. Error: {errorOutput}");
+                logger.LogError($"Could not get EXIF data for photo. Error: {errorOutput}");
                 throw new Exception(errorOutput);
             }
             else
@@ -361,12 +466,16 @@ namespace SeattleCarsInBikeLanes.Controllers
             
             public InitialPhotoUploadWithSasUriMetadata(string uri,
                 string photoId,
+                string submissionId,
+                int photoNumber,
                 DateTime photoDateTime,
                 string photoLatitude,
                 string photoLongitude,
                 string photoCrossStreet,
                 List<ImageTag> tags) :
                 base(photoId,
+                    submissionId,
+                    photoNumber,
                     photoDateTime,
                     photoLatitude,
                     photoLongitude,
@@ -376,15 +485,44 @@ namespace SeattleCarsInBikeLanes.Controllers
                 Uri = uri;
             }
 
+            public InitialPhotoUploadWithSasUriMetadata(string uri,
+                string photoId,
+                string submissionId,
+                int photoNumber,
+                List<ImageTag> tags) :
+                base(photoId,
+                    submissionId,
+                    photoNumber,
+                    tags)
+            {
+                Uri = uri;
+            }
+
             public static InitialPhotoUploadWithSasUriMetadata FromMetadata(string uri, InitialPhotoUploadMetadata metadata)
             {
-                return new InitialPhotoUploadWithSasUriMetadata(uri,
-                    metadata.PhotoId,
-                    metadata.PhotoDateTime,
-                    metadata.PhotoLatitude,
-                    metadata.PhotoLongitude,
-                    metadata.PhotoCrossStreet,
-                    metadata.Tags);
+                if (metadata.PhotoDateTime.HasValue &&
+                    !string.IsNullOrWhiteSpace(metadata.PhotoLatitude) &&
+                    !string.IsNullOrWhiteSpace(metadata.PhotoLongitude) &&
+                    !string.IsNullOrWhiteSpace(metadata.PhotoCrossStreet))
+                {
+                    return new InitialPhotoUploadWithSasUriMetadata(uri,
+                        metadata.PhotoId,
+                        metadata.SubmissionId,
+                        metadata.PhotoNumber,
+                        metadata.PhotoDateTime.Value,
+                        metadata.PhotoLatitude,
+                        metadata.PhotoLongitude,
+                        metadata.PhotoCrossStreet,
+                        metadata.Tags);
+                }
+                else
+                {
+                    return new InitialPhotoUploadWithSasUriMetadata(uri,
+                        metadata.PhotoId,
+                        metadata.SubmissionId,
+                        metadata.PhotoNumber,
+                        metadata.Tags);
+                }
             }
         }
     }

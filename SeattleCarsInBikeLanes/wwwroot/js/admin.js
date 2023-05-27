@@ -6,7 +6,7 @@ function createElementWithClass(tagName, className) {
     return element;
 }
 
-function createTextInputRow(label, name, value) {
+function createTextInputRow(label, name, value, userSpecified) {
     const row = createElementWithClass('div', 'row');
     const labelDiv = createElementWithClass('div', 'col-auto');
     const labelElement = createElementWithClass('div', 'form-label');
@@ -18,6 +18,9 @@ function createTextInputRow(label, name, value) {
     const input = createElementWithClass('input', 'form-control form-control-sm');
     input.setAttribute('type', 'text');
     input.setAttribute('name', name);
+    if (userSpecified) {
+        input.style = 'color: red;';
+    }
     input.value = value;
     inputDiv.appendChild(input);
     row.appendChild(inputDiv);
@@ -31,15 +34,68 @@ function createSubmitButton(buttonClass, text) {
     return button;
 }
 
-function createDesktopCard(metadata) {
+function createPictureCarousel(key, metadatas) {
+    const div = createElementWithClass('div', 'carousel slide');
+    div.id = `carousel_${key}`;
+    const innerDiv = createElementWithClass('div', 'carousel-inner');
+    innerDiv.style = 'max-width: 25rem;';
+    metadatas.forEach((metadata, index) => {
+        const carouselItem = createElementWithClass('div', 'carousel-item');
+        if (index === 0) {
+            carouselItem.classList.add('active');
+        }
+        const img = createElementWithClass('img', 'd-block');
+        img.style = 'max-width: 25rem;';
+        img.src = metadata.uri;
+        carouselItem.appendChild(img);
+        innerDiv.appendChild(carouselItem);
+    });
+    div.appendChild(innerDiv);
+
+    // Prev button
+    const prevButton = createElementWithClass('button', 'carousel-control-prev');
+    prevButton.setAttribute('type', 'button');
+    prevButton.setAttribute('data-bs-target', `#carousel_${key}`);
+    prevButton.setAttribute('data-bs-slide', 'prev');
+    const prevIcon = createElementWithClass('span', 'carousel-control-prev-icon');
+    prevIcon.setAttribute('aria-hidden', 'true');
+    prevButton.appendChild(prevIcon);
+    const prevSpan = createElementWithClass('span', 'visually-hidden');
+    prevSpan.append('Previous');
+    prevButton.appendChild(prevSpan);
+    div.appendChild(prevButton);
+
+    // Next button
+    const nextButton = createElementWithClass('button', 'carousel-control-next');
+    nextButton.setAttribute('type', 'button');
+    nextButton.setAttribute('data-bs-target', `#carousel_${key}`);
+    nextButton.setAttribute('data-bs-slide', 'next');
+    const nextIcon = createElementWithClass('span', 'carousel-control-next-icon');
+    nextIcon.setAttribute('aria-hidden', 'true');
+    nextButton.appendChild(nextIcon);
+    const nextSpan = createElementWithClass('span', 'visually-hidden');
+    nextSpan.append('Next');
+    nextButton.appendChild(nextSpan);
+    div.appendChild(nextButton);
+
+    return div;
+}
+
+function createDesktopCard(key, metadatas) {
+    const metadata = metadatas[0];
     const dateTime = luxon.DateTime.fromISO(metadata.photoDateTime);
 
     const card = createElementWithClass('div', 'card');
     card.id = metadata.photoId;
     card.style = 'max-width: 25rem;';
 
-    const image = document.createElement('img');
-    image.src = metadata.uri;
+    let picture;
+    if (metadatas.length === 1) {
+        picture = document.createElement('img');
+        picture.src = metadata.uri;
+    } else {
+        picture = createPictureCarousel(key, metadatas);
+    }
     
     const cardBody = createElementWithClass('div', 'card-body');
 
@@ -73,6 +129,9 @@ function createDesktopCard(metadata) {
     const dateInput = createElementWithClass('input', 'form-control form-control-sm');
     dateInput.setAttribute('type', 'date');
     dateInput.setAttribute('name', 'date');
+    if (metadata.userSpecifiedDateTime) {
+        dateInput.style = 'color: red;';
+    }
     dateInput.value = dateTime.toISODate();
     dateInputDiv.appendChild(dateInput);
     dateRow.appendChild(dateInputDiv);
@@ -88,12 +147,15 @@ function createDesktopCard(metadata) {
     const timeInput = createElementWithClass('input', 'form-control form-control-sm');
     timeInput.setAttribute('type', 'time');
     timeInput.setAttribute('name', 'time');
+    if (metadata.userSpecifiedDateTime) {
+        timeInput.style = 'color: red;';
+    }
     timeInput.value = dateTime.toLocaleString(luxon.DateTime.TIME_24_SIMPLE);
     timeInputDiv.appendChild(timeInput);
     timeRow.appendChild(timeInputDiv);
 
-    const locationRow = createTextInputRow('Location:', 'location', metadata.photoCrossStreet);
-    const gpsRow = createTextInputRow('GPS:', 'gps', `${metadata.photoLatitude}, ${metadata.photoLongitude}`);
+    const locationRow = createTextInputRow('Location:', 'location', metadata.photoCrossStreet, metadata.userSpecifiedLocation);
+    const gpsRow = createTextInputRow('GPS:', 'gps', `${metadata.photoLatitude}, ${metadata.photoLongitude}`, metadata.userSpecifiedLocation);
     const twitterAttributionRow = createTextInputRow('Twitter Attribution:', 'twitterSubmittedBy', metadata.twitterSubmittedBy);
     const mastodonAttributionRow = createTextInputRow('Mastodon Attribution:', 'mastodonSubmittedBy', metadata.mastodonSubmittedBy);
 
@@ -135,7 +197,7 @@ function createDesktopCard(metadata) {
                 metadata.mastodonSubmittedBy = 'Submission';
             }
 
-            uploadTweet(metadata)
+            uploadTweet(metadatas)
             .then(() => {
                 document.getElementById(metadata.photoId).remove();
                 return displayPendingPhotos();
@@ -145,7 +207,7 @@ function createDesktopCard(metadata) {
             });
         } else if (submitButton.innerText === 'Delete') {
             changeButtonToLoadingButton(submitButton, 'Deleting...');
-            deletePendingPhoto(metadata)
+            deletePendingPhoto(metadatas)
             .then(() => {
                 document.getElementById(metadata.photoId).remove();
                 return displayPendingPhotos();
@@ -157,7 +219,7 @@ function createDesktopCard(metadata) {
     });
 
     cardBody.appendChild(form);
-    card.append(image, cardBody);
+    card.append(picture, cardBody);
     return card;
 }
 
@@ -231,12 +293,11 @@ function displayPendingPhotos() {
     if (cardsDiv.childElementCount === 0) {
         return getPendingPhotos()
         .then(response => {
-            if (response.length === 0) {
+            if (Object.keys(response).length === 0) {
                 cardsDiv.append('No pending reported items.');
             } else {
-                for (let i = 0; i < response.length; i++) {
-                    let metadata = response[i];
-                    let card = createDesktopCard(metadata);
+                for (const key in response) {
+                    const card = createDesktopCard(key, response[key]);
                     cardsDiv.append(card);
                 }
             }

@@ -6,6 +6,10 @@ let filterLegendControl = null;
 let uploadLegendControl = null;
 let bikeLaneLegendControl = null;
 let locationInputHasFocus = false;
+let userMustSelectLocation = false;
+let selectedPosition = null;
+let photoLocationDataSource = null;
+let photoLocationSymbolLayer = null;
 
 let clusterBubbleLayer = null;
 let symbolLayer = null;
@@ -37,6 +41,10 @@ function toggleLegendControl(legendControl) {
                 visible: false
             });
         } else {
+            if (window.innerWidth < 576) {
+                const navbarToggler = document.getElementById('navbarToggler');
+                navbarToggler.click();
+            }
             legendControl.setOptions({
                 visible: true
             });
@@ -192,6 +200,31 @@ function loginWithMastodon() {
         alertDiv.append(createAlertBanner(error.message));
         changeLoadingButtonToRegularButton(mastodonNextButton, 'Next');
     });
+}
+
+function setupPhotoLocationObjects() {
+    if (photoLocationDataSource === null) {
+        photoLocationDataSource = new atlas.source.DataSource(null, {
+            cluster: false
+        });
+        map.sources.add(photoLocationDataSource);
+        photoLocationSymbolLayer = new atlas.layer.SymbolLayer(photoLocationDataSource, null, {
+            iconOptions: {
+                image: 'marker-red'
+            }
+        });
+        map.layers.add(photoLocationSymbolLayer);
+    }
+}
+
+function showUploadForm2Error(message) {
+    const alertDiv = document.getElementById('uploadForm2AlertDiv');
+    alertDiv.innerText = message;
+    alertDiv.removeAttribute('hidden');
+}
+
+function hideUploadForm2Error() {
+    document.getElementById('uploadForm2AlertDiv').setAttribute('hidden', '');
 }
 
 function initControls() {
@@ -381,8 +414,18 @@ function initUpload1LegendHtml() {
         changeButtonToLoadingButton(button, 'Processing...');
         document.getElementById('uploadForm1AlertDiv').innerHTML = '';
         const files = Array.from(new FormData(event.target).entries());
-        if (files.length === 1 && files[0][1].size > 0) {
-            uploadImage(files[0][1])
+        if (files.length === 0 || files[0][1].size === 0) {
+            document.getElementById('uploadForm1AlertDiv').append('Must select a picture before uploading.');
+            changeLoadingButtonToRegularButton(button, 'Process');
+        } else if (files.length > 4) {
+            document.getElementById('uploadForm1AlertDiv').append('A maximum of 4 images can be uploaded.');
+            changeLoadingButtonToRegularButton(button, 'Process');
+        } else {
+            const onlyFiles = [];
+            for (const file of files) {
+                onlyFiles.push(file[1]);
+            }
+            uploadImage(onlyFiles)
             .then(response => {
                 form.removeEventListener('submit', upload1Event);
                 form.setAttribute('hidden', '');
@@ -403,9 +446,6 @@ function initUpload1LegendHtml() {
                 
                 changeLoadingButtonToRegularButton(button, 'Process');
             });
-        } else {
-            document.getElementById('uploadForm1AlertDiv').append('Must select a picture before uploading.');
-            changeLoadingButtonToRegularButton(button, 'Process');
         }
     };
     form.addEventListener('submit', upload1Event);
@@ -413,14 +453,67 @@ function initUpload1LegendHtml() {
     return form;
 }
 
-function initUpload2LegendHtml(metadata) {
-    document.getElementById('photo').src = metadata.uri;
-    const dateTime = luxon.DateTime.fromISO(metadata.photoDateTime);
+function initUpload2LegendHtml(metadatas) {
+    if (metadatas.length === 1) {
+        document.getElementById('uploadCarousel').setAttribute('hidden', '');
+        document.getElementById('photo').src = metadatas[0].uri;
+    } else {
+        const carouselInner = document.getElementById('carouselInner');
+        metadatas.forEach((metadata, index) => {
+            const carouselItem = document.createElement('div');
+            carouselItem.classList.add('carousel-item');
+            if (index === 0) {
+                carouselItem.classList.add('active');
+            }
+            const img = document.createElement('img');
+            img.classList.add('d-block');
+            img.src = metadata.uri;
+            img.width = 300;
+            carouselItem.appendChild(img);
+            carouselInner.appendChild(carouselItem);
+        });
+    }
+    
+    const metadata = metadatas[0];
     document.getElementById('photoNumberOfCarsInput').value = '';
-    document.getElementById('photoDateInput').value = dateTime.toISODate();
-    document.getElementById('photoTimeInput').value = dateTime.toLocaleString(luxon.DateTime.TIME_24_SIMPLE);
-    document.getElementById('photoLocationInput').value = metadata.photoCrossStreet;
-    document.getElementById('photoGPSInput').value = `${metadata.photoLatitude}, ${metadata.photoLongitude}`;
+
+    let dateTime = null;
+    if (metadata.photoDateTime) {
+        dateTime = luxon.DateTime.fromISO(metadata.photoDateTime);
+    }
+    if (dateTime != null) {
+        document.getElementById('photoDateInput').value = dateTime.toISODate();
+        document.getElementById('photoTimeInput').value = dateTime.toLocaleString(luxon.DateTime.TIME_24_SIMPLE);
+        for (const d of metadatas) {
+            d.userSpecifiedDateTime = false;
+        }
+    } else {
+        for (const d of metadatas) {
+            d.userSpecifiedDateTime = true;
+        }
+        document.getElementById('photoDateInput').removeAttribute('readonly');
+        document.getElementById('photoTimeInput').removeAttribute('readonly');
+    }
+    
+    if (metadata.photoCrossStreet) {
+        document.getElementById('photoLocationInput').value = metadata.photoCrossStreet;
+    }
+    
+    if (metadata.photoLatitude && metadata.photoLongitude) {
+        document.getElementById('photoGPSInput').value = `${metadata.photoLatitude}, ${metadata.photoLongitude}`;
+        for (const d of metadatas) {
+            d.userSpecifiedLocation = false;
+        }
+    } else {
+        document.getElementById('photoGPSInput').value = '';
+        for (const d of metadatas) {
+            d.userSpecifiedLocation = true;
+        }
+        userMustSelectLocation = true;
+        document.getElementById('selectLocationNoteDiv').removeAttribute('hidden');
+        document.getElementById('locationRow').setAttribute('hidden', '');
+    }
+    
     document.getElementById('twitterSubmittedByInput').value = '';
     document.getElementById('mastodonSubmittedByInput').value = '';
     document.getElementById('attributeDiv').setAttribute('hidden', '');
@@ -453,28 +546,24 @@ function initUpload2LegendHtml(metadata) {
     clusterBubbleNumberLayer.setOptions({
         visible: false
     });
-    const photoLocation = new atlas.data.Position(parseFloat(metadata.photoLongitude),
-        parseFloat(metadata.photoLatitude));
-    const photoLocationFeatureCollection = new atlas.data.FeatureCollection([
-        new atlas.data.Feature(new atlas.data.Point(photoLocation))
-    ]);
-    const photoLocationDataSource = new atlas.source.DataSource(null, {
-        cluster: false
-    });
-    photoLocationDataSource.add(photoLocationFeatureCollection);
-    map.sources.add(photoLocationDataSource);
-    const photoLocationSymbolLayer = new atlas.layer.SymbolLayer(photoLocationDataSource, null, {
-        iconOptions: {
-            image: 'marker-red'
-        }
-    });
-    map.layers.add(photoLocationSymbolLayer);
-    map.setCamera({
-        center: photoLocation,
-        type: 'ease',
-        duration: 500,
-        zoom: 17
-    });
+
+    if (metadata.photoLatitude && metadata.photoLongitude) {
+        const photoLocation = new atlas.data.Position(parseFloat(metadata.photoLongitude),
+            parseFloat(metadata.photoLatitude));
+        const photoLocationFeatureCollection = new atlas.data.FeatureCollection([
+            new atlas.data.Feature(new atlas.data.Point(photoLocation))
+        ]);
+        
+        setupPhotoLocationObjects();
+        photoLocationDataSource.clear();
+        photoLocationDataSource.add(photoLocationFeatureCollection);
+        map.setCamera({
+            center: photoLocation,
+            type: 'ease',
+            duration: 500,
+            zoom: 17
+        });
+    }
 
     const form = document.getElementById('uploadForm2');
     const upload2Event = function(event) {
@@ -484,42 +573,121 @@ function initUpload2LegendHtml(metadata) {
         const data = new FormData(event.target);
         for (const [name, value] of data) {
             if (name === 'photoNumberOfCars') {
-                metadata.numberOfCars = parseInt(value);
+                const noc = parseInt(value);
+                if (isNaN(noc)) {
+                    showUploadForm2Error('Number of cars must be a number.');
+                    changeLoadingButtonToRegularButton(button, 'Upload');
+                    return;
+                } else if (noc < 1) {
+                    showUploadForm2Error('Number of cars must be at least 1.');
+                    changeLoadingButtonToRegularButton(button, 'Upload');
+                    return;
+                }
+
+                for (const d of metadatas) {
+                    d.numberOfCars = noc;
+                }
+            }
+            if (name === 'photoDate') {
+                if (!value) {
+                    showUploadForm2Error('Please select the date the report happened.');
+                    changeLoadingButtonToRegularButton(button, 'Upload');
+                    return;
+                }
+            }
+            if (name === 'photoTime') {
+                if (!value) {
+                    showUploadForm2Error('Please select the time the report happened.');
+                    changeLoadingButtonToRegularButton(button, 'Upload');
+                    return;
+                }
+            }
+            if (name === 'photoGPS') {
+                if (!value) {
+                    showUploadForm2Error('Please select the location the report happened.');
+                    changeLoadingButtonToRegularButton(button, 'Upload');
+                    return;
+                } else if (userMustSelectLocation) {
+                    for (const d of metadatas) {
+                        d.photoLatitude = selectedPosition[1].toFixed(5).toString();
+                        d.photoLongitude = selectedPosition[0].toFixed(5).toString();
+                    }
+                }
             }
             if (name === 'attributeCheck') {
                 if (localStorage.getItem('twitterAccessToken')) {
-                    metadata.attribute = true;
-                    metadata.twitterUsername = loggedInTwitterUsername;
-                    metadata.twitterAccessToken = localStorage.getItem('twitterAccessToken');
+                    for (const d of metadatas) {
+                        d.attribute = true;
+                        d.twitterUsername = loggedInTwitterUsername;
+                        d.twitterAccessToken = localStorage.getItem('twitterAccessToken');
+                    }
                 }
 
                 if (localStorage.getItem('mastodonAccessToken')) {
-                    metadata.attribute = true;
-                    metadata.mastodonFullUsername = loggedInMastodonFullUsername;
-                    metadata.mastodonUsername = loggedInMastodonUsername;
-                    metadata.mastodonEndpoint = localStorage.getItem('mastodonEndpoint');
-                    metadata.mastodonAccessToken = localStorage.getItem('mastodonAccessToken');
+                    for (const d of metadatas) {
+                        d.attribute = true;
+                        d.mastodonFullUsername = loggedInMastodonFullUsername;
+                        d.mastodonUsername = loggedInMastodonUsername;
+                        d.mastodonEndpoint = localStorage.getItem('mastodonEndpoint');
+                        d.mastodonAccessToken = localStorage.getItem('mastodonAccessToken');
+                    }
                 }
             }
             if (name === 'twitterSubmittedBy') {
-                metadata.twitterSubmittedBy = value;
+                for (const d of metadatas) {
+                    d.twitterSubmittedBy = value;
+                }
             }
             if (name === 'mastodonSubmittedBy') {
-                metadata.mastodonSubmittedBy = value;
+                for (const d of metadatas) {
+                    d.mastodonSubmittedBy = value;
+                }
+            }
+        }
+
+        if (metadata.userSpecifiedDateTime) {
+            const userSpecifiedDateTime =
+                luxon.DateTime.fromISO(`${document.getElementById('photoDateInput').value}T${document.getElementById('photoTimeInput').value}`, { zone: 'America/Los_Angeles' });
+            if (luxon.DateTime.now() <= userSpecifiedDateTime) {
+                showUploadForm2Error('Selected date and time must be in the past.');
+                changeLoadingButtonToRegularButton(button, 'Upload');
+                return;
+            }
+
+            for (const d of metadatas) {
+                d.photoDateTime = userSpecifiedDateTime.setZone('utc').toISO();
             }
         }
         
         if (localStorage.getItem('twitterAccessToken')) {
-            metadata.twitterUsername = loggedInTwitterUsername;
+            for (const d of metadatas) {
+                d.twitterUsername = loggedInTwitterUsername;
+            }
         }
 
         if (localStorage.getItem('mastodonAccessToken')) {
-            metadata.mastodonFullUsername = loggedInMastodonFullUsername;
+            for (const d of metadatas) {
+                d.mastodonFullUsername = loggedInMastodonFullUsername;
+            }
         }
 
-        finalizeUploadImage(metadata)
+        finalizeUploadImage(metadatas)
         .then(() => {
-
+            userMustSelectLocation = false;
+            selectedPosition = null;
+            document.getElementById('photoNumberOfCarsInput').value = '';
+            document.getElementById('photoDateInput').setAttribute('readonly', '');
+            document.getElementById('photoDateInput').value = '';
+            document.getElementById('photoTimeInput').setAttribute('readonly', '');
+            document.getElementById('photoTimeInput').value = '';
+            document.getElementById('photoLocationInput').value = '';
+            document.getElementById('photoGPSInput').value = '';
+            document.getElementById('selectLocationNoteDiv').setAttribute('hidden', '');
+            hideUploadForm2Error();
+            document.getElementById('uploadCarousel').removeAttribute('hidden');
+            document.getElementById('carouselInner').innerHTML = '';
+            document.getElementById('locationRow').removeAttribute('hidden');
+            document.getElementById('photo').src = '';
             clusterBubbleLayer.setOptions({
                 visible: true
             });
@@ -529,8 +697,7 @@ function initUpload2LegendHtml(metadata) {
             clusterBubbleNumberLayer.setOptions({
                 visible: true
             });
-            map.layers.remove(photoLocationSymbolLayer);
-            map.sources.remove(photoLocationDataSource);
+            photoLocationDataSource.clear();
             map.setCamera({
                 center: [-122.333301, 47.606501],
                 type: 'ease',
@@ -550,6 +717,10 @@ function initUpload2LegendHtml(metadata) {
                     html: initUploadDoneLegendHtml()
                 }]
             });
+        })
+        .catch(error => {
+            showUploadForm2Error(error.message);
+            changeLoadingButtonToRegularButton(button, 'Upload');
         });
     };
     form.addEventListener('submit', upload2Event);
@@ -793,8 +964,19 @@ function initMap() {
             map.layers.add(symbolLayer);
 
             map.events.add('click', function (e) {
-                if (e && filterLegendControl && filterLegendControl.getOptions().visible && locationInputHasFocus) {
-                    document.getElementById('locationInput').value = JSON.stringify(e.position);
+                if (e) {
+                    if (filterLegendControl && filterLegendControl.getOptions().visible && locationInputHasFocus) {
+                        document.getElementById('locationInput').value = JSON.stringify(e.position);
+                    } else if (uploadLegendControl && uploadLegendControl.getOptions().visible && userMustSelectLocation) {
+                        document.getElementById('photoGPSInput').value = `${e.position[1].toFixed(5)}, ${e.position[0].toFixed(5)}`;
+                        selectedPosition = e.position;
+                        setupPhotoLocationObjects();
+                        const photoLocationFeatureCollection = new atlas.data.FeatureCollection([
+                            new atlas.data.Feature(new atlas.data.Point(e.position))
+                        ]);
+                        photoLocationDataSource.clear();
+                        photoLocationDataSource.add(photoLocationFeatureCollection);
+                    }
                 }
             });
         });

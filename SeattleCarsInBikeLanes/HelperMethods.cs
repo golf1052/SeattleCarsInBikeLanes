@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Security.Cryptography;
+using System.Text;
 using Azure.Core.GeoJson;
 using Azure.Maps.Search;
 using Azure.Maps.Search.Models;
@@ -449,6 +450,19 @@ namespace SeattleCarsInBikeLanes
                 return position.DistanceTo(addressPosition);
             }).First();
             return item;
+        }
+
+        public string GetRandomFileName()
+        {
+            StringBuilder randomFileNameBuilder = new StringBuilder();
+            for (int i = 0; i < 32; i++)
+            {
+                // Create 32 character filename with chars between a-z.
+                char randomChar = (char)RandomNumberGenerator.GetInt32(97, 123);
+                randomFileNameBuilder.Append(randomChar);
+            }
+
+            return randomFileNameBuilder.ToString();
         }
     }
 }

@@ -78,9 +78,9 @@ namespace SeattleCarsInBikeLanes.Controllers
         }
 
         [HttpGet("/api/AdminPage/PendingPhotos")]
-        public async Task<List<FinalizedPhotoUploadWithSasUriMetadata>> GetPendingPhotos()
+        public async Task<Dictionary<string, List<FinalizedPhotoUploadWithSasUriMetadata>>> GetPendingPhotos()
         {
-            List<FinalizedPhotoUploadWithSasUriMetadata> photos = new List<FinalizedPhotoUploadWithSasUriMetadata>();
+            Dictionary<string, List<FinalizedPhotoUploadWithSasUriMetadata>> submissions = new Dictionary<string, List<FinalizedPhotoUploadWithSasUriMetadata>>();
             var blobs = blobContainerClient.GetBlobsAsync(prefix: UploadController.FinalizedUploadPrefix);
             await foreach (var blob in blobs)
             {
@@ -92,20 +92,41 @@ namespace SeattleCarsInBikeLanes.Controllers
                 BlobClient jsonBlobClient = blobContainerClient.GetBlobClient(blob.Name);
                 var downloadResponse = await jsonBlobClient.DownloadContentAsync();
                 var metadata = JsonConvert.DeserializeObject<FinalizedPhotoUploadWithSasUriMetadata>(downloadResponse.Value.Content.ToString());
+                if (metadata == null)
+                {
+                    logger.LogError($"Error when deserializing FinalizedPhotoUploadWithSasUriMetadata. Skipping.");
+                    continue;
+                }
+                if (!submissions.ContainsKey(metadata.SubmissionId))
+                {
+                    submissions.Add(metadata.SubmissionId, new List<FinalizedPhotoUploadWithSasUriMetadata>());
+                }
                 BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata!.PhotoId}.jpeg");
                 Uri photoUri = await photoBlobClient.GenerateUserDelegationReadOnlySasUri(DateTimeOffset.UtcNow.AddHours(1));
                 metadata.Uri = photoUri.ToString();
-                photos.Add(metadata);
+                submissions[metadata.SubmissionId].Add(metadata);
             }
 
-            return photos;
+            foreach (var submission in submissions)
+            {
+                submission.Value.Sort((a, b) => a.PhotoNumber.CompareTo(b.PhotoNumber));
+            }
+            return submissions;
         }
 
         [HttpPost("/api/AdminPage/UploadTweet")]
-        public async Task<IActionResult> UploadTweet([FromBody] FinalizedPhotoUploadMetadata metadata)
+        public async Task<IActionResult> UploadTweet([FromBody] List<FinalizedPhotoUploadMetadata> data)
         {
             MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
             string carsString;
+            if (data.Count == 0)
+            {
+                string errorString = "Must pass at least 1 metadata object.";
+                logger.LogError(errorString);
+                return BadRequest(errorString);
+            }
+
+            FinalizedPhotoUploadMetadata metadata = data[0];
             if (metadata.NumberOfCars == 1)
             {
                 carsString = "car";
@@ -116,8 +137,8 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
 
             string postBody = $"{metadata.NumberOfCars} {carsString}\n" +
-                $"Date: {metadata.PhotoDateTime.ToString("M/d/yyyy")}\n" +
-                $"Time: {metadata.PhotoDateTime.ToString("h:mm tt")}\n" +
+                $"Date: {metadata.PhotoDateTime!.Value.ToString("M/d/yyyy")}\n" +
+                $"Time: {metadata.PhotoDateTime!.Value.ToString("h:mm tt")}\n" +
                 $"Location: {metadata.PhotoCrossStreet}\n" +
                 $"GPS: {metadata.PhotoLatitude}, {metadata.PhotoLongitude}";
 
@@ -166,63 +187,75 @@ namespace SeattleCarsInBikeLanes.Controllers
                 tootBody += $"\nSubmission";
             }
 
-            BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata.PhotoId}.jpeg");
-            var photoDownload = await photoBlobClient.DownloadContentAsync();
-            var photoBytes = photoDownload.Value.Content.ToArray();
+            List<BlobClient> photoBlobClients = new List<BlobClient>();
+            List<IImage> imgurUploads = new List<IImage>();
+            List<Media> twitterMediaUploads = new List<Media>();
+            List<string> mastodonAttachmentIds = new List<string>();
 
-            IImage? imgurUpload = null;
-            try
+            foreach (var d in data)
             {
-                imgurUpload = await imgurImageEndpoint.UploadImageAsync(new MemoryStream(photoBytes));
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, $"Failed to upload image to Imgur for {metadata.PhotoId}.");
-                throw;
+                BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{d.PhotoId}.jpeg");
+                photoBlobClients.Add(photoBlobClient);
+                var photoDownload = await photoBlobClient.DownloadContentAsync();
+                var photoBytes = photoDownload.Value.Content.ToArray();
+
+                IImage imgurUpload;
+                try
+                {
+                    imgurUpload = await imgurImageEndpoint.UploadImageAsync(new MemoryStream(photoBytes));
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, $"Failed to upload image to Imgur for {d.PhotoId}.");
+                    throw;
+                }
+                imgurUploads.Add(imgurUpload);
+
+                Media? twitterMedia = await uploadTwitterContext.UploadMediaAsync(photoBytes, "image/jpg", "tweet_image");
+                if (twitterMedia == null)
+                {
+                    string error = $"Failed to upload tweet image for {d.PhotoId}.";
+                    logger.LogError(error);
+                    return StatusCode((int)HttpStatusCode.InternalServerError, error);
+                }
+                twitterMediaUploads.Add(twitterMedia);
+
+                using MemoryStream mastodonAttachmentStream = new MemoryStream(photoBytes);
+                MastodonAttachment? mastodonAttachment = await mastodonClient.UploadMedia(mastodonAttachmentStream);
+                string mastodonAttachmentId = mastodonAttachment.Id;
+                do
+                {
+                    mastodonAttachment = await mastodonClient.GetAttachment(mastodonAttachmentId);
+                    await Task.Delay(500);
+                }
+                while (mastodonAttachment == null);
+                mastodonAttachmentIds.Add(mastodonAttachmentId);
             }
 
-            Media? twitterMedia = await uploadTwitterContext.UploadMediaAsync(photoBytes, "image/jpg", "tweet_image");
-            if (twitterMedia == null)
-            {
-                string error = $"Failed to upload tweet image for {metadata.PhotoId}.";
-                logger.LogError(error);
-                return StatusCode((int)HttpStatusCode.InternalServerError, error);
-            }
-
-            Tweet? tweet = await uploadTwitterContext.TweetMediaAsync(tweetBody, new List<string>() { twitterMedia.MediaID.ToString() });
+            Tweet? tweet = await uploadTwitterContext.TweetMediaAsync(tweetBody, twitterMediaUploads.Select(u => u.MediaID.ToString()));
             if (tweet == null)
             {
-                string error = $"Failed to send tweet for {metadata.PhotoId}.";
+                string error = $"Failed to send tweet for {metadata.SubmissionId}.";
                 logger.LogError(error);
                 return StatusCode((int)HttpStatusCode.InternalServerError, error);
             }
 
-            using MemoryStream mastodonAttachmentStream = new MemoryStream(photoBytes);
-            MastodonAttachment? mastodonAttachment = await mastodonClient.UploadMedia(mastodonAttachmentStream);
-            string mastodonAttachmentId = mastodonAttachment.Id;
-            do
-            {
-                mastodonAttachment = await mastodonClient.GetAttachment(mastodonAttachmentId);
-                await Task.Delay(500);
-            }
-            while (mastodonAttachment == null);
-
-            MastodonStatus mastodonStatus = await mastodonClient.PublishStatus(tootBody, new List<string>() { mastodonAttachmentId }, null, "unlisted");
+            MastodonStatus mastodonStatus = await mastodonClient.PublishStatus(tootBody, mastodonAttachmentIds, null, "unlisted");
 
             ReportedItem newReportedItem = new ReportedItem()
             {
                 TweetId = $"{Guid.NewGuid()}.0",
                 CreatedAt = DateTime.UtcNow,
                 NumberOfCars = metadata.NumberOfCars!.Value,
-                Date = DateOnly.FromDateTime(metadata.PhotoDateTime),
-                Time = TimeOnly.FromDateTime(metadata.PhotoDateTime),
-                LocationString = metadata.PhotoCrossStreet,
-                Location = new Microsoft.Azure.Cosmos.Spatial.Point(double.Parse(metadata.PhotoLongitude), double.Parse(metadata.PhotoLatitude)),
+                Date = DateOnly.FromDateTime(metadata.PhotoDateTime.Value),
+                Time = TimeOnly.FromDateTime(metadata.PhotoDateTime.Value),
+                LocationString = metadata.PhotoCrossStreet!,
+                Location = new Microsoft.Azure.Cosmos.Spatial.Point(double.Parse(metadata.PhotoLongitude!), double.Parse(metadata.PhotoLatitude!)),
                 TwitterLink = $"https://twitter.com/carbikelanesea/status/{tweet.ID}",
                 MastodonLink = mastodonStatus.Url,
                 Latest = true
             };
-            newReportedItem.ImgurUrls.Add(imgurUpload.Link);
+            newReportedItem.ImgurUrls.AddRange(imgurUploads.Select(i => i.Link));
             bool addedToDatabase = await reportedItemsDatabase.AddReportedItem(newReportedItem);
             if (!addedToDatabase)
             {
@@ -231,20 +264,35 @@ namespace SeattleCarsInBikeLanes.Controllers
 
             await feedProvider.AddReportedItemToFeed(newReportedItem);
 
-            BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata.PhotoId}.json");
-            await photoBlobClient.DeleteAsync();
-            await metadataBlobClient.DeleteAsync();
+            foreach (var d in data)
+            {
+                BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{d.PhotoId}.json");
+                await metadataBlobClient.DeleteAsync();
+            }
+
+            foreach (var photoBlobClient in photoBlobClients)
+            {
+                await photoBlobClient.DeleteAsync();
+            }
 
             return NoContent();
         }
 
         [HttpDelete("/api/AdminPage/DeletePendingPhoto")]
-        public async Task DeletePendingPhoto([FromBody] FinalizedPhotoUploadMetadata metadata)
+        public async Task DeletePendingPhoto([FromBody] List<FinalizedPhotoUploadMetadata> data)
         {
-            BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata.PhotoId}.jpeg");
-            BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata.PhotoId}.json");
-            await photoBlobClient.DeleteAsync();
-            await metadataBlobClient.DeleteAsync();
+            if (data.Count == 0)
+            {
+                throw new Exception("Must pass at least 1 metadata object.");
+            }
+
+            foreach (var metadata in data)
+            {
+                BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata.PhotoId}.jpeg");
+                BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata.PhotoId}.json");
+                await photoBlobClient.DeleteAsync();
+                await metadataBlobClient.DeleteAsync();
+            }
             Response.StatusCode = (int)HttpStatusCode.NoContent;
         }
 
@@ -886,13 +934,23 @@ namespace SeattleCarsInBikeLanes.Controllers
         {
             public string? Uri { get; set; }
 
+            // Here because of bug when trying to deserialize values types to nullable value type properties
+            // See https://github.com/dotnet/runtime/issues/44428
+            public FinalizedPhotoUploadWithSasUriMetadata()
+            {
+            }
+
             public FinalizedPhotoUploadWithSasUriMetadata(int numberOfCars,
                 string photoId,
+                string submissionId,
+                int photoNumber,
                 DateTime photoDateTime,
                 string photoLatitude,
                 string photoLongitude,
                 string photoCrossStreet,
                 List<ImageTag> tags,
+                bool userSpecifiedDateTime,
+                bool userSpecifiedLocation,
                 string twitterSubmittedBy = "Submission",
                 string mastodonSubmittedBy = "Submission",
                 bool? attribute = null,
@@ -903,11 +961,15 @@ namespace SeattleCarsInBikeLanes.Controllers
                 string? mastodonAccessToken = null) :
                 base(numberOfCars,
                     photoId,
+                    submissionId,
+                    photoNumber,
                     photoDateTime,
                     photoLatitude,
                     photoLongitude,
                     photoCrossStreet,
                     tags,
+                    userSpecifiedDateTime,
+                    userSpecifiedLocation,
                     twitterSubmittedBy,
                     mastodonSubmittedBy,
                     attribute,

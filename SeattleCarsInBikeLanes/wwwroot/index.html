@@ -21,7 +21,7 @@
       <nav class="navbar bg-light navbar-expand-sm sticky-top">
         <div class="container-fluid">
           <span class="navbar-brand">Seattle</span>
-          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navContent" aria-controls="navContent" aria-expanded="false" aria-label="Toggle navigation">
+          <button id="navbarToggler" class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navContent" aria-controls="navContent" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
           </button>
           <div class="collapse navbar-collapse" id="navContent">
@@ -189,84 +189,105 @@
       <div id="uploadForm1AlertDiv">
       </div>
       <div id="iOSNoteDiv" class="alert alert-info" role="alert" hidden>
-        <p>On iOS and iPadOS uploading a picture will not work unless in your Camera settings you have your Camera Capture Format set to "Most Compatible". If you don't want to switch to use that setting you can save the photo to another location on your device (or iCloud Drive, OneDrive, or Google Drive) using the share menu, then "Save to Files", then upload the photo from "Choose File" <a href="https://twitter.com/carbikelanesea/status/1603319804797939712" target="_blank">(video here)</a>.</p>
+        On iOS and iPadOS uploading a picture from your Photo Library will not include the location unless in your Camera settings you have your Camera Capture Format set to "Most Compatible". If you don't want to switch to use that setting you can save the photo to another location on your device (or iCloud Drive, OneDrive, or Google Drive) using the share menu, then "Save to Files", then upload the photo from "Choose File" <a href="https://twitter.com/carbikelanesea/status/1603319804797939712" target="_blank">(video here)</a>.
       </div>
-      <div class="row">
-        <label for="photoFileInput" class="form-label">Choose image to process:</label>
-        <input type="file" class="form-control" id="photoFileInput" name="photoFile">
+      <div class="container">
+        <div class="row">
+          <label for="photoFileInput" class="form-label">Choose image(s) to process:<br>(You can upload up to 4 images for 1 report)</label>
+          <input type="file" class="form-control" id="photoFileInput" name="photoFile" multiple>
+        </div>
+        <button type="submit" class="btn btn-success btn-sm">Process</button>
       </div>
-      <button type="submit" class="btn btn-success btn-sm">Process</button>
     </form>
     <form id="uploadForm2" hidden>
-      <div class="text-center">
-        <img id="photo" width="300">
-      </div>
-      <div class="row">
-        <div class="col-auto">
-          <label for="photoNumberOfCarsInput" class="form-label">Number of cars:</label>
+      <div class="container">
+        <div id="uploadCarousel" class="carousel slide">
+          <div id="carouselInner" class="carousel-inner" style="max-width: 300px;">
+          </div>
+          <button class="carousel-control-prev" type="button" data-bs-target="#uploadCarousel" data-bs-slide="prev">
+            <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+            <span class="visually-hidden">Previous</span>
+          </button>
+          <button class="carousel-control-next" type="button" data-bs-target="#uploadCarousel" data-bs-slide="next">
+            <span class="carousel-control-next-icon" aria-hidden="true"></span>
+            <span class="visually-hidden">Next</span>
+          </button>
         </div>
-        <div class="col-12">
-          <input type="number" class="form-control form-control-sm" id="photoNumberOfCarsInput" name="photoNumberOfCars" min="1" required>
+        <div class="text-center">
+          <img id="photo" width="300">
         </div>
-      </div>
-      <div class="row">
-        <div class="col-auto">
-          <label for="photoDateInput" class="form-label">Date:</label>
+        <div id="selectLocationNoteDiv" class="alert alert-info" role="alert" hidden>
+          Select the location of the photo(s) by clicking on the map.
         </div>
-        <div class="col-12">
-          <input type="date" class="form-control form-control-sm" id="photoDateInput" name="photoDate" readonly>
+        <div id="uploadForm2AlertDiv" class="alert alert-danger" role="alert" hidden>
         </div>
-      </div>
-      <div class="row">
-        <div class="col-auto">
-          <label for="photoTimeInput" class="form-label">Time:</label>
-        </div>
-        <div class="col-12">
-          <input type="time" class="form-control form-control-sm" id="photoTimeInput" name="photoTime" readonly>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-auto">
-          <label for="photoLocationInput" class="form-label">Location:</label>
-        </div>
-        <div class="col-12">
-          <input type="text" class="form-control form-control-sm" id="photoLocationInput" name="photoLocation" readonly>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-auto">
-          <label for="photoGPSInput" class="form-label">GPS:</label>
-        </div>
-        <div class="col-12">
-          <input type="text" class="form-control form-control-sm" id="photoGPSInput" name="photoGPS" readonly>
-        </div>
-      </div>
-      <div id="twitterAttributionDiv">
         <div class="row">
           <div class="col-auto">
-            <label for="twitterSubmittedByInput" class="form-label">Twitter Attribution</label>
+            <label for="photoNumberOfCarsInput" class="form-label">Number of cars:</label>
           </div>
           <div class="col-12">
-            <input type="text" class="form-control form-control-sm" id="twitterSubmittedByInput" name="twitterSubmittedBy" readonly>
+            <input type="number" class="form-control form-control-sm" id="photoNumberOfCarsInput" name="photoNumberOfCars" min="1" required>
           </div>
         </div>
-      </div>
-      <div id="mastodonAttributionDiv">
         <div class="row">
           <div class="col-auto">
-            <label for="mastodonSubmittedByInput" class="form-label">Mastodon Attribution</label>
+            <label for="photoDateInput" class="form-label">Date:</label>
           </div>
           <div class="col-12">
-            <input type="text" class="form-control form-control-sm" id="mastodonSubmittedByInput" name="mastodonSubmittedBy" readonly>
+            <input type="date" class="form-control form-control-sm" id="photoDateInput" name="photoDate" readonly>
           </div>
         </div>
+        <div class="row">
+          <div class="col-auto">
+            <label for="photoTimeInput" class="form-label">Time:</label>
+          </div>
+          <div class="col-12">
+            <input type="time" class="form-control form-control-sm" id="photoTimeInput" name="photoTime" readonly>
+          </div>
+        </div>
+        <div id="locationRow" class="row">
+          <div class="col-auto">
+            <label for="photoLocationInput" class="form-label">Location:</label>
+          </div>
+          <div class="col-12">
+            <input type="text" class="form-control form-control-sm" id="photoLocationInput" name="photoLocation" readonly>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-auto">
+            <label for="photoGPSInput" class="form-label">GPS:</label>
+          </div>
+          <div class="col-12">
+            <input type="text" class="form-control form-control-sm" id="photoGPSInput" name="photoGPS" readonly>
+          </div>
+        </div>
+        <div id="twitterAttributionDiv">
+          <div class="row">
+            <div class="col-auto">
+              <label for="twitterSubmittedByInput" class="form-label">Twitter Attribution</label>
+            </div>
+            <div class="col-12">
+              <input type="text" class="form-control form-control-sm" id="twitterSubmittedByInput" name="twitterSubmittedBy" readonly>
+            </div>
+          </div>
+        </div>
+        <div id="mastodonAttributionDiv">
+          <div class="row">
+            <div class="col-auto">
+              <label for="mastodonSubmittedByInput" class="form-label">Mastodon Attribution</label>
+            </div>
+            <div class="col-12">
+              <input type="text" class="form-control form-control-sm" id="mastodonSubmittedByInput" name="mastodonSubmittedBy" readonly>
+            </div>
+          </div>
+        </div>
+        <div id="signInAttributeText" hidden>Sign in with Twitter and/or to attribute this submission to you</div>
+        <div id="attributeDiv" class="form-check" hidden>
+          <input type="checkbox" class="form-check-input" id="attributeCheckbox" name="attributeCheck">
+          <label for="attribtueCheckbox" class="form-check-label">Attribute</label>
+        </div>
+        <button type="submit" class="btn btn-success btn-sm">Upload</button>
       </div>
-      <div id="signInAttributeText" hidden>Sign in with Twitter and/or to attribute this submission to you</div>
-      <div id="attributeDiv" class="form-check" hidden>
-        <input type="checkbox" class="form-check-input" id="attributeCheckbox" name="attributeCheck">
-        <label for="attribtueCheckbox" class="form-check-label">Attribute</label>
-      </div>
-      <button type="submit" class="btn btn-success btn-sm">Upload</button>
     </form>
     <div id="uploadDoneDiv" class="text-center" style="width: 300px;" hidden>
       <p style="font-size: 100px; margin-top: 50px;">✅</p>
