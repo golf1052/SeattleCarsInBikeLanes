@@ -14,26 +14,36 @@ namespace SeattleCarsInBikeLanes.Controllers
             this.feedProvider = feedProvider;
         }
 
+        [HttpHead("/rss")]
+        [HttpHead("/rss.xml")]
+        public async Task<IActionResult> GetRssFeedHead()
+        {
+            string feed = await feedProvider.GetRssFeed();
+            Response.ContentType = FeedProvider.RssContentType;
+            Response.ContentLength = feed.Length + 2;
+            return Ok();
+        }
+
         [HttpGet("/rss")]
+        [HttpGet("/rss.xml")]
         public async Task<IActionResult> GetRssFeed()
         {
             return Content(await feedProvider.GetRssFeed(), FeedProvider.RssContentType);
         }
 
-        [HttpGet("/rss.xml")]
-        public async Task<IActionResult> GetRssXmlFeed()
+        [HttpHead("/atom")]
+        [HttpHead("/atom.xml")]
+        public async Task<IActionResult> GetAtomFeedHead()
         {
-            return Content(await feedProvider.GetRssFeed(), FeedProvider.RssContentType);
+            string feed = await feedProvider.GetAtomFeed();
+            Response.ContentType = FeedProvider.AtomContentType;
+            Response.ContentLength = feed.Length + 2;
+            return Ok();
         }
 
         [HttpGet("/atom")]
-        public async Task<IActionResult> GetAtomFeed()
-        {
-            return Content(await feedProvider.GetAtomFeed(), FeedProvider.AtomContentType);
-        }
-
         [HttpGet("/atom.xml")]
-        public async Task<IActionResult> GetAtomXmlFeed()
+        public async Task<IActionResult> GetAtomFeed()
         {
             return Content(await feedProvider.GetAtomFeed(), FeedProvider.AtomContentType);
         }
