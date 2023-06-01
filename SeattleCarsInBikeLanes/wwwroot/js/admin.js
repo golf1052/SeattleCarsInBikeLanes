@@ -187,6 +187,28 @@ function createDesktopCard(key, metadatas) {
                         metadata.photoCrossStreet = value.trim();
                     }
                 }
+
+                if (name === 'gps') {
+                    const [latitude, longitude] = value.split(',');
+                    if (latitude.trim() !== metadata.photoLatitude) {
+                        metadata.photoLatitude = latitude.trim();
+                    }
+                    if (longitude.trim() !== metadata.photoLongitude) {
+                        metadata.photoLongitude = longitude.trim();
+                    }
+                }
+
+                if (name === 'twitterSubmittedBy') {
+                    if (value.trim() !== metadata.twitterSubmittedBy) {
+                        metadata.twitterSubmittedBy = value.trim();
+                    }
+                }
+
+                if (name === 'mastodonSubmittedBy') {
+                    if (value.trim() !== metadata.mastodonSubmittedBy) {
+                        metadata.mastodonSubmittedBy = value.trim();
+                    }
+                }
             }
 
             if (!metadata.twitterSubmittedBy) {

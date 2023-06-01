@@ -655,7 +655,7 @@ function initUpload2LegendHtml(metadatas) {
             }
 
             for (const d of metadatas) {
-                d.photoDateTime = userSpecifiedDateTime.setZone('utc').toISO();
+                d.photoDateTime = userSpecifiedDateTime.toISO();
             }
         }
         
