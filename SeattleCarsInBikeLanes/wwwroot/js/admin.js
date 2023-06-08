@@ -318,7 +318,12 @@ function displayPendingPhotos() {
             if (Object.keys(response).length === 0) {
                 cardsDiv.append('No pending reported items.');
             } else {
-                for (const key in response) {
+                const sortedKeys = Object.keys(response).sort((a, b) => {
+                    const aDate = luxon.DateTime.fromISO(response[a][0].photoDateTime);
+                    const bDate = luxon.DateTime.fromISO(response[b][0].photoDateTime);
+                    return aDate.diff(bDate).milliseconds;
+                });
+                for (const key of sortedKeys) {
                     const card = createDesktopCard(key, response[key]);
                     cardsDiv.append(card);
                 }
