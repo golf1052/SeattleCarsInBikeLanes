@@ -647,7 +647,7 @@ function initUpload2LegendHtml(metadatas) {
 
         if (metadata.userSpecifiedDateTime) {
             const userSpecifiedDateTime =
-                luxon.DateTime.fromISO(`${document.getElementById('photoDateInput').value}T${document.getElementById('photoTimeInput').value}`, { zone: 'America/Los_Angeles' });
+                luxon.DateTime.fromISO(`${document.getElementById('photoDateInput').value}T${document.getElementById('photoTimeInput').value}`);
             if (luxon.DateTime.now() <= userSpecifiedDateTime) {
                 showUploadForm2Error('Selected date and time must be in the past.');
                 changeLoadingButtonToRegularButton(button, 'Upload');
