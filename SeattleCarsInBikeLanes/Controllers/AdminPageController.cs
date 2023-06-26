@@ -309,7 +309,7 @@ namespace SeattleCarsInBikeLanes.Controllers
 
             if (!string.IsNullOrWhiteSpace(request.TweetBody) && !string.IsNullOrWhiteSpace(request.TweetImages) && !string.IsNullOrWhiteSpace(request.TweetLink))
             {
-                string tweetText = helperMethods.FixTweetText(request.TweetBody);
+                string tweetText = request.TweetBody;
                 List<ReportedItem>? reportedItems = await helperMethods.TextToReportedItems(tweetText, mapsSearchClient);
                 if (reportedItems == null)
                 {
