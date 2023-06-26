@@ -323,7 +323,8 @@ namespace SeattleCarsInBikeLanes.Controllers
                 }
 
                 // If attributed to a Twitter user convert the @ mention to a link instead so there's proper attribution on Mastodon
-                const string SubmittedBySearchText = "Submitted by @";
+                const string SubmittedBySearchText = "Submitted by ";
+                string mastodonText = tweetText;
                 if (tweetText.Contains(SubmittedBySearchText))
                 {
                     int usernameStartIndex = tweetText.IndexOf(SubmittedBySearchText) + SubmittedBySearchText.Length - 1;
@@ -338,9 +339,19 @@ namespace SeattleCarsInBikeLanes.Controllers
                         potentialEndIndex = tweetText.Length;
                     }
 
-                    string username = tweetText[usernameStartIndex..potentialEndIndex];
-                    string linkUsername = $"https://twitter.com/{username[1..]}";
-                    tweetText = tweetText.Replace(username, linkUsername);
+                    if (tweetText[usernameStartIndex] == '@')
+                    {
+                        string username = tweetText[usernameStartIndex..potentialEndIndex];
+                        string linkUsername = $"https://twitter.com/{username[1..]}";
+                        tweetText = tweetText.Replace(username, linkUsername);
+                        mastodonText = mastodonText.Replace(username, linkUsername);
+                    }
+                    else if (tweetText[usernameStartIndex] == 'h')
+                    {
+                        string profileLink = tweetText[usernameStartIndex..potentialEndIndex];
+                        Uri profileUri = new Uri(profileLink);
+                        mastodonText = mastodonText.Replace(profileLink, $"{profileUri.Segments[^1]}@{profileUri.Host}");
+                    }
                 }
 
                 if (!string.IsNullOrWhiteSpace(request.QuoteTweetLink))
@@ -398,7 +409,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                 // Finally post the status to Mastodon with the images
                 try
                 {
-                    MastodonStatus status = await mastodonClient.PublishStatus(tweetText, attachmentIds, null, visibility: "unlisted");
+                    MastodonStatus status = await mastodonClient.PublishStatus(mastodonText, attachmentIds, null, visibility: "unlisted");
                     helperMethods.DisposePictureStreams(pictureStreams);
                     foreach (var reportedItem in reportedItems)
                     {
