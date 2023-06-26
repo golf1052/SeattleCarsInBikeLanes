@@ -257,6 +257,6 @@ function createAlertBanner(text) {
     const element = document.createElement('div');
     element.className = 'alert alert-danger';
     element.setAttribute('role', 'alert');
-    element.append(text);
+    element.innerHTML = text;
     return element;
 }

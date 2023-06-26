@@ -115,7 +115,10 @@ namespace SeattleCarsInBikeLanes.Controllers
                 Position? photoLocation = GetPhotoLocation(tempFile);
                 if (photoLocation != null && !SeattleBoundingBox.Contains(photoLocation))
                 {
-                    throw new Exception("Error: Photo not taken in Seattle.");
+                    string lat = photoLocation.Latitude.ToString("#.#####");
+                    string lon = photoLocation.Longitude.ToString("#.#####");
+                    throw new BikeLaneException($"Error: Photo not taken in Seattle. The location on the photo is " +
+                        $"<a href=\"https://bing.com/maps?cp={photoLocation.Latitude}~{photoLocation.Longitude}&lvl=13&sp=point.{photoLocation.Latitude}_{photoLocation.Longitude}_Photo%20location___\" target=\"_blank\">{lat}, {lon}</a>");
                 }
 
                 // Ensure image is jpeg and is small enough to upload to Computer Vision
@@ -147,7 +150,7 @@ namespace SeattleCarsInBikeLanes.Controllers
 
                 if (imageAnalysisResults.Adult.IsAdultContent || imageAnalysisResults.Adult.IsGoryContent || imageAnalysisResults.Adult.IsRacyContent)
                 {
-                    throw new Exception("Error: Photo does not pass content check.");
+                    throw new BikeLaneException("Error: Photo does not pass content check.");
                 }
 
                 string randomFileName = helperMethods.GetRandomFileName();
@@ -159,7 +162,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                     crossStreetItem = await helperMethods.ReverseSearchCrossStreet(photoLocation, mapsSearchClient);
                     if (crossStreetItem == null)
                     {
-                        throw new Exception("Error: Could not determine cross street.");
+                        throw new BikeLaneException("Error: Could not determine cross street.");
                     }
                     else
                     {
@@ -197,6 +200,11 @@ namespace SeattleCarsInBikeLanes.Controllers
 
                 Uri sasUri = await photoBlobClient.GenerateUserDelegationReadOnlySasUri(DateTimeOffset.UtcNow.AddMinutes(10));
                 return InitialPhotoUploadWithSasUriMetadata.FromMetadata(sasUri.ToString(), metadata);
+            }
+            catch (BikeLaneException ex)
+            {
+                logger.LogError(ex, "Failure during photo upload.");
+                throw;
             }
             catch (Exception ex)
             {
