@@ -733,21 +733,26 @@ namespace SeattleCarsInBikeLanes.Controllers
             string mostRidiculousText = $"Most ridiculous report: ";
             string worstIntersectionText = $"Worst intersection of the month: {worstIntersectionLocationString} with {worstIntersectionItems.Count} reports and {worstIntersectionCarCount} cars";
 
+            // TODO: Instead of posting the following to Twitter, return the content that needs to be manually posted.
             // First post to Twitter
             try
             {
-                Tweet? firstTweet = await uploadTwitterContext.TweetAsync($"{introText}{mostCarsText} {mostCars[0].TwitterLink}");
-                Tweet? latestTweet = firstTweet;
+                //Tweet? firstTweet = await uploadTwitterContext.TweetAsync($"{introText}{mostCarsText} {mostCars[0].TwitterLink}");
+                Console.WriteLine($"T1: {introText}{mostCarsText} {mostCars[0].TwitterLink}");
+                //Tweet? latestTweet = firstTweet;
                 if (mostCars.Count > 1)
                 {
                     for (int i = 1; i < mostCars.Count; i++)
                     {
                         var item = mostCars[i];
-                        latestTweet = await uploadTwitterContext.ReplyAsync($"{mostCarsText} {item.TwitterLink}", latestTweet!.ID!);
+                        //latestTweet = await uploadTwitterContext.ReplyAsync($"{mostCarsText} {item.TwitterLink}", latestTweet!.ID!);
+                        Console.WriteLine($"TM{i + 1}: {mostCarsText} {item.TwitterLink}");
                     }
                 }
-                Tweet? secondTweet = await uploadTwitterContext.ReplyAsync($"{mostRidiculousText} {mostRidiculousReportedItem.TwitterLink}", latestTweet!.ID!);
-                Tweet? thirdTweet = await uploadTwitterContext.ReplyAsync($"{worstIntersectionText}", secondTweet!.ID!);
+                //Tweet? secondTweet = await uploadTwitterContext.ReplyAsync($"{mostRidiculousText} {mostRidiculousReportedItem.TwitterLink}", latestTweet!.ID!);
+                Console.WriteLine($"T2: {mostRidiculousText} {mostRidiculousReportedItem.TwitterLink}");
+                //Tweet? thirdTweet = await uploadTwitterContext.ReplyAsync($"{worstIntersectionText}", secondTweet!.ID!);
+                Console.WriteLine($"T3: {worstIntersectionText}");
             }
             catch (Exception ex)
             {
