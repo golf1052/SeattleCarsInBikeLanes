@@ -1,6 +1,7 @@
 ﻿using golf1052.Mastodon;
 using golf1052.Mastodon.Models.Accounts;
 using golf1052.Mastodon.Models.Apps.OAuth;
+using golf1052.Mastodon.Models.OEmbed;
 using Microsoft.AspNetCore.Mvc;
 using SeattleCarsInBikeLanes.Providers;
 
@@ -26,6 +27,14 @@ namespace SeattleCarsInBikeLanes.Controllers
             {
                 redirectUrl = "https://seattle.carinbikelane.com/mastodonredirect";
             }
+        }
+
+        [HttpGet("oembed")]
+        public async Task<string?> GetOEmbed([FromQuery] string url, [FromQuery] int width, [FromQuery] int height)
+        {
+            MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
+            MastodonOEmbed response = await mastodonClient.GetOEmbed(url, width, height);
+            return response.Html;
         }
 
         [HttpPost("GetOAuthUrl")]

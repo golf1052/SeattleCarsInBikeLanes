@@ -123,6 +123,36 @@ function getTwitterOEmbed(tweetId) {
     });
 }
 
+function getMastodonOEmbed(mastodonLink) {
+    const width = window.innerWidth < 576 ? 220 : 400;
+    const height = window.innerWidth < 576 ? 200 : 400;
+    return fetch(`api/Mastodon/oembed?url=${mastodonLink}&width=${width}&height=${height}`)
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Error when fetching Mastodon oEmbed. ${response}`);
+        }
+
+        return response.text();
+    })
+    .then(response => {
+        if (response) {
+            return response;
+        } else {
+            return null;
+        }
+    });
+}
+
+function getOEmbed(properties) {
+    if (properties.mastodonLink) {
+        return getMastodonOEmbed(properties.mastodonLink);
+    } else if (properties.twitterLink) {
+        return getTwitterOEmbed(getTweetId(properties));
+    } else {
+        return null;
+    }
+}
+
 function refreshTwitterToken(refreshToken) {
     return fetch('api/Twitter/RefreshToken', {
         method: 'POST',
@@ -239,12 +269,11 @@ function showReportedItemPopup(properties, popup, map) {
         content: ''
     });
     popup.open(map);
-    const tweetId = getTweetId(properties);
-    getTwitterOEmbed(tweetId)
+    getOEmbed(properties)
     .then(html => {
         if (html) {
             popup.setOptions({
-                content: html
+                content: `<div><div style="height: 20px; width: 100%;"></div>${html}</div>`
             });
             twttr.ready(twttr => {
                 twttr.widgets.load();
