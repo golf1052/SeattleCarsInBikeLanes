@@ -583,16 +583,16 @@ namespace SeattleCarsInBikeLanes.Controllers
                 }
             }
 
-            if (reportedItem.TwitterLink != null)
-            {
-                Uri twitterLink = new Uri(reportedItem.TwitterLink);
-                string tweetId = twitterLink.Segments[twitterLink.Segments.Length - 1];
-                var deleteTweetResponse = await uploadTwitterContext.DeleteTweetAsync(tweetId);
-                if (deleteTweetResponse?.Data?.Deleted != true)
-                {
-                    logger.LogError($"Could not delete tweet: {reportedItem.TwitterLink}");
-                }
-            }
+            //if (reportedItem.TwitterLink != null)
+            //{
+            //    Uri twitterLink = new Uri(reportedItem.TwitterLink);
+            //    string tweetId = twitterLink.Segments[twitterLink.Segments.Length - 1];
+            //    var deleteTweetResponse = await uploadTwitterContext.DeleteTweetAsync(tweetId);
+            //    if (deleteTweetResponse?.Data?.Deleted != true)
+            //    {
+            //        logger.LogError($"Could not delete tweet: {reportedItem.TwitterLink}");
+            //    }
+            //}
 
             if (reportedItem.MastodonLink != null)
             {

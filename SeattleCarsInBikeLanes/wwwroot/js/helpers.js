@@ -146,10 +146,8 @@ function getMastodonOEmbed(mastodonLink) {
 function getOEmbed(properties) {
     if (properties.mastodonLink) {
         return getMastodonOEmbed(properties.mastodonLink);
-    } else if (properties.twitterLink) {
-        return getTwitterOEmbed(getTweetId(properties));
     } else {
-        return null;
+        return getTwitterOEmbed(getTweetId(properties));
     }
 }
 
