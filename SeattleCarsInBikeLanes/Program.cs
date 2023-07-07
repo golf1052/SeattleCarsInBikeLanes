@@ -221,6 +221,12 @@ namespace SeattleCarsInBikeLanes
                     c.GetRequiredService<HttpClient>(),
                     c.GetRequiredService<SecretClient>());
             });
+            services.AddSingleton(c =>
+            {
+                return new BlueskyClientProvider(c.GetRequiredService<ILogger<BlueskyClientProvider>>(),
+                    c.GetRequiredService<SecretClient>(),
+                    c.GetRequiredService<HttpClient>());
+            });
             services.AddSingleton<GuessGameManager>();
 
             var app = builder.Build();

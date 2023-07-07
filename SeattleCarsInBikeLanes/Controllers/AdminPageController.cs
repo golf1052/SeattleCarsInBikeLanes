@@ -2,6 +2,11 @@
 using Azure.Maps.Search;
 using Azure.Security.KeyVault.Secrets;
 using Azure.Storage.Blobs;
+using golf1052.atproto.net;
+using golf1052.atproto.net.Models.AtProto.Repo;
+using golf1052.atproto.net.Models.Bsky.Embed;
+using golf1052.atproto.net.Models.Bsky.Feed;
+using golf1052.atproto.net.Models.Bsky.Richtext;
 using golf1052.Mastodon;
 using golf1052.Mastodon.Models.Statuses;
 using golf1052.Mastodon.Models.Statuses.Media;
@@ -36,6 +41,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly MapsSearchClient mapsSearchClient;
         private readonly MastodonClientProvider mastodonClientProvider;
         private readonly FeedProvider feedProvider;
+        private readonly BlueskyClientProvider blueskyClientProvider;
 
         public AdminPageController(ILogger<AdminPageController> logger,
             HelperMethods helperMethods,
@@ -46,7 +52,8 @@ namespace SeattleCarsInBikeLanes.Controllers
             HttpClient httpClient,
             MapsSearchClient mapsSearchClient,
             MastodonClientProvider mastodonClientProvider,
-            FeedProvider feedProvider)
+            FeedProvider feedProvider,
+            BlueskyClientProvider blueskyClientProvider)
         {
             this.logger = logger;
             this.helperMethods = helperMethods;
@@ -57,6 +64,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             this.mapsSearchClient = mapsSearchClient;
             this.mastodonClientProvider = mastodonClientProvider;
             this.feedProvider = feedProvider;
+            this.blueskyClientProvider = blueskyClientProvider;
 
             SingleUserAuthorizer auth = new SingleUserAuthorizer()
             {
@@ -306,6 +314,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
 
             MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
+            AtProtoClient blueskyClient = await blueskyClientProvider.GetClient();
 
             if (!string.IsNullOrWhiteSpace(request.TweetBody) && !string.IsNullOrWhiteSpace(request.TweetImages) && !string.IsNullOrWhiteSpace(request.TweetLink))
             {
@@ -321,6 +330,8 @@ namespace SeattleCarsInBikeLanes.Controllers
                     reportedItem.CreatedAt = DateTime.UtcNow; // It's not actually now but we can't get the real time from the tweet.
                     reportedItem.TwitterLink = request.TweetLink;
                 }
+
+                List<BskyFacet> facets = new List<BskyFacet>();
 
                 // If attributed to a Twitter user convert the @ mention to a link instead so there's proper attribution on Mastodon
                 const string SubmittedBySearchText = "Submitted by ";
@@ -345,6 +356,22 @@ namespace SeattleCarsInBikeLanes.Controllers
                         string linkUsername = $"https://twitter.com/{username[1..]}";
                         tweetText = tweetText.Replace(username, linkUsername);
                         mastodonText = mastodonText.Replace(username, linkUsername);
+
+                        facets.Add(new BskyFacet()
+                        {
+                            Index = new BskyByteSlice()
+                            {
+                                ByteStart = usernameStartIndex,
+                                ByteEnd = usernameStartIndex + linkUsername.Length
+                            },
+                            Features = new List<BskyFeature>()
+                            {
+                                new BskyLink()
+                                {
+                                    Uri = linkUsername
+                                }
+                            }
+                        });
                     }
                     else if (tweetText[usernameStartIndex] == 'h')
                     {
@@ -356,6 +383,21 @@ namespace SeattleCarsInBikeLanes.Controllers
 
                 if (!string.IsNullOrWhiteSpace(request.QuoteTweetLink))
                 {
+                    facets.Add(new BskyFacet()
+                    {
+                        Index = new BskyByteSlice()
+                        {
+                            ByteStart = tweetText.Length + 1,
+                            ByteEnd = tweetText.Length + 1 + request.QuoteTweetLink.Length
+                        },
+                        Features = new List<BskyFeature>()
+                        {
+                            new BskyLink()
+                            {
+                                Uri = request.QuoteTweetLink
+                            }
+                        }
+                    });
                     tweetText += $"\n{request.QuoteTweetLink}";
                 }
 
@@ -402,33 +444,100 @@ namespace SeattleCarsInBikeLanes.Controllers
                     }
                     catch (Exception ex)
                     {
+                        helperMethods.DisposePictureStreams(pictureStreams);
                         throw new ArgumentException($"Failed to upload image to Mastodon. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Text {request.TweetBody}", ex);
                     }
                 }
 
-                // Finally post the status to Mastodon with the images
+                // Next post the status to Mastodon with the images
                 try
                 {
                     MastodonStatus status = await mastodonClient.PublishStatus(mastodonText, attachmentIds, null, visibility: "unlisted");
-                    helperMethods.DisposePictureStreams(pictureStreams);
                     foreach (var reportedItem in reportedItems)
                     {
                         reportedItem.MastodonLink = status.Url;
-                        bool addedItem = await reportedItemsDatabase.AddReportedItem(reportedItem);
-                        if (!addedItem)
-                        {
-                            logger.LogWarning($"Failed to update DB. DB ID {reportedItem.TweetId}. Imgur url: {string.Join(' ', reportedItem.ImgurUrls)}");
-                        }
-
-                        await feedProvider.AddReportedItemToFeed(reportedItem);
                     }
                 }
                 catch (Exception ex)
                 {
                     helperMethods.DisposePictureStreams(pictureStreams);
-                    string error = $"Failed to publish status. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Attachment ids: {string.Join(' ', attachmentIds)} Text {request.TweetBody}";
+                    string error = $"Failed to publish Mastodon status. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Attachment ids: {string.Join(' ', attachmentIds)} Text {request.TweetBody}";
                     logger.LogError(ex, error);
                     return StatusCode((int)HttpStatusCode.InternalServerError, error);
+                }
+
+                // IT'S BLUESKY TIME
+                List<AtProtoBlob> blobs = new List<AtProtoBlob>();
+                foreach (var stream in pictureStreams)
+                {
+                    try
+                    {
+                        UploadBlobRequest uploadBlobRequest = new UploadBlobRequest()
+                        {
+                            Content = stream,
+                            MimeType = "image/jpeg"
+                        };
+                        UploadBlobResponse uploadBlobResponse = await blueskyClient.UploadBlob(uploadBlobRequest);
+                        blobs.Add(uploadBlobResponse.Blob);
+                    }
+                    catch (Exception ex)
+                    {
+                        helperMethods.DisposePictureStreams(pictureStreams);
+                        throw new ArgumentException($"Failed to upload image to Bluesky. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Text {request.TweetBody}", ex);
+                    }
+                }
+
+                try
+                {
+                    BskyPost blueskyPost = new BskyPost<BskyImages>()
+                    {
+                        Text = tweetText,
+                        CreatedAt = DateTime.UtcNow,
+                        Embed = new BskyImages()
+                        {
+                            Images = blobs.Select(blob => new BskyImage()
+                            {
+                                Image = blob,
+                                Alt = string.Empty
+                            }).ToList()
+                        }
+                    };
+
+                    if (facets.Count > 0)
+                    {
+                        blueskyPost.Facets = facets;
+                    }
+
+                    CreateRecordRequest<BskyPost> createRecordRequest = new CreateRecordRequest<BskyPost>()
+                    {
+                        Repo = blueskyClient.Did!,
+                        Collection = BskyPost.Type,
+                        Record = blueskyPost
+                    };
+                    CreateRecordResponse createRecordResponse = await blueskyClient.CreateRecord(createRecordRequest);
+
+                    foreach (var reportedItem in reportedItems)
+                    {
+                        reportedItem.BlueskyLink = helperMethods.GetBlueskyPostUrl(createRecordResponse.Uri);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    helperMethods.DisposePictureStreams(pictureStreams);
+                    string error = $"Failed to publish Bluesky status. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Blob ids: {string.Join(' ', blobs.Select(b => b.Ref.Link))} Text {request.TweetBody}";
+                    logger.LogError(ex, error);
+                    return StatusCode((int)HttpStatusCode.InternalServerError, error);
+                }
+
+                foreach (var reportedItem in reportedItems)
+                {
+                    bool addedItem = await reportedItemsDatabase.AddReportedItem(reportedItem);
+                    if (!addedItem)
+                    {
+                        logger.LogWarning($"Failed to update DB. DB ID {reportedItem.TweetId}. Imgur url: {string.Join(' ', reportedItem.ImgurUrls)}");
+                    }
+
+                    await feedProvider.AddReportedItemToFeed(reportedItem);
                 }
             }
             else if (request.PostUrl.Contains("twitter.com"))
@@ -600,6 +709,19 @@ namespace SeattleCarsInBikeLanes.Controllers
                 string tootId = mastodonLink.Segments[mastodonLink.Segments.Length - 1];
                 MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
                 await mastodonClient.DeleteStatus(tootId);
+            }
+
+            if (reportedItem.BlueskyLink != null)
+            {
+                Uri blueskyLink = new Uri(reportedItem.BlueskyLink);
+                AtProtoClient blueskyClient = await blueskyClientProvider.GetClient();
+                DeleteRecordRequest deleteRecordRequest = new DeleteRecordRequest()
+                {
+                    Repo = blueskyClient.Did!,
+                    Collection = "app.bsky.feed.post",
+                    Rkey = blueskyLink.Segments.Last()
+                };
+                await blueskyClient.DeleteRecord(deleteRecordRequest);
             }
 
             await feedProvider.RemoveReportedItemFromFeed(reportedItem);

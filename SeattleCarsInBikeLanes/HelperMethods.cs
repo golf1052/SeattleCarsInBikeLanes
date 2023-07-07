@@ -464,5 +464,11 @@ namespace SeattleCarsInBikeLanes
 
             return randomFileNameBuilder.ToString();
         }
+
+        public string GetBlueskyPostUrl(string atUri)
+        {
+            string[] splitUri = atUri.Split('/');
+            return $"https://bsky.app/profile/{splitUri[2]}/post/{splitUri[4]}";
+        }
     }
 }
