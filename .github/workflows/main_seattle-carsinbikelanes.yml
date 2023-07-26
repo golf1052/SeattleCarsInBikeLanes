@@ -24,6 +24,12 @@ jobs:
 
       - name: Build with dotnet
         run: dotnet build SeattleCarsInBikeLanes/SeattleCarsInBikeLanes.csproj --configuration Release
+      
+      - name: Build tests
+        run: dotnet build SeattleCarsInBikeLanes.Tests/SeattleCarsInBikeLanes.Tests.csproj --configuration Release
+
+      - name: Run tests
+        run: dotnet test SeattleCarsInBikeLanes.Tests/SeattleCarsInBikeLanes.Tests.csproj --configuration Release
 
       - name: dotnet publish
         run: dotnet publish SeattleCarsInBikeLanes/SeattleCarsInBikeLanes.csproj -c Release -r win-x64 --self-contained true -o ${{env.DOTNET_ROOT}}/myapp

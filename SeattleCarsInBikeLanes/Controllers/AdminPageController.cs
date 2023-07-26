@@ -377,7 +377,10 @@ namespace SeattleCarsInBikeLanes.Controllers
                     {
                         string profileLink = tweetText[usernameStartIndex..potentialEndIndex];
                         Uri profileUri = new Uri(profileLink);
-                        mastodonText = mastodonText.Replace(profileLink, $"{profileUri.Segments[^1]}@{profileUri.Host}");
+                        if (!profileUri.Host.Contains("bsky.app"))
+                        {
+                            mastodonText = mastodonText.Replace(profileLink, $"{profileUri.Segments[^1]}@{profileUri.Host}");
+                        }
 
                         facets.Add(new BskyFacet()
                         {
@@ -395,6 +398,37 @@ namespace SeattleCarsInBikeLanes.Controllers
                             }
                         });
                     }
+                }
+                else if (tweetText.Contains("https://"))
+                {
+                    int linkStartIndex = tweetText.IndexOf("https://");
+                    int potentialEndIndex = tweetText.IndexOf('\n', linkStartIndex);
+                    if (potentialEndIndex == -1)
+                    {
+                        potentialEndIndex = tweetText.IndexOf(' ', linkStartIndex);
+                    }
+
+                    if (potentialEndIndex == -1)
+                    {
+                        potentialEndIndex = tweetText.Length;
+                    }
+                    string link = tweetText[linkStartIndex..potentialEndIndex];
+
+                    facets.Add(new BskyFacet()
+                    {
+                        Index = new BskyByteSlice()
+                        {
+                            ByteStart = linkStartIndex,
+                            ByteEnd = linkStartIndex + link.Length
+                        },
+                        Features = new List<BskyFeature>()
+                            {
+                                new BskyLink()
+                                {
+                                    Uri = link
+                                }
+                            }
+                    });
                 }
 
                 if (!string.IsNullOrWhiteSpace(request.QuoteTweetLink))

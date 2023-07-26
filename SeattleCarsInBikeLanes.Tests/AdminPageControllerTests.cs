@@ -6,6 +6,7 @@ using Azure.Storage.Blobs;
 using golf1052.atproto.net;
 using golf1052.atproto.net.Models.AtProto.Repo;
 using golf1052.atproto.net.Models.Bsky.Feed;
+using golf1052.atproto.net.Models.Bsky.Richtext;
 using golf1052.Mastodon;
 using golf1052.Mastodon.Models.Statuses;
 using golf1052.Mastodon.Models.Statuses.Media;
@@ -253,6 +254,89 @@ namespace SeattleCarsInBikeLanes.Tests
                 .Returns((CreateRecordRequest<BskyPost> request) => {
                     Assert.NotNull(request.Record.Facets);
                     Assert.Single(request.Record.Facets);
+                    return new CreateRecordResponse()
+                    {
+                        Cid = "1234",
+                        Uri = "at://did:plc:1234/app.bsky.feed.post/1234"
+                    };
+                });
+            mockHelperMethods.Setup(m => m.GetBlueskyPostUrl(It.IsAny<string>()))
+                .Returns("https://example.com/status/test-id");
+            mockReportedItemsDatabase!.Setup(m => m.AddReportedItem(It.IsAny<ReportedItem>()).Result)
+                .Returns(true);
+            mockFeedProvider!.Setup(m => m.AddReportedItemToFeed(It.IsAny<ReportedItem>()));
+
+            var result = await controller!.PostTweet(request);
+        }
+
+        [Fact]
+        public async Task PostTweet_WithBskyLink()
+        {
+            PostTweetRequest request = new PostTweetRequest()
+            {
+                TweetBody = "1 car\nDate: 4/20/2023\nTime: 4:20 PM\nLocation: 9th Ave N & Mercer\nhttps://bsky.app/profile/golf1052.com/post/3k366ccs2hi2h",
+                TweetImages = "https://golf1052.com/images/gv3-500.png",
+                TweetLink = "https://golf1052.com"
+            };
+
+            mockMastodonClientProvider!.Setup(m => m.GetServerClient())
+                .Returns(mockMastodonClient!.Object);
+            mockBlueskyClientProvider!.Setup(m => m.GetClient().Result)
+                .Returns(mockBlueskyClient!.Object);
+            mockMapsSearchClientHttpMessageHandler.SetupAnyRequest()
+                .ReturnsResponse(File.ReadAllText("TestFiles/SearchAddressResponse.json"), "application/json");
+            mockHelperMethods!.Setup(m => m.DownloadImage(It.IsAny<string>(), It.IsAny<HttpClient>()).Result)
+                .Returns(new MemoryStream());
+            mockImageEndpoint!.Setup(m => m.UploadImageAsync(It.IsAny<Stream>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<IProgress<int>>(),
+                It.IsAny<int?>(),
+                It.IsAny<CancellationToken>()).Result)
+                .Returns(new Image()
+                {
+                    Link = "https://golf1052.com/images/gv3-500.png"
+                });
+            MastodonAttachment mastodonAttachment = new MastodonAttachment()
+            {
+                Id = "test-id"
+            };
+            mockMastodonClient.Setup(m => m.UploadMedia(It.IsAny<Stream>()).Result)
+                .Returns(mastodonAttachment);
+            mockMastodonClient.Setup(m => m.GetAttachment(It.IsAny<string>()).Result)
+                .Returns(mastodonAttachment);
+            mockMastodonClient.Setup(m => m.PublishStatus(It.IsAny<string>(),
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>()).Result)
+                .Returns(new MastodonStatus()
+                {
+                    Url = "https://example.com/status/test-id"
+                });
+            mockBlueskyClient.Setup(m => m.UploadBlob(It.IsAny<UploadBlobRequest>()).Result)
+                .Returns(new UploadBlobResponse()
+                {
+                    Blob = new AtProtoBlob()
+                    {
+                        Type = "blob",
+                        Ref = new AtProtoBlobRef()
+                        {
+                            Link = "1234"
+                        },
+                        MimeType = "image/jpeg",
+                        Size = 0
+                    }
+                });
+            mockBlueskyClient.Setup(m => m.CreateRecord(It.IsAny<CreateRecordRequest<BskyPost>>()).Result)
+                .Returns((CreateRecordRequest<BskyPost> request) => {
+                    Assert.NotNull(request.Record.Facets);
+                    Assert.Single(request.Record.Facets);
+                    Assert.Single(request.Record.Facets[0].Features);
+                    BskyLink? bskyLink = request.Record.Facets[0].Features[0] as BskyLink;
+                    Assert.NotNull(bskyLink);
+                    Assert.Equal("https://bsky.app/profile/golf1052.com/post/3k366ccs2hi2h", bskyLink.Uri);
                     return new CreateRecordResponse()
                     {
                         Cid = "1234",
