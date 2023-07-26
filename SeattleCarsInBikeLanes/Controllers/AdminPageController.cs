@@ -35,7 +35,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly HelperMethods helperMethods;
         private readonly BlobContainerClient blobContainerClient;
         private readonly TwitterContext uploadTwitterContext;
-        private readonly ImageEndpoint imgurImageEndpoint;
+        private readonly IImageEndpoint imgurImageEndpoint;
         private readonly ReportedItemsDatabase reportedItemsDatabase;
         private readonly HttpClient httpClient;
         private readonly MapsSearchClient mapsSearchClient;
@@ -47,7 +47,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             HelperMethods helperMethods,
             BlobContainerClient blobContainerClient,
             SecretClient secretClient,
-            ImageEndpoint imgurImageEndpoint,
+            IImageEndpoint imgurImageEndpoint,
             ReportedItemsDatabase reportedItemsDatabase,
             HttpClient httpClient,
             MapsSearchClient mapsSearchClient,
@@ -338,7 +338,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                 string mastodonText = tweetText;
                 if (tweetText.Contains(SubmittedBySearchText))
                 {
-                    int usernameStartIndex = tweetText.IndexOf(SubmittedBySearchText) + SubmittedBySearchText.Length - 1;
+                    int usernameStartIndex = tweetText.IndexOf(SubmittedBySearchText) + SubmittedBySearchText.Length;
                     int potentialEndIndex = tweetText.IndexOf('\n', usernameStartIndex);
                     if (potentialEndIndex == -1)
                     {
@@ -378,6 +378,22 @@ namespace SeattleCarsInBikeLanes.Controllers
                         string profileLink = tweetText[usernameStartIndex..potentialEndIndex];
                         Uri profileUri = new Uri(profileLink);
                         mastodonText = mastodonText.Replace(profileLink, $"{profileUri.Segments[^1]}@{profileUri.Host}");
+
+                        facets.Add(new BskyFacet()
+                        {
+                            Index = new BskyByteSlice()
+                            {
+                                ByteStart = usernameStartIndex,
+                                ByteEnd = usernameStartIndex + profileLink.Length
+                            },
+                            Features = new List<BskyFeature>()
+                            {
+                                new BskyLink()
+                                {
+                                    Uri = profileLink
+                                }
+                            }
+                        });
                     }
                 }
 
@@ -539,6 +555,8 @@ namespace SeattleCarsInBikeLanes.Controllers
 
                     await feedProvider.AddReportedItemToFeed(reportedItem);
                 }
+
+                helperMethods.DisposePictureStreams(pictureStreams);
             }
             else if (request.PostUrl.Contains("twitter.com"))
             {

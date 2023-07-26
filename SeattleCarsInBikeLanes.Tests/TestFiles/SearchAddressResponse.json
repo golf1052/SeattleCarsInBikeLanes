@@ -1,0 +1,54 @@
+{
+  "summary": {
+    "query": "9th ave n mercer",
+    "queryType": "NON_NEAR",
+    "queryTime": 61,
+    "numResults": 1,
+    "offset": 0,
+    "totalResults": 1,
+    "fuzzyLevel": 1,
+    "geoBias": {
+      "lat": 47.606501,
+      "lon": -122.333301
+    }
+  },
+  "results": [
+    {
+      "type": "Cross Street",
+      "id": "X6LttM3V1Z-vVIWhupk_oQ",
+      "score": 9.4272785187,
+      "dist": 2069.5854198980473,
+      "matchConfidence": {
+        "score": 1
+      },
+      "address": {
+        "streetName": "9th Avenue North & Mercer Street",
+        "municipalitySubdivision": "Cascade",
+        "municipality": "Seattle",
+        "countrySecondarySubdivision": "King",
+        "countrySubdivision": "WA",
+        "countrySubdivisionName": "Washington",
+        "postalCode": "98109",
+        "countryCode": "US",
+        "country": "United States",
+        "countryCodeISO3": "USA",
+        "freeformAddress": "9th Avenue North & Mercer Street, Seattle, WA 98109",
+        "localName": "Seattle"
+      },
+      "position": {
+        "lat": 47.6246,
+        "lon": -122.33974
+      },
+      "viewport": {
+        "topLeftPoint": {
+          "lat": 47.6255,
+          "lon": -122.34107
+        },
+        "btmRightPoint": {
+          "lat": 47.6237,
+          "lon": -122.33841
+        }
+      }
+    }
+  ]
+}

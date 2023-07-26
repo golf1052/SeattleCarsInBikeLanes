@@ -43,7 +43,7 @@ namespace SeattleCarsInBikeLanes.Providers
             return download.Value.Content.ToString();
         }
 
-        public async Task AddReportedItemToFeed(ReportedItem reportedItem)
+        public virtual async Task AddReportedItemToFeed(ReportedItem reportedItem)
         {
             BlobClient rssFileBlob = blobContainerClient.GetBlobClient(RssFilename);
             BlobClient atomFileBlob = blobContainerClient.GetBlobClient(AtomFilename);

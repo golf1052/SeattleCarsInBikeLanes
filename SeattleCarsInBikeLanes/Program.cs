@@ -191,7 +191,7 @@ namespace SeattleCarsInBikeLanes
                 imgurApi.SetOAuth2Token(token);
                 return imgurApi;
             });
-            services.AddSingleton(c =>
+            services.AddSingleton<IImageEndpoint>(c =>
             {
                 return new ImageEndpoint(c.GetRequiredService<ApiClient>(),
                     new HttpClient());

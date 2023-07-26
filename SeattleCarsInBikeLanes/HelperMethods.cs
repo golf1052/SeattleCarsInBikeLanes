@@ -387,7 +387,7 @@ namespace SeattleCarsInBikeLanes
             return AnyParentIsElement(node.ParentNode, elementName);
         }
 
-        public async Task<MemoryStream?> DownloadImage(string url, HttpClient httpClient)
+        public virtual async Task<MemoryStream?> DownloadImage(string url, HttpClient httpClient)
         {
             MemoryStream stream = new MemoryStream();
             HttpResponseMessage responseMessage = await httpClient.GetAsync(url);
@@ -465,7 +465,7 @@ namespace SeattleCarsInBikeLanes
             return randomFileNameBuilder.ToString();
         }
 
-        public string GetBlueskyPostUrl(string atUri)
+        public virtual string GetBlueskyPostUrl(string atUri)
         {
             string[] splitUri = atUri.Split('/');
             return $"https://bsky.app/profile/{splitUri[2]}/post/{splitUri[4]}";

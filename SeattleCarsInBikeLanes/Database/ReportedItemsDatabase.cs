@@ -14,7 +14,7 @@ namespace SeattleCarsInBikeLanes.Database
         {
         }
 
-        public async Task<bool> AddReportedItem(ReportedItem item)
+        public virtual async Task<bool> AddReportedItem(ReportedItem item)
         {
             return await base.AddItem(item, item.TweetId);
         }

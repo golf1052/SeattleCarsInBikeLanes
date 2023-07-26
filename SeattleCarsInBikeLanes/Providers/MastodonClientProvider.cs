@@ -85,7 +85,7 @@ namespace SeattleCarsInBikeLanes.Providers
             return mastodonClient;
         }
 
-        public MastodonClient GetServerClient()
+        public virtual MastodonClient GetServerClient()
         {
             MastodonClient mastodonClient = new MastodonClient(new Uri("https://social.ridetrans.it"), httpClient, clientLogger);
             mastodonClient.AccessToken = secretClient.GetSecret("social-ridetransit-access-token").Value.Value;

@@ -21,7 +21,7 @@ namespace SeattleCarsInBikeLanes.Providers
             blueskyClient = new AtProtoClient(httpClient);
         }
 
-        public async Task<AtProtoClient> GetClient()
+        public virtual async Task<AtProtoClient> GetClient()
         {
             string password = secretClient.GetSecret("bluesky-app-password").Value.Value;
             await blueskyClient.CreateSession(new CreateSessionRequest()
