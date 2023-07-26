@@ -955,7 +955,187 @@ namespace SeattleCarsInBikeLanes.Controllers
                 logger.LogError(ex, "Failed to toot stats.");
             }
 
+            // Next post to Bluesky (we'll probably post to Threads in the future so there's no finally 🙃)
+            AtProtoClient blueskyClient = await blueskyClientProvider.GetClient();
+            try
+            {
+                string firstSkeetText = $"{introText}{mostCarsText} ";
+                string firstSkeetLink = GetSocialLinkForBluesky(mostCars[0])!;
+                BskyFacet firstSkeetFacet = new BskyFacet
+                {
+                    Index = new BskyByteSlice()
+                    {
+                        ByteStart = firstSkeetText.Length,
+                        ByteEnd = firstSkeetText.Length + firstSkeetLink.Length
+                    },
+                    Features = new List<BskyFeature>()
+                    {
+                        new BskyLink()
+                        {
+                            Uri = firstSkeetLink
+                        }
+                    }
+                };
+                firstSkeetText += firstSkeetLink;
+                CreateRecordResponse firstSkeet = await blueskyClient.CreateRecord(new CreateRecordRequest<BskyPost>()
+                {
+                    Repo = blueskyClient.Did!,
+                    Collection = BskyPost.Type,
+                    Record = new BskyPost()
+                    {
+                        Text = firstSkeetText,
+                        CreatedAt = DateTime.UtcNow,
+                        Facets = new List<BskyFacet>()
+                        {
+                            firstSkeetFacet
+                        }
+                    }
+                });
+                CreateRecordResponse latestSkeet = firstSkeet;
+                if (mostCars.Count > 1)
+                {
+                    for (int i = 1; i < mostCars.Count; i++)
+                    {
+                        var item = mostCars[i];
+                        string latestSkeetText = $"{mostCarsText} ";
+                        string latestSkeetLink = GetSocialLinkForBluesky(item)!;
+                        BskyFacet latestSkeetFacet = new BskyFacet
+                        {
+                            Index = new BskyByteSlice()
+                            {
+                                ByteStart = latestSkeetText.Length,
+                                ByteEnd = latestSkeetText.Length + latestSkeetLink.Length
+                            },
+                            Features = new List<BskyFeature>()
+                            {
+                                new BskyLink()
+                                {
+                                    Uri = latestSkeetLink
+                                }
+                            }
+                        };
+                        latestSkeetText += latestSkeetLink;
+                        latestSkeet = await blueskyClient.CreateRecord(new CreateRecordRequest<BskyPost>()
+                        {
+                            Repo = blueskyClient.Did!,
+                            Collection = BskyPost.Type,
+                            Record = new BskyPost()
+                            {
+                                Text = latestSkeetText,
+                                CreatedAt = DateTime.UtcNow,
+                                Facets = new List<BskyFacet>()
+                                {
+                                    latestSkeetFacet
+                                },
+                                Reply = new BskyPostReplyRef()
+                                {
+                                    Root = new AtProtoStrongRef()
+                                    {
+                                        Cid = latestSkeet.Cid,
+                                        Uri = latestSkeet.Uri
+                                    },
+                                    Parent = new AtProtoStrongRef()
+                                    {
+                                        Cid = latestSkeet.Cid,
+                                        Uri = latestSkeet.Uri
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+                string secondSkeetText = $"{mostRidiculousText} ";
+                string secondSkeetLink = GetSocialLinkForBluesky(mostRidiculousReportedItem)!;
+                BskyFacet secondSkeetFacet = new BskyFacet
+                {
+                    Index = new BskyByteSlice()
+                    {
+                        ByteStart = secondSkeetText.Length,
+                        ByteEnd = secondSkeetText.Length + secondSkeetLink.Length
+                    },
+                    Features = new List<BskyFeature>()
+                    {
+                        new BskyLink()
+                        {
+                            Uri = secondSkeetLink
+                        }
+                    }
+                };
+                secondSkeetText += secondSkeetLink;
+                CreateRecordResponse secondSkeet = await blueskyClient.CreateRecord(new CreateRecordRequest<BskyPost>()
+                {
+                    Repo = blueskyClient.Did!,
+                    Collection = BskyPost.Type,
+                    Record = new BskyPost()
+                    {
+                        Text = secondSkeetText,
+                        CreatedAt = DateTime.UtcNow,
+                        Facets = new List<BskyFacet>()
+                        {
+                            secondSkeetFacet
+                        },
+                        Reply = new BskyPostReplyRef()
+                        {
+                            Root = new AtProtoStrongRef()
+                            {
+                                Cid = latestSkeet.Cid,
+                                Uri = latestSkeet.Uri
+                            },
+                            Parent = new AtProtoStrongRef()
+                            {
+                                Cid = latestSkeet.Cid,
+                                Uri = latestSkeet.Uri
+                            }
+                        }
+                    }
+                });
+                string thirdSkeetText = $"{worstIntersectionText}";
+                CreateRecordResponse thirdSkeet = await blueskyClient.CreateRecord(new CreateRecordRequest<BskyPost>()
+                {
+                    Repo = blueskyClient.Did!,
+                    Collection = BskyPost.Type,
+                    Record = new BskyPost()
+                    {
+                        Text = thirdSkeetText,
+                        CreatedAt = DateTime.UtcNow,
+                        Reply = new BskyPostReplyRef()
+                        {
+                            Root = new AtProtoStrongRef()
+                            {
+                                Cid = secondSkeet.Cid,
+                                Uri = secondSkeet.Uri
+                            },
+                            Parent = new AtProtoStrongRef()
+                            {
+                                Cid = secondSkeet.Cid,
+                                Uri = secondSkeet.Uri
+                            }
+                        }
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to skeet status.");
+            }
+
             return NoContent();
+        }
+
+        private string? GetSocialLinkForBluesky(ReportedItem item)
+        {
+            if (!string.IsNullOrWhiteSpace(item.BlueskyLink))
+            {
+                return item.BlueskyLink;
+            }
+            else if (!string.IsNullOrWhiteSpace(item.MastodonLink))
+            {
+                return item.MastodonLink;
+            }
+            else
+            {
+                return item.TwitterLink;
+            }
         }
 
         private async Task<ReportedItem?> FindReportedItem(string postIdentifier)
