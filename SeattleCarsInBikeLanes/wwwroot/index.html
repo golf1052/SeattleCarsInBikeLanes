@@ -38,7 +38,7 @@
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown" aria-expanded="false">Social sign in</a>
                 <ul class="dropdown-menu">
-                  <a class="btn btn-info twitter-button dropdown-item" id="twitterSignInButton">Sign in with Twitter</a>
+                  <a class="btn btn-info twitter-button dropdown-item" id="twitterSignInButton" hidden>Sign in with Twitter</a>
                   <button class="btn btn-primary mastodon-button dropdown-item" data-bs-toggle="modal" data-bs-target="#mastodonServerModal" id="mastodonSignInButton">Sign in with Mastodon</button>
                 </ul>
               </li>
@@ -52,7 +52,7 @@
                 <a class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown" aria-expanded="false">Tools</a>
                 <ul class="dropdown-menu">
                   <li><a class="dropdown-item" id="downloadButton" role="button">Export to CSV</a></li>
-                  <li><a class="dropdown-item" id="twitterLogoutButton" role="button">Logout of Twitter</a></li>
+                  <li><a class="dropdown-item" id="twitterLogoutButton" role="button" hidden>Logout of Twitter</a></li>
                   <li><a class="dropdown-item" id="mastodonLogoutButton" role="button">Logout of Mastodon</a></li>
                 </ul>
               </li>
@@ -63,6 +63,12 @@
             <ul class="navbar-nav">
               <li class="nav-item">
                 <a class="nav-link" href="https://twitter.com/carbikelanesea" target="_blank">Twitter</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="https://social.ridetrans.it/@carbikelanesea" target="_blank">Mastodon</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="https://bsky.app/profile/seattle.carinbikelane.com" target="_blank">Bluesky</a>
               </li>
               <li class="nav-item">
                 <a class="nav-link" href="https://github.com/golf1052/SeattleCarsInBikeLanes" target="_blank">GitHub</a>
@@ -261,7 +267,7 @@
             <input type="text" class="form-control form-control-sm" id="photoGPSInput" name="photoGPS" readonly>
           </div>
         </div>
-        <div id="twitterAttributionDiv">
+        <div id="twitterAttributionDiv" hidden>
           <div class="row">
             <div class="col-auto">
               <label for="twitterSubmittedByInput" class="form-label">Twitter Attribution</label>
@@ -281,7 +287,7 @@
             </div>
           </div>
         </div>
-        <div id="signInAttributeText" hidden>Sign in with Twitter and/or to attribute this submission to you</div>
+        <div id="signInAttributeText" hidden>Sign in with Mastodon to attribute this submission to you</div>
         <div id="attributeDiv" class="form-check" hidden>
           <input type="checkbox" class="form-check-input" id="attributeCheckbox" name="attributeCheck">
           <label for="attribtueCheckbox" class="form-check-label">Attribute</label>

@@ -193,13 +193,6 @@ function getTwitterUsername() {
     });
 }
 
-function getTwitterOAuthUrl() {
-    return fetch('api/Twitter/OAuthUrl')
-    .then(response => {
-        return response.text();
-    });
-}
-
 function getTweetId(properties) {
     if (!properties.twitterLink) {
         return properties.tweetId.split('.')[0];

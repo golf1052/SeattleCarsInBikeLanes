@@ -22,7 +22,6 @@ let clLayer = null;
 let oLayer = null;
 let trailsLayer = null;
 const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-let loggedInTwitterUsername = null;
 let loggedInMastodonFullUsername = null;
 let loggedInMastodonUsername = null;
 
@@ -84,29 +83,6 @@ function toggleBikeLanes() {
     }
 }
 
-function setTwitterButtonAsLoggedIn() {
-    const twitterButton = document.getElementById('twitterSignInButton');
-    const newTwitterButton = document.createElement('button');
-    newTwitterButton.className = 'btn btn-info twitter-button dropdown-item';
-    newTwitterButton.id = 'twitterSignInButton';
-    newTwitterButton.setAttribute('disabled', '');
-    newTwitterButton.innerText = 'Logged in with Twitter';
-    twitterButton.replaceWith(newTwitterButton);
-}
-
-function setTwitterButtonAsLoggedOut() {
-    getTwitterOAuthUrl()
-    .then(url => {
-        const twitterButton = document.getElementById('twitterSignInButton');
-        const newTwitterButton = document.createElement('a');
-        newTwitterButton.className = 'btn btn-info twitter-button';
-        newTwitterButton.id = 'twitterSignInButton';
-        newTwitterButton.href = url;
-        newTwitterButton.innerText = 'Sign in with Twitter';
-        twitterButton.replaceWith(newTwitterButton);
-    });
-}
-
 function setMastodonButtonAsLoggedIn() {
     const mastodonButton = document.getElementById('mastodonSignInButton');
     mastodonButton.setAttribute('disabled', '');
@@ -119,15 +95,6 @@ function setMastodonButtonAsLoggedOut() {
     mastodonButton.innerText = 'Sign in with Mastodon';
 }
 
-function clearTwitterAuth() {
-    localStorage.removeItem('twitterAccessToken');
-    localStorage.removeItem('twitterRefreshToken');
-    localStorage.removeItem('twitterExpiresAt');
-    loggedInTwitterUsername = null;
-    setTwitterButtonAsLoggedOut();
-    document.getElementById('twitterLogoutButton').className = 'dropdown-item disabled';
-}
-
 function clearMastodonAuth() {
     localStorage.removeItem('mastodonEndpoint');
     localStorage.removeItem('mastodonAccessToken');
@@ -135,35 +102,6 @@ function clearMastodonAuth() {
     loggedInMastodonUsername = null;
     setMastodonButtonAsLoggedOut();
     document.getElementById('mastodonLogoutButton').className = 'dropdown-item disabled';
-}
-
-function checkTwitterAuthExpiration() {
-    const tokenExpiresAt = luxon.DateTime.fromISO(localStorage.getItem('twitterExpiresAt'));
-    const now = luxon.DateTime.utc();
-    if (tokenExpiresAt <= now.minus({ minutes: 5 })) {
-        return refreshTwitterToken(localStorage.getItem('twitterRefreshToken'))
-        .catch(() => {
-            clearTwitterAuth();
-        });
-    } else {
-        return Promise.resolve();
-    }
-}
-
-function checkTwitterAuth() {
-    if (localStorage.getItem('twitterAccessToken')) {
-        document.getElementById('twitterLogoutButton').className = 'dropdown-item';
-        checkTwitterAuthExpiration()
-        .then(() => {
-            setTwitterButtonAsLoggedIn();
-            return getTwitterUsername();
-        })
-        .then(response => {
-            loggedInTwitterUsername = response.username;
-        });
-    } else {
-        document.getElementById('twitterLogoutButton').className = 'dropdown-item disabled';
-    }
 }
 
 function checkMastodonAuth() {
@@ -228,15 +166,6 @@ function hideUploadForm2Error() {
 }
 
 function initControls() {
-    getTwitterOAuthUrl()
-    .then(url => {
-        document.getElementById('twitterSignInButton').href = url;
-    });
-    
-    document.getElementById('twitterLogoutButton').addEventListener('click', function() {
-        clearTwitterAuth();
-    });
-
     document.getElementById('mastodonLogoutButton').addEventListener('click', function() {
         clearMastodonAuth();
     });
@@ -273,10 +202,6 @@ function initMapControls() {
 
     document.getElementById('attributeCheckbox').addEventListener('change', function(event) {
         if (event.target.checked) {
-            if (localStorage.getItem('twitterAccessToken')) {
-                document.getElementById('twitterSubmittedByInput').value = `Submitted by @${loggedInTwitterUsername}`;
-            }
-            
             if (localStorage.getItem('mastodonAccessToken')) {
                 document.getElementById('mastodonSubmittedByInput').value = `Submitted by ${loggedInMastodonFullUsername}`;
             }
@@ -518,12 +443,7 @@ function initUpload2LegendHtml(metadatas) {
     document.getElementById('mastodonSubmittedByInput').value = '';
     document.getElementById('attributeDiv').setAttribute('hidden', '');
     document.getElementById('attributeCheckbox').checked = false;
-    if ((localStorage.getItem('twitterAccessToken') && loggedInTwitterUsername) || (localStorage.getItem('mastodonAccessToken') && loggedInMastodonFullUsername)) {
-        if (localStorage.getItem('twitterAccessToken') && loggedInTwitterUsername) {
-            document.getElementById('twitterSubmittedByInput').value = 'Submission';
-            document.getElementById('attributeDiv').removeAttribute('hidden');
-        }
-
+    if ((localStorage.getItem('mastodonAccessToken') && loggedInMastodonFullUsername)) {
         if (localStorage.getItem('mastodonAccessToken') && loggedInMastodonFullUsername) {
             document.getElementById('mastodonSubmittedByInput').value = 'Submission';
             document.getElementById('attributeDiv').removeAttribute('hidden');
@@ -535,6 +455,7 @@ function initUpload2LegendHtml(metadatas) {
         }
         document.getElementById('signInAttributeText').removeAttribute('hidden');
         document.getElementById('twitterSubmittedByInput').value = 'Submission';
+        document.getElementById('mastodonSubmittedByInput').value = 'Submission';
     }
 
     clusterBubbleLayer.setOptions({
@@ -615,14 +536,6 @@ function initUpload2LegendHtml(metadatas) {
                 }
             }
             if (name === 'attributeCheck') {
-                if (localStorage.getItem('twitterAccessToken')) {
-                    for (const d of metadatas) {
-                        d.attribute = true;
-                        d.twitterUsername = loggedInTwitterUsername;
-                        d.twitterAccessToken = localStorage.getItem('twitterAccessToken');
-                    }
-                }
-
                 if (localStorage.getItem('mastodonAccessToken')) {
                     for (const d of metadatas) {
                         d.attribute = true;
@@ -631,11 +544,6 @@ function initUpload2LegendHtml(metadatas) {
                         d.mastodonEndpoint = localStorage.getItem('mastodonEndpoint');
                         d.mastodonAccessToken = localStorage.getItem('mastodonAccessToken');
                     }
-                }
-            }
-            if (name === 'twitterSubmittedBy') {
-                for (const d of metadatas) {
-                    d.twitterSubmittedBy = value;
                 }
             }
             if (name === 'mastodonSubmittedBy') {
@@ -656,12 +564,6 @@ function initUpload2LegendHtml(metadatas) {
 
             for (const d of metadatas) {
                 d.photoDateTime = userSpecifiedDateTime.toISO();
-            }
-        }
-        
-        if (localStorage.getItem('twitterAccessToken')) {
-            for (const d of metadatas) {
-                d.twitterUsername = loggedInTwitterUsername;
             }
         }
 
@@ -999,5 +901,4 @@ function initDarkMode() {
 initDarkMode();
 initControls();
 initMap();
-checkTwitterAuth();
 checkMastodonAuth();
