@@ -2,6 +2,7 @@
 using Azure.Maps.Search;
 using Azure.Security.KeyVault.Secrets;
 using Azure.Storage.Blobs;
+using Flurl;
 using golf1052.atproto.net;
 using golf1052.atproto.net.Models.AtProto.Repo;
 using golf1052.atproto.net.Models.Bsky.Embed;
@@ -457,10 +458,16 @@ namespace SeattleCarsInBikeLanes.Controllers
                     string[] splitTweetImages = request.TweetImages.Split('\n');
                     foreach (string imageLink in splitTweetImages)
                     {
-                        Stream? pictureStream = await helperMethods.DownloadImage(imageLink, httpClient);
+                        Url imageLinkUrl = new Url(imageLink);
+                        if (imageLinkUrl.Host.Contains("twimg") && imageLinkUrl.QueryParams.Contains("name"))
+                        {
+                            // Set image quality to medium because Bluesky has a small max image size currently
+                            imageLinkUrl.SetQueryParam("name", "medium");
+                        }
+                        Stream? pictureStream = await helperMethods.DownloadImage(imageLinkUrl.ToString(), httpClient);
                         if (pictureStream == null)
                         {
-                            return BadRequest($"Couldn't get stream from image link {imageLink}");
+                            return BadRequest($"Couldn't get stream from image link {imageLinkUrl}");
                         }
 
                         pictureStreams.Add(pictureStream);
