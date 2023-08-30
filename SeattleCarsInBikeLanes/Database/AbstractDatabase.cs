@@ -1,5 +1,4 @@
 ﻿using Microsoft.Azure.Cosmos;
-using SeattleCarsInBikeLanes.Database.Models;
 
 namespace SeattleCarsInBikeLanes.Database
 {
