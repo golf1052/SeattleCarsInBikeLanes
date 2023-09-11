@@ -159,11 +159,30 @@ function createDesktopCard(key, metadatas) {
     const twitterAttributionRow = createTextInputRow('Twitter Attribution:', 'twitterSubmittedBy', metadata.twitterSubmittedBy);
     const mastodonAttributionRow = createTextInputRow('Mastodon Attribution:', 'mastodonSubmittedBy', metadata.mastodonSubmittedBy);
 
+    const copyButton = createElementWithClass('button', 'btn btn-light me-4');
+    copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
+    copyButton.addEventListener('click', function() {
+        const carString = metadata.numberOfCars === 1 ? 'car' : 'cars';
+        let submissionString = 'Submission';
+        if (metadata.mastodonSubmittedBy !== 'Submission') {
+            const splitMastodonSubmittedBy = metadata.mastodonSubmittedBy.split(' ');
+            const splitUsername = splitMastodonSubmittedBy[2].split('@');
+            submissionString = `Submitted by https://${splitUsername[2]}/@${splitUsername[1]}`;
+        }
+        const copyString =
+            `${metadata.numberOfCars} ${carString}\n` +
+            `Date: ${dateTime.toFormat('M/d/yyyy')}\n` +
+            `Time: ${dateTime.toFormat('h:mm a')}\n` +
+            `Location: ${metadata.photoCrossStreet}\n` +
+            `GPS: ${metadata.photoLatitude}, ${metadata.photoLongitude}\n` +
+            `${submissionString}`;
+        navigator.clipboard.writeText(copyString);
+    });
     const uploadButton = createSubmitButton('btn-success', 'Upload');
     uploadButton.className = 'btn btn-success me-4';
     const deleteButton = createSubmitButton('btn-danger', 'Delete');
     const buttonDiv = createElementWithClass('div', 'text-center');
-    buttonDiv.append(uploadButton, deleteButton);
+    buttonDiv.append(copyButton, uploadButton, deleteButton);
 
     form.append(numberOfCarsRow, dateRow, timeRow, locationRow, gpsRow, twitterAttributionRow, mastodonAttributionRow, buttonDiv);
 
