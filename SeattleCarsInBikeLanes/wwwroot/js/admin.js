@@ -1,4 +1,6 @@
 const isDesktop = window.screen.availWidth >= 576;
+let blueskyDid = null;
+let blueskyAccessJwt = null;
 
 function createElementWithClass(tagName, className) {
     const element = document.createElement(tagName);
@@ -300,7 +302,7 @@ document.getElementById('postTweetButton').addEventListener('click', function(ev
     const tweetImagesTextArea = document.getElementById('tweetImagesTextArea');
     const postTweetInput = document.getElementById('postTweetInput');
     const quoteTweetInput = document.getElementById('quoteTweetInput');
-    postTweet('', tweetTextArea.value, tweetImagesTextArea.value, postTweetInput.value, quoteTweetInput.value)
+    postTweet('', tweetTextArea.value, tweetImagesTextArea.value, postTweetInput.value, quoteTweetInput.value, blueskyDid, blueskyAccessJwt)
     .then(() => {
         tweetTextArea.value = '';
         tweetImagesTextArea.value = '';
@@ -361,4 +363,10 @@ function displayPendingPhotos() {
     }
 }
 
-displayPendingPhotos();
+getBlueskySession()
+.then(response => {
+    blueskyDid = response.did;
+    blueskyAccessJwt = response.accessJwt;
+    displayPendingPhotos();
+});
+

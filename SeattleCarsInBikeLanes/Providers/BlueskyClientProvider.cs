@@ -9,7 +9,6 @@ namespace SeattleCarsInBikeLanes.Providers
         private readonly ILogger<BlueskyClientProvider> logger;
         private readonly SecretClient secretClient;
         private readonly HttpClient httpClient;
-        private readonly AtProtoClient blueskyClient;
 
         public BlueskyClientProvider(ILogger<BlueskyClientProvider> logger,
             SecretClient secretClient,
@@ -18,11 +17,11 @@ namespace SeattleCarsInBikeLanes.Providers
             this.logger = logger;
             this.secretClient = secretClient;
             this.httpClient = httpClient;
-            blueskyClient = new AtProtoClient(httpClient);
         }
 
         public virtual async Task<AtProtoClient> GetClient()
         {
+            AtProtoClient blueskyClient = new AtProtoClient(httpClient);
             string password = secretClient.GetSecret("bluesky-app-password").Value.Value;
             await blueskyClient.CreateSession(new CreateSessionRequest()
             {
@@ -30,6 +29,11 @@ namespace SeattleCarsInBikeLanes.Providers
                 Password = password
             });
             return blueskyClient;
+        }
+
+        public virtual AtProtoClient GetClient(string did, string accessJwt)
+        {
+            return new AtProtoClient(httpClient, did, accessJwt);
         }
     }
 }

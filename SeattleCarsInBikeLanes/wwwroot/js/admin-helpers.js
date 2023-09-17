@@ -1,3 +1,21 @@
+function getBlueskySession() {
+    return fetch('api/AdminPage/GetBlueskySession')
+    .then(response => {
+        if (!response.ok) {
+            return response.text();
+        }
+
+        return response.json();
+    })
+    .then(response => {
+        if (typeof response === 'string') {
+            throw new Error(response);
+        }
+
+        return response;
+    });
+}
+
 function getPendingPhotos() {
     return fetch('api/AdminPage/PendingPhotos')
     .then(response => {
@@ -38,7 +56,7 @@ function uploadTweet(metadata) {
     });
 }
 
-function postTweet(link, body, images, tweetLink, quoteTweetLink) {
+function postTweet(link, body, images, tweetLink, quoteTweetLink, blueskyDid, blueskyAccessJwt) {
     return fetch('api/AdminPage/PostTweet', {
         method: 'POST',
         body: JSON.stringify({
@@ -46,7 +64,9 @@ function postTweet(link, body, images, tweetLink, quoteTweetLink) {
             tweetBody: body,
             tweetImages: images,
             tweetLink: tweetLink,
-            quoteTweetLink: quoteTweetLink
+            quoteTweetLink: quoteTweetLink,
+            blueskyDid: blueskyDid,
+            blueskyAccessJwt: blueskyAccessJwt
         }),
         headers: {
             'Content-Type': 'application/json'

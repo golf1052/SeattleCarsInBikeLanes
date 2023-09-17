@@ -86,6 +86,17 @@ namespace SeattleCarsInBikeLanes.Controllers
             return File("admin.html", "text/html");
         }
 
+        [HttpGet("/api/AdminPage/GetBlueskySession")]
+        public async Task<BlueskySessionResponse> GetBlueskySession()
+        {
+            AtProtoClient blueskyClient = await blueskyClientProvider.GetClient();
+            return new BlueskySessionResponse()
+            {
+                Did = blueskyClient.Did!,
+                AccessJwt = blueskyClient.AccessJwt!
+            };
+        }
+
         [HttpGet("/api/AdminPage/PendingPhotos")]
         public async Task<Dictionary<string, List<FinalizedPhotoUploadWithSasUriMetadata>>> GetPendingPhotos()
         {
@@ -315,7 +326,15 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
 
             MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
-            AtProtoClient blueskyClient = await blueskyClientProvider.GetClient();
+            AtProtoClient blueskyClient;
+            if (string.IsNullOrWhiteSpace(request.BlueskyDid) || string.IsNullOrWhiteSpace(request.BlueskyAccessJwt))
+            {
+                blueskyClient = await blueskyClientProvider.GetClient();
+            }
+            else
+            {
+                blueskyClient = blueskyClientProvider.GetClient(request.BlueskyDid, request.BlueskyAccessJwt);
+            }
 
             if (!string.IsNullOrWhiteSpace(request.TweetBody) && !string.IsNullOrWhiteSpace(request.TweetImages) && !string.IsNullOrWhiteSpace(request.TweetLink))
             {
@@ -1366,6 +1385,8 @@ namespace SeattleCarsInBikeLanes.Controllers
             public string TweetImages { get; set; } = string.Empty;
             public string TweetLink { get; set; } = string.Empty;
             public string QuoteTweetLink { get; set; } = string.Empty;
+            public string BlueskyDid { get; set; } = string.Empty;
+            public string BlueskyAccessJwt { get; set; } = string.Empty;
         }
 
         public class DeletePostRequest
@@ -1376,6 +1397,12 @@ namespace SeattleCarsInBikeLanes.Controllers
         public class PostMonthlyStatsRequest
         {
             public string PostIdentifier { get; set; } = string.Empty;
+        }
+
+        public record BlueskySessionResponse
+        {
+            public required string Did { get; init; }
+            public required string AccessJwt { get; init; }
         }
     }
 }
