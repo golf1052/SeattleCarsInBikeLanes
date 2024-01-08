@@ -336,6 +336,7 @@ function displayPendingPhotos() {
     if (cardsDiv.childElementCount === 0) {
         return getPendingPhotos()
         .then(response => {
+            document.getElementById('pendingItems').innerText = `Pending photos: ${Object.keys(response).length}`;
             if (Object.keys(response).length === 0) {
                 cardsDiv.append('No pending reported items.');
             } else {
@@ -359,6 +360,7 @@ function displayPendingPhotos() {
             cardsDiv.append(alertDiv);
         });
     } else {
+        document.getElementById('pendingItems').innerText = `Pending photos: ${document.getElementsByClassName('card').length}`;
         return Promise.resolve();
     }
 }
