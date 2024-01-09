@@ -12,14 +12,19 @@ namespace SeattleCarsInBikeLanes.Controllers
         private const string ExistingBikeLaneFacilitiesUrl = "https://gisrevprxy.seattle.gov/arcgis/rest/services/SDOT_EXT/BikeMap/MapServer/20/query";
         private const string MultiUseTrailsUrl = "https://gisrevprxy.seattle.gov/arcgis/rest/services/SDOT_EXT/BikeMap/MapServer/19/query";
 
+        private readonly ILogger<BikeLanesController> logger;
         private readonly HttpClient httpClient;
         private readonly IMemoryCache cache;
+        private readonly Random random;
 
-        public BikeLanesController(HttpClient httpClient,
+        public BikeLanesController(ILogger<BikeLanesController> logger,
+            HttpClient httpClient,
             IMemoryCache cache)
         {
+            this.logger = logger;
             this.httpClient = httpClient;
             this.cache = cache;
+            random = new Random();
         }
 
         [HttpGet]
@@ -56,7 +61,9 @@ namespace SeattleCarsInBikeLanes.Controllers
             List<int> objectIds = await GetObjectIds(baseUrl);
             for (int i = 0; i < objectIds.Count; i += 250)
             {
-                List<int> section = objectIds.GetRange(i, Math.Min(250, objectIds.Count - i));
+                int upperBound = Math.Min(250, objectIds.Count - i);
+                logger.LogDebug($"Fetching object ids {i} - {i + upperBound}. Remaining: {objectIds.Count - i}");
+                List<int> section = objectIds.GetRange(i, upperBound);
                 JObject featureCollection = await GetGeometry(baseUrl, section);
                 foreach (JObject feature in (JArray)featureCollection["features"]!)
                 {
@@ -101,16 +108,31 @@ namespace SeattleCarsInBikeLanes.Controllers
                 outFields = "OBJECTID,ORD_STNAME_CONCAT";
             }
 
-            Uri uri = new Uri($"{baseUrl}?where=1%3D1&objectIds={string.Join(',', objectIds)}&outFields={outFields}&f=geojson");
-            HttpResponseMessage response = await httpClient.GetAsync(uri);
-            if (!response.IsSuccessStatusCode)
+            const int retryCount = 10;
+            for (int i = 0; i < retryCount; i++)
             {
-                string error = await response.Content.ReadAsStringAsync();
-                throw new Exception($"Error when fetching geometry for {baseUrl}");
-            }
+                Uri uri = new Uri($"{baseUrl}?where=1%3D1&objectIds={string.Join(',', objectIds)}&outFields={outFields}&f=geojson");
+                HttpResponseMessage response = await httpClient.GetAsync(uri);
+                if (!response.IsSuccessStatusCode)
+                {
+                    string error = await response.Content.ReadAsStringAsync();
+                    throw new Exception($"Error when fetching geometry for {baseUrl}");
+                }
 
-            JObject responseObject = JObject.Parse(await response.Content.ReadAsStringAsync());
-            return responseObject;
+                JObject responseObject = JObject.Parse(await response.Content.ReadAsStringAsync());
+                if (responseObject["error"] != null)
+                {
+                    int backoffInMilliseconds = random.Next(5000, 30000);
+                    logger.LogWarning($"Try {i + 1} received error, backing off {backoffInMilliseconds} milliseconds");
+                    await Task.Delay(TimeSpan.FromMilliseconds(backoffInMilliseconds));
+                }
+                else
+                {
+                    return responseObject;
+                }
+            }
+            
+            throw new Exception($"Error when fetching geometry for {baseUrl}");
         }
     }
 }
