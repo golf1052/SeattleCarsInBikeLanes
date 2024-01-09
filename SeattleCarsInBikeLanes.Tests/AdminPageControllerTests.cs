@@ -93,7 +93,7 @@ namespace SeattleCarsInBikeLanes.Tests
                 mockHttpMessageHandler.CreateClient());
             mockMastodonClient = new Mock<MastodonClient>("https://mastodon.social",
                 mockHttpMessageHandler.CreateClient());
-            mockBlueskyClient = new Mock<AtProtoClient>(mockHttpMessageHandler.CreateClient());
+            mockBlueskyClient = new Mock<AtProtoClient>(mockHttpMessageHandler.CreateClient(), null!, null!);
 
             mockSecretClient.Setup(m => m.GetSecret(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .Returns(Azure.Response.FromValue(SecretModelFactory.KeyVaultSecret(new SecretProperties("test"), "test"), Mock.Of<Azure.Response>()));
