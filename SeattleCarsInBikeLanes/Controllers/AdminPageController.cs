@@ -839,12 +839,14 @@ namespace SeattleCarsInBikeLanes.Controllers
                 return BadRequest($"Most ridiculous item didn't occur last month. Item date: {mostRidiculousReportedItem.Date}");
             }
 
+            bool skipMostCars = false;
             List<ReportedItem> mostCars = await reportedItemsDatabase.GetMostCars(startOfLastMonth, endOfLastMonth);
             if (mostCars.Count > 1)
             {
                 if (mostCars[0].NumberOfCars <= 2)
                 {
-                    return StatusCode((int)HttpStatusCode.InternalServerError, $"{mostCars.Count} reports with {mostCars[0].NumberOfCars} cars.");
+                    skipMostCars = true;
+                    logger.LogWarning($"Skipping most cars report. {mostCars.Count} reports with {mostCars[0].NumberOfCars} cars.");
                 }
             }
 
@@ -938,15 +940,25 @@ namespace SeattleCarsInBikeLanes.Controllers
             try
             {
                 //Tweet? firstTweet = await uploadTwitterContext.TweetAsync($"{introText}{mostCarsText} {mostCars[0].TwitterLink}");
-                Console.WriteLine($"T1: {introText}{mostCarsText} {mostCars[0].TwitterLink}");
-                //Tweet? latestTweet = firstTweet;
-                if (mostCars.Count > 1)
+                if (!skipMostCars)
                 {
-                    for (int i = 1; i < mostCars.Count; i++)
+                    Console.WriteLine($"T1: {introText}{mostCarsText} {mostCars[0].TwitterLink}");
+                }
+                else
+                {
+                    Console.WriteLine($"T1: {introText}");
+                }
+                //Tweet? latestTweet = firstTweet;
+                if (!skipMostCars)
+                {
+                    if (mostCars.Count > 1)
                     {
-                        var item = mostCars[i];
-                        //latestTweet = await uploadTwitterContext.ReplyAsync($"{mostCarsText} {item.TwitterLink}", latestTweet!.ID!);
-                        Console.WriteLine($"TM{i + 1}: {mostCarsText} {item.TwitterLink}");
+                        for (int i = 1; i < mostCars.Count; i++)
+                        {
+                            var item = mostCars[i];
+                            //latestTweet = await uploadTwitterContext.ReplyAsync($"{mostCarsText} {item.TwitterLink}", latestTweet!.ID!);
+                            Console.WriteLine($"TM{i + 1}: {mostCarsText} {item.TwitterLink}");
+                        }
                     }
                 }
                 //Tweet? secondTweet = await uploadTwitterContext.ReplyAsync($"{mostRidiculousText} {mostRidiculousReportedItem.TwitterLink}", latestTweet!.ID!);
@@ -963,14 +975,26 @@ namespace SeattleCarsInBikeLanes.Controllers
             MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
             try
             {
-                MastodonStatus firstToot = await mastodonClient.PublishStatus($"{introText}{mostCarsText} {mostCars[0].MastodonLink}");
-                MastodonStatus latestToot = firstToot;
-                if (mostCars.Count > 1)
+                MastodonStatus firstToot;
+                if (!skipMostCars)
                 {
-                    for (int i = 1; i < mostCars.Count; i++)
+                    firstToot = await mastodonClient.PublishStatus($"{introText}{mostCarsText} {mostCars[0].MastodonLink}");
+                }
+                else
+                {
+                    firstToot = await mastodonClient.PublishStatus($"{introText}");
+                }
+                
+                MastodonStatus latestToot = firstToot;
+                if (!skipMostCars)
+                {
+                    if (mostCars.Count > 1)
                     {
-                        var item = mostCars[i];
-                        latestToot = await mastodonClient.PublishStatus($"{mostCarsText} {item.MastodonLink}", inReplyToId: latestToot.Id);
+                        for (int i = 1; i < mostCars.Count; i++)
+                        {
+                            var item = mostCars[i];
+                            latestToot = await mastodonClient.PublishStatus($"{mostCarsText} {item.MastodonLink}", inReplyToId: latestToot.Id);
+                        }
                     }
                 }
                 MastodonStatus secondToot = await mastodonClient.PublishStatus($"{mostRidiculousText} {mostRidiculousReportedItem.MastodonLink}", inReplyToId: latestToot.Id);
@@ -985,38 +1009,56 @@ namespace SeattleCarsInBikeLanes.Controllers
             AtProtoClient blueskyClient = await blueskyClientProvider.GetClient();
             try
             {
-                string firstSkeetText = $"{introText}{mostCarsText} ";
-                string firstSkeetLink = GetSocialLinkForBluesky(mostCars[0])!;
-                BskyFacet firstSkeetFacet = new BskyFacet
+                CreateRecordResponse firstSkeet;
+                if (!skipMostCars)
                 {
-                    Index = new BskyByteSlice()
+                    string firstSkeetText = $"{introText}{mostCarsText} ";
+                    string firstSkeetLink = GetSocialLinkForBluesky(mostCars[0])!;
+                    BskyFacet firstSkeetFacet = new BskyFacet
                     {
-                        ByteStart = firstSkeetText.Length,
-                        ByteEnd = firstSkeetText.Length + firstSkeetLink.Length
-                    },
-                    Features = new List<BskyFeature>()
+                        Index = new BskyByteSlice()
+                        {
+                            ByteStart = firstSkeetText.Length,
+                            ByteEnd = firstSkeetText.Length + firstSkeetLink.Length
+                        },
+                        Features = new List<BskyFeature>()
                     {
                         new BskyLink()
                         {
                             Uri = firstSkeetLink
                         }
                     }
-                };
-                firstSkeetText += firstSkeetLink;
-                CreateRecordResponse firstSkeet = await blueskyClient.CreateRecord(new CreateRecordRequest<BskyPost>()
-                {
-                    Repo = blueskyClient.Did!,
-                    Collection = BskyPost.Type,
-                    Record = new BskyPost()
+                    };
+                    firstSkeetText += firstSkeetLink;
+                    firstSkeet = await blueskyClient.CreateRecord(new CreateRecordRequest<BskyPost>()
                     {
-                        Text = firstSkeetText,
-                        CreatedAt = DateTime.UtcNow,
-                        Facets = new List<BskyFacet>()
+                        Repo = blueskyClient.Did!,
+                        Collection = BskyPost.Type,
+                        Record = new BskyPost()
+                        {
+                            Text = firstSkeetText,
+                            CreatedAt = DateTime.UtcNow,
+                            Facets = new List<BskyFacet>()
                         {
                             firstSkeetFacet
                         }
-                    }
-                });
+                        }
+                    });
+                }
+                else
+                {
+                    firstSkeet = await blueskyClient.CreateRecord(new CreateRecordRequest<BskyPost>()
+                    {
+                        Repo = blueskyClient.Did!,
+                        Collection = BskyPost.Type,
+                        Record = new BskyPost()
+                        {
+                            Text = introText,
+                            CreatedAt = DateTime.UtcNow
+                        }
+                    });
+                }
+                
                 CreateRecordResponse latestSkeet = firstSkeet;
                 if (mostCars.Count > 1)
                 {
