@@ -64,7 +64,13 @@ connection.on('JoinedGame', function(username) {
 
 connection.on('ReceiveCountdown', function(type, secondsRemaining) {
     if (type === 'PreRoundTimer') {
-        document.getElementById('preRoundModalBody').innerHTML = `<p class="text-center">Next round starts in</p><h1 class="text-center">${secondsRemaining}</h1>`;
+        const modalBodyTextP = document.createElement('p');
+        modalBodyTextP.className = 'text-center';
+        modalBodyTextP.innerText = 'Next round starts in';
+        const modalBodyH1 = document.createElement('h1');
+        modalBodyH1.className = 'text-center';
+        modalBodyH1.innerText = secondsRemaining;
+        document.getElementById('preRoundModalBody').replaceChildren(modalBodyTextP, modalBodyH1);
         if (!document.getElementById('preRoundModal').classList.contains('show')) {
             if (preRoundModal === null) {
                 preRoundModal = new bootstrap.Modal('#preRoundModal');
@@ -283,7 +289,7 @@ connection.on('EndRound', function(endRoundInfo) {
         knownPlayers.forEach(player => {
             delete player.lastRoundScore;
         });
-        document.getElementById('endGameModalBody').innerHTML = buildPlayerList(knownPlayers, false);
+        document.getElementById('endGameModalBody').replaceChildren(buildPlayerList(knownPlayers, false));
         const modal = new bootstrap.Modal('#endGameModal');
         modal.show();
     }
@@ -572,21 +578,25 @@ function updatePlayersLegend() {
 }
 
 function buildPlayerList(players, addHeader) {
-    let list = '';
+    let rootDiv = document.createElement('div');
     if (addHeader === undefined || addHeader) {
-        list = `<h6>Players</h6>`;
+        const playersHeader = document.createElement('h6');
+        rootDiv.appendChild(playersHeader).innerText = 'Players';
     }
-    list += '<ol>';
+    const playersHtmlList = document.createElement('ol');
     players.forEach(player => {
-        let playerText = `<li>${player.username}: ${player.score}`;
+        const playerListItem = document.createElement('li');
+        playerListItem.innerText = `${player.username}: ${player.score}`;
         if (player.lastRoundScore) {
-            playerText += `<span style="color: green;"> (+${player.lastRoundScore})</span>`;
+            const lastRoundScoreSpan = document.createElement('span');
+            lastRoundScoreSpan.innerText = ` (+${player.lastRoundScore})`;
+            lastRoundScoreSpan.style.color = 'green';
+            playerListItem.append(lastRoundScoreSpan);
         }
-        playerText += '</li>';
-        list += playerText;
+        playersHtmlList.append(playerListItem);
     });
-    list += '</ol>';
-    return list;
+    rootDiv.append(playersHtmlList);
+    return rootDiv;
 }
 
 function setRoundInfo(roundInfo) {
