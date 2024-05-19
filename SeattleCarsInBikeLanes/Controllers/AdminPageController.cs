@@ -618,7 +618,7 @@ namespace SeattleCarsInBikeLanes.Controllers
 
                 helperMethods.DisposePictureStreams(pictureStreams);
             }
-            else if (request.PostUrl.Contains("twitter.com"))
+            else if (request.PostUrl.Contains("twitter.com") || request.PostUrl.Contains("x.com"))
             {
                 throw new Exception("Reading tweets from Twitter no longer works. Please copy/paste the tweet body, image links, and tweet link into the appropriate locations.");
             }
