@@ -10,6 +10,7 @@ using golf1052.atproto.net.Models.Bsky.Richtext;
 using golf1052.Mastodon;
 using golf1052.Mastodon.Models.Statuses;
 using golf1052.Mastodon.Models.Statuses.Media;
+using golf1052.ThreadsAPI;
 using Imgur.API.Authentication;
 using Imgur.API.Endpoints;
 using Imgur.API.Models;
@@ -49,6 +50,7 @@ namespace SeattleCarsInBikeLanes.Tests
         private Mock<BlueskyClientProvider>? mockBlueskyClientProvider;
         private Mock<MastodonClient>? mockMastodonClient;
         private Mock<AtProtoClient>? mockBlueskyClient;
+        private Mock<ThreadsClient>? mockThreadsClient;
 
         public AdminPageControllerTests()
         {
@@ -94,6 +96,7 @@ namespace SeattleCarsInBikeLanes.Tests
             mockMastodonClient = new Mock<MastodonClient>("https://mastodon.social",
                 mockHttpMessageHandler.CreateClient());
             mockBlueskyClient = new Mock<AtProtoClient>(mockHttpMessageHandler.CreateClient(), null!, null!);
+            mockThreadsClient = new Mock<ThreadsClient>("clientId", "clientSecret", mockHttpMessageHandler.CreateClient());
 
             mockSecretClient.Setup(m => m.GetSecret(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .Returns(Azure.Response.FromValue(SecretModelFactory.KeyVaultSecret(new SecretProperties("test"), "test"), Mock.Of<Azure.Response>()));
@@ -108,7 +111,8 @@ namespace SeattleCarsInBikeLanes.Tests
                 mapsSearchClient,
                 mockMastodonClientProvider.Object,
                 mockFeedProvider.Object,
-                mockBlueskyClientProvider.Object);
+                mockBlueskyClientProvider.Object,
+                mockThreadsClient.Object);
         }
 
         [Fact]
