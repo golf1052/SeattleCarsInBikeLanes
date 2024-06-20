@@ -17,5 +17,11 @@ namespace SeattleCarsInBikeLanes.Controllers
         {
             return File("mastodonredirect.html", "text/html");
         }
+
+        [HttpGet("/threadsredirect")]
+        public IActionResult GetThreads()
+        {
+            return File("threadsredirect.html", "text/html");
+        }
     }
 }

@@ -57,3 +57,9 @@ This token pair lasts forever or until it is revoked.
   - [Azure Maps Layer & Legend Control module](https://github.com/Azure-Samples/azure-maps-layer-legend)
     - [Legend Control documentation](https://github.com/Azure-Samples/azure-maps-layer-legend/blob/main/docs/legend_control.md)
   - [Azure Maps Spider Cluster module (forked)](https://github.com/golf1052/azure-maps-spider-clusters)
+
+# Publishing NuGet Packages
+
+1. `dotnet build -c Release`
+2. `dotnet pack -c Release`
+3. `dotnet nuget push <path to .nupkg> -k <NuGet API key>`

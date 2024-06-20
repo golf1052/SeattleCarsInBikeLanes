@@ -11,6 +11,8 @@ using golf1052.atproto.net.Models.Bsky.Richtext;
 using golf1052.Mastodon;
 using golf1052.Mastodon.Models.Statuses;
 using golf1052.Mastodon.Models.Statuses.Media;
+using golf1052.ThreadsAPI;
+using golf1052.ThreadsAPI.Models;
 using Imgur.API.Endpoints;
 using Imgur.API.Models;
 using LinqToTwitter;
@@ -43,6 +45,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly MastodonClientProvider mastodonClientProvider;
         private readonly FeedProvider feedProvider;
         private readonly BlueskyClientProvider blueskyClientProvider;
+        private readonly ThreadsClient threadsClient;
 
         public AdminPageController(ILogger<AdminPageController> logger,
             HelperMethods helperMethods,
@@ -54,7 +57,8 @@ namespace SeattleCarsInBikeLanes.Controllers
             MapsSearchClient mapsSearchClient,
             MastodonClientProvider mastodonClientProvider,
             FeedProvider feedProvider,
-            BlueskyClientProvider blueskyClientProvider)
+            BlueskyClientProvider blueskyClientProvider,
+            ThreadsClient threadsClient)
         {
             this.logger = logger;
             this.helperMethods = helperMethods;
@@ -66,6 +70,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             this.mastodonClientProvider = mastodonClientProvider;
             this.feedProvider = feedProvider;
             this.blueskyClientProvider = blueskyClientProvider;
+            this.threadsClient = threadsClient;
 
             SingleUserAuthorizer auth = new SingleUserAuthorizer()
             {
@@ -471,12 +476,14 @@ namespace SeattleCarsInBikeLanes.Controllers
                     tweetText += $"\n{request.QuoteTweetLink}";
                 }
 
+                List<string> tweetImageLinks = new List<string>();
                 List<Stream> pictureStreams = new List<Stream>();
                 if (!string.IsNullOrWhiteSpace(request.TweetImages))
                 {
                     string[] splitTweetImages = request.TweetImages.Split('\n');
                     foreach (string imageLink in splitTweetImages)
                     {
+                        tweetImageLinks.Add(imageLink);
                         Url imageLinkUrl = new Url(imageLink);
                         if (imageLinkUrl.Host.Contains("twimg") && imageLinkUrl.QueryParams.Contains("name"))
                         {
@@ -603,6 +610,54 @@ namespace SeattleCarsInBikeLanes.Controllers
                     string error = $"Failed to publish Bluesky status. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Blob ids: {string.Join(' ', blobs.Select(b => b.Ref.Link))} Text {request.TweetBody}";
                     logger.LogError(ex, error);
                     return StatusCode((int)HttpStatusCode.InternalServerError, error);
+                }
+
+                // It's Threads time
+                if (tweetImageLinks.Count == 1)
+                {
+                    string threadsMediaContainerId = await threadsClient.CreateThreadsMediaContainer("IMAGE",
+                        tweetText,
+                        tweetImageLinks[0]);
+                    // Threads API recommends waiting 30 seconds between creating the media container and publishing it
+                    await Task.Delay(TimeSpan.FromSeconds(30));
+                    string threadsPostId = await threadsClient.PublishThreadsMediaContainer(threadsMediaContainerId);
+                    ThreadsMediaObject uploadedThreadPost = await threadsClient.GetThreadsMediaObject(threadsPostId,
+                        "id,permalink");
+
+                    foreach (var reportedItem in reportedItems)
+                    {
+                        reportedItem.ThreadsLink = uploadedThreadPost.Permalink;
+                    }
+                }
+                else if (tweetImageLinks.Count > 1)
+                {
+                    List<string> containerIds = new List<string>(tweetImageLinks.Count);
+                    foreach (var imageLink in tweetImageLinks)
+                    {
+                        string threadsMediaContainerId = await threadsClient.CreateThreadsMediaContainer("IMAGE",
+                            null,
+                            imageLink,
+                            null,
+                            null,
+                            true);
+                        containerIds.Add(threadsMediaContainerId);
+                    }
+                    string carouselContainerId = await threadsClient.CreateThreadsMediaContainer("CAROUSEL",
+                        tweetText,
+                        null,
+                        null,
+                        null,
+                        null,
+                        containerIds);
+                    await Task.Delay(TimeSpan.FromSeconds(30));
+                    string threadsPostId = await threadsClient.PublishThreadsMediaContainer(carouselContainerId);
+                    ThreadsMediaObject uploadedThreadsPost = await threadsClient.GetThreadsMediaObject(threadsPostId,
+                        "id,permalink");
+
+                    foreach (var reportedItem in reportedItems)
+                    {
+                        reportedItem.ThreadsLink = uploadedThreadsPost.Permalink;
+                    }
                 }
 
                 foreach (var reportedItem in reportedItems)
@@ -802,6 +857,8 @@ namespace SeattleCarsInBikeLanes.Controllers
                 await blueskyClient.DeleteRecord(deleteRecordRequest);
             }
 
+            // TODO: Add Threads deletion support once Threads API supports deletion
+
             await feedProvider.RemoveReportedItemFromFeed(reportedItem);
 
             bool deletedFromDatabase = await reportedItemsDatabase.DeleteItem(reportedItem);
@@ -984,7 +1041,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                 {
                     firstToot = await mastodonClient.PublishStatus($"{introText}");
                 }
-                
+
                 MastodonStatus latestToot = firstToot;
                 if (!skipMostCars)
                 {
@@ -1005,7 +1062,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                 logger.LogError(ex, "Failed to toot stats.");
             }
 
-            // Next post to Bluesky (we'll probably post to Threads in the future so there's no finally 🙃)
+            // Next post to Bluesky
             AtProtoClient blueskyClient = await blueskyClientProvider.GetClient();
             try
             {
@@ -1058,7 +1115,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                         }
                     });
                 }
-                
+
                 CreateRecordResponse latestSkeet = firstSkeet;
                 if (mostCars.Count > 1)
                 {
@@ -1187,6 +1244,59 @@ namespace SeattleCarsInBikeLanes.Controllers
                 logger.LogError(ex, "Failed to skeet status.");
             }
 
+            // Finally post to Threads
+            try
+            {
+                string firstThreadsPostId;
+                if (!skipMostCars)
+                {
+                    string firstCreationId = await threadsClient.CreateThreadsMediaContainer("TEXT",
+                        $"{introText}{mostCarsText} {GetSocialLinkForThreads(mostCars[0])}");
+                    await Task.Delay(TimeSpan.FromSeconds(30));
+                    firstThreadsPostId = await threadsClient.PublishThreadsMediaContainer(firstCreationId);
+                }
+                else
+                {
+                    string firstCreationId = await threadsClient.CreateThreadsMediaContainer("TEXT",
+                        $"{introText}");
+                    await Task.Delay(TimeSpan.FromSeconds(30));
+                    firstThreadsPostId = await threadsClient.PublishThreadsMediaContainer(firstCreationId);
+                }
+
+                string latestThreadsPostId = firstThreadsPostId;
+                if (!skipMostCars)
+                {
+                    if (mostCars.Count > 1)
+                    {
+                        for (int i = 1; i < mostCars.Count; i++)
+                        {
+                            var item = mostCars[i];
+                            string creationId = await threadsClient.CreateThreadsMediaContainer("TEXT",
+                                $"{mostCarsText} {GetSocialLinkForThreads(item)}",
+                                replyToId: latestThreadsPostId);
+                            await Task.Delay(TimeSpan.FromSeconds(30));
+                            latestThreadsPostId = await threadsClient.PublishThreadsMediaContainer(creationId);
+                        }
+                    }
+                }
+
+                string secondCreationId = await threadsClient.CreateThreadsMediaContainer("TEXT",
+                    $"{mostRidiculousText} {GetSocialLinkForThreads(mostRidiculousReportedItem)}",
+                    replyToId: latestThreadsPostId);
+                await Task.Delay(TimeSpan.FromSeconds(30));
+                string secondThreadsPostId = await threadsClient.PublishThreadsMediaContainer(secondCreationId);
+
+                string thirdCreationId = await threadsClient.CreateThreadsMediaContainer("TEXT",
+                    $"{worstIntersectionText}",
+                    replyToId: secondThreadsPostId);
+                await Task.Delay(TimeSpan.FromSeconds(30));
+                string thirdThreadsPostId = await threadsClient.PublishThreadsMediaContainer(thirdCreationId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to post stats to Threads.");
+            }
+
             return NoContent();
         }
 
@@ -1195,6 +1305,22 @@ namespace SeattleCarsInBikeLanes.Controllers
             if (!string.IsNullOrWhiteSpace(item.BlueskyLink))
             {
                 return item.BlueskyLink;
+            }
+            else if (!string.IsNullOrWhiteSpace(item.MastodonLink))
+            {
+                return item.MastodonLink;
+            }
+            else
+            {
+                return item.TwitterLink;
+            }
+        }
+
+        private string? GetSocialLinkForThreads(ReportedItem item)
+        {
+            if (!string.IsNullOrWhiteSpace(item.ThreadsLink))
+            {
+                return item.ThreadsLink;
             }
             else if (!string.IsNullOrWhiteSpace(item.MastodonLink))
             {

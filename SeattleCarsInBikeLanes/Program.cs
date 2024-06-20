@@ -5,6 +5,7 @@ using Azure.Maps.Search;
 using Azure.Security.KeyVault.Secrets;
 using Azure.Storage.Blobs;
 using golf1052.Mastodon;
+using golf1052.ThreadsAPI;
 using idunno.Authentication.Basic;
 using ImageMagick;
 using Imgur.API.Authentication;
@@ -228,6 +229,19 @@ namespace SeattleCarsInBikeLanes
                     c.GetRequiredService<HttpClient>());
             });
             services.AddSingleton<GuessGameManager>();
+            services.AddSingleton(c =>
+            {
+                SecretClient secretClient = c.GetRequiredService<SecretClient>();
+
+                ThreadsClient threadsClient = new ThreadsClient(secretClient.GetSecret("threads-client-id").Value.Value,
+                    secretClient.GetSecret("threads-client-secret").Value.Value,
+                    c.GetRequiredService<HttpClient>())
+                {
+                    LongLivedAccessToken = secretClient.GetSecret("threads-access-token").Value.Value,
+                    UserId = secretClient.GetSecret("threads-userid").Value.Value
+                };
+                return threadsClient;
+            });
 
             var app = builder.Build();
             Logger = app.Logger;

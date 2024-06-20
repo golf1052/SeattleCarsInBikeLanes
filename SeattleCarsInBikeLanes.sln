@@ -9,7 +9,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "golf1052.Mastodon", "..\Mas
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "golf1052.atproto.net", "..\atproto.net\golf1052.atproto.net\golf1052.atproto.net.csproj", "{A6C4A37C-748C-4CAF-A39A-0B5B983D5723}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeattleCarsInBikeLanes.Tests", "SeattleCarsInBikeLanes.Tests\SeattleCarsInBikeLanes.Tests.csproj", "{4FA8175B-B2E9-40D3-AE58-4071752D2092}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SeattleCarsInBikeLanes.Tests", "SeattleCarsInBikeLanes.Tests\SeattleCarsInBikeLanes.Tests.csproj", "{4FA8175B-B2E9-40D3-AE58-4071752D2092}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "golf1052.ThreadsAPI", "..\ThreadsAPI\golf1052.ThreadsAPI\golf1052.ThreadsAPI.csproj", "{70BB7705-3A18-4113-A19A-4995EFC6E143}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,6 +35,10 @@ Global
 		{4FA8175B-B2E9-40D3-AE58-4071752D2092}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4FA8175B-B2E9-40D3-AE58-4071752D2092}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4FA8175B-B2E9-40D3-AE58-4071752D2092}.Release|Any CPU.Build.0 = Release|Any CPU
+		{70BB7705-3A18-4113-A19A-4995EFC6E143}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{70BB7705-3A18-4113-A19A-4995EFC6E143}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{70BB7705-3A18-4113-A19A-4995EFC6E143}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{70BB7705-3A18-4113-A19A-4995EFC6E143}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

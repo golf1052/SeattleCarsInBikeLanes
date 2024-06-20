@@ -18,6 +18,7 @@ namespace SeattleCarsInBikeLanes.Database.Models
         public string? TwitterLink { get; set; }
         public string? MastodonLink { get; set; }
         public string? BlueskyLink { get; set; }
+        public string? ThreadsLink { get; set; }
         public bool Latest { get; set; } = false;
     }
 }

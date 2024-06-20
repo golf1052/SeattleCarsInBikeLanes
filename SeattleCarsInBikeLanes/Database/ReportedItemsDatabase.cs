@@ -142,7 +142,8 @@ namespace SeattleCarsInBikeLanes.Database
                 .Where(i => i.TweetId.Contains(identifier) ||
                     (i.TwitterLink != null && i.TwitterLink.Contains(identifier)) ||
                     (i.MastodonLink != null && i.MastodonLink.Contains(identifier)) ||
-                    (i.BlueskyLink != null && i.BlueskyLink.Contains(identifier)));
+                    (i.BlueskyLink != null && i.BlueskyLink.Contains(identifier)) ||
+                    (i.ThreadsLink != null && i.ThreadsLink.Contains(identifier)));
 
             using FeedIterator<ReportedItem> iterator = query.ToFeedIterator();
             return await ProcessIterator(iterator);
