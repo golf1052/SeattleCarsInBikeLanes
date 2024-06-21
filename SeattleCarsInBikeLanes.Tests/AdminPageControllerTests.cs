@@ -11,6 +11,7 @@ using golf1052.Mastodon;
 using golf1052.Mastodon.Models.Statuses;
 using golf1052.Mastodon.Models.Statuses.Media;
 using golf1052.ThreadsAPI;
+using golf1052.ThreadsAPI.Models;
 using Imgur.API.Authentication;
 using Imgur.API.Endpoints;
 using Imgur.API.Models;
@@ -97,6 +98,22 @@ namespace SeattleCarsInBikeLanes.Tests
                 mockHttpMessageHandler.CreateClient());
             mockBlueskyClient = new Mock<AtProtoClient>(mockHttpMessageHandler.CreateClient(), null!, null!);
             mockThreadsClient = new Mock<ThreadsClient>("clientId", "clientSecret", mockHttpMessageHandler.CreateClient());
+            mockThreadsClient.Setup(c => c.CreateThreadsMediaContainer(It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<bool>(),
+                It.IsAny<List<string>>()).Result)
+                .Returns("001");
+            mockThreadsClient.Setup(c => c.PublishThreadsMediaContainer(It.IsAny<string>()).Result)
+                .Returns("002");
+            mockThreadsClient.Setup(c => c.GetThreadsMediaObject(It.IsAny<string>(), It.IsAny<string>()).Result)
+                .Returns(new ThreadsMediaObject()
+                {
+                    Id = "002",
+                    Permalink = "https://threads.net/002"
+                });
 
             mockSecretClient.Setup(m => m.GetSecret(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .Returns(Azure.Response.FromValue(SecretModelFactory.KeyVaultSecret(new SecretProperties("test"), "test"), Mock.Of<Azure.Response>()));

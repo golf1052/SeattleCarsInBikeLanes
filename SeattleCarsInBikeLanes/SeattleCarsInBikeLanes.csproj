@@ -13,7 +13,7 @@
     <PackageReference Include="Azure.Storage.Blobs" Version="12.19.1" />
     <PackageReference Include="golf1052.atproto.net" Version="0.3.0" />
     <PackageReference Include="golf1052.Mastodon" Version="0.7.1" />
-    <PackageReference Include="golf1052.ThreadsAPI" Version="0.1.0" />
+    <PackageReference Include="golf1052.ThreadsAPI" Version="0.1.1" />
     <PackageReference Include="HtmlAgilityPack" Version="1.11.57" />
     <PackageReference Include="idunno.Authentication.Basic" Version="2.3.1" />
     <PackageReference Include="Imgur.API" Version="5.0.0" />
