@@ -4,6 +4,8 @@ using Azure.Core.GeoJson;
 using Azure.Maps.Search;
 using Azure.Maps.Search.Models;
 using Azure.Security.KeyVault.Secrets;
+using golf1052.ThreadsAPI;
+using golf1052.ThreadsAPI.Models;
 using HtmlAgilityPack;
 using LinqToTwitter;
 using LinqToTwitter.Common;
@@ -469,6 +471,45 @@ namespace SeattleCarsInBikeLanes
         {
             string[] splitUri = atUri.Split('/');
             return $"https://bsky.app/profile/{splitUri[2]}/post/{splitUri[4]}";
+        }
+
+        public async Task<ThreadsMediaContainerStatus> WaitForThreadsMediaContainer(ThreadsClient threadsClient,
+            string containerId,
+            long delayInMilliseconds = 250,
+            long timeoutInMilliseconds = 5 * 1000 * 60)
+        {
+            DateTime startTime = DateTime.UtcNow;
+            DateTime timeoutTime = startTime + TimeSpan.FromMilliseconds(timeoutInMilliseconds);
+            string containerStatusString = string.Empty;
+            ThreadsMediaContainerStatus containerStatus = await threadsClient.GetThreadsMediaContainerStatus(containerId);
+            if (string.IsNullOrWhiteSpace(containerStatus.Status))
+            {
+                throw new Exception("Container status is empty");
+            }
+            containerStatusString = containerStatus.Status;
+
+            while (containerStatusString == "IN_PROGRESS")
+            {
+                if (DateTime.UtcNow > timeoutTime)
+                {
+                    throw new Exception("Container status is still in progress after timeout");
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(delayInMilliseconds));
+                containerStatus = await threadsClient.GetThreadsMediaContainerStatus(containerId);
+                if (string.IsNullOrWhiteSpace(containerStatus.Status))
+                {
+                    throw new Exception("Container status is empty");
+                }
+                containerStatusString = containerStatus.Status;
+            }
+
+            if (containerStatusString == "EXPIRED" || containerStatusString == "ERROR")
+            {
+                throw new Exception("Container status is expired or has errored");
+            }
+
+            return containerStatus;
         }
     }
 }

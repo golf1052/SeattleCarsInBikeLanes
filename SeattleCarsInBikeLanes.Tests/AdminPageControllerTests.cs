@@ -114,6 +114,12 @@ namespace SeattleCarsInBikeLanes.Tests
                     Id = "002",
                     Permalink = "https://threads.net/002"
                 });
+            mockThreadsClient.Setup(c => c.GetThreadsMediaContainerStatus(It.IsAny<string>()).Result)
+                .Returns(new ThreadsMediaContainerStatus()
+                {
+                    Id = "001",
+                    Status = "FINISHED"
+                });
 
             mockSecretClient.Setup(m => m.GetSecret(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .Returns(Azure.Response.FromValue(SecretModelFactory.KeyVaultSecret(new SecretProperties("test"), "test"), Mock.Of<Azure.Response>()));

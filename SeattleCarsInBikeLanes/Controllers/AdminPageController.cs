@@ -619,14 +619,18 @@ namespace SeattleCarsInBikeLanes.Controllers
                         tweetText,
                         tweetImageLinks[0]);
                     // Threads API recommends waiting 30 seconds between creating the media container and publishing it
-                    await Task.Delay(TimeSpan.FromSeconds(30));
-                    string threadsPostId = await threadsClient.PublishThreadsMediaContainer(threadsMediaContainerId);
-                    ThreadsMediaObject uploadedThreadPost = await threadsClient.GetThreadsMediaObject(threadsPostId,
-                        "id,permalink");
-
-                    foreach (var reportedItem in reportedItems)
+                    // but we'll check the container status API instead.
+                    var containerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, threadsMediaContainerId);
+                    if (containerStatus.Status == "FINISHED")
                     {
-                        reportedItem.ThreadsLink = uploadedThreadPost.Permalink;
+                        string threadsPostId = await threadsClient.PublishThreadsMediaContainer(threadsMediaContainerId);
+                        ThreadsMediaObject uploadedThreadPost = await threadsClient.GetThreadsMediaObject(threadsPostId,
+                            "id,permalink");
+
+                        foreach (var reportedItem in reportedItems)
+                        {
+                            reportedItem.ThreadsLink = uploadedThreadPost.Permalink;
+                        }
                     }
                 }
                 else if (tweetImageLinks.Count > 1)
@@ -649,14 +653,17 @@ namespace SeattleCarsInBikeLanes.Controllers
                         null,
                         null,
                         containerIds);
-                    await Task.Delay(TimeSpan.FromSeconds(30));
-                    string threadsPostId = await threadsClient.PublishThreadsMediaContainer(carouselContainerId);
-                    ThreadsMediaObject uploadedThreadsPost = await threadsClient.GetThreadsMediaObject(threadsPostId,
-                        "id,permalink");
-
-                    foreach (var reportedItem in reportedItems)
+                    var containerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, carouselContainerId);
+                    if (containerStatus.Status == "FINISHED")
                     {
-                        reportedItem.ThreadsLink = uploadedThreadsPost.Permalink;
+                        string threadsPostId = await threadsClient.PublishThreadsMediaContainer(carouselContainerId);
+                        ThreadsMediaObject uploadedThreadsPost = await threadsClient.GetThreadsMediaObject(threadsPostId,
+                            "id,permalink");
+
+                        foreach (var reportedItem in reportedItems)
+                        {
+                            reportedItem.ThreadsLink = uploadedThreadsPost.Permalink;
+                        }
                     }
                 }
 
@@ -1247,20 +1254,26 @@ namespace SeattleCarsInBikeLanes.Controllers
             // Finally post to Threads
             try
             {
-                string firstThreadsPostId;
+                string firstThreadsPostId = string.Empty;
                 if (!skipMostCars)
                 {
                     string firstCreationId = await threadsClient.CreateThreadsMediaContainer("TEXT",
                         $"{introText}{mostCarsText} {GetSocialLinkForThreads(mostCars[0])}");
-                    await Task.Delay(TimeSpan.FromSeconds(30));
-                    firstThreadsPostId = await threadsClient.PublishThreadsMediaContainer(firstCreationId);
+                    var firstContainerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, firstCreationId);
+                    if (firstContainerStatus.Status == "FINISHED")
+                    {
+                        firstThreadsPostId = await threadsClient.PublishThreadsMediaContainer(firstCreationId);
+                    }
                 }
                 else
                 {
                     string firstCreationId = await threadsClient.CreateThreadsMediaContainer("TEXT",
                         $"{introText}");
-                    await Task.Delay(TimeSpan.FromSeconds(30));
-                    firstThreadsPostId = await threadsClient.PublishThreadsMediaContainer(firstCreationId);
+                    var firstContainerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, firstCreationId);
+                    if (firstContainerStatus.Status == "FINISHED")
+                    {
+                        firstThreadsPostId = await threadsClient.PublishThreadsMediaContainer(firstCreationId);
+                    }
                 }
 
                 string latestThreadsPostId = firstThreadsPostId;
@@ -1274,8 +1287,11 @@ namespace SeattleCarsInBikeLanes.Controllers
                             string creationId = await threadsClient.CreateThreadsMediaContainer("TEXT",
                                 $"{mostCarsText} {GetSocialLinkForThreads(item)}",
                                 replyToId: latestThreadsPostId);
-                            await Task.Delay(TimeSpan.FromSeconds(30));
-                            latestThreadsPostId = await threadsClient.PublishThreadsMediaContainer(creationId);
+                            var containerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, creationId);
+                            if (containerStatus.Status == "FINISHED")
+                            {
+                                latestThreadsPostId = await threadsClient.PublishThreadsMediaContainer(creationId);
+                            }
                         }
                     }
                 }
@@ -1283,14 +1299,21 @@ namespace SeattleCarsInBikeLanes.Controllers
                 string secondCreationId = await threadsClient.CreateThreadsMediaContainer("TEXT",
                     $"{mostRidiculousText} {GetSocialLinkForThreads(mostRidiculousReportedItem)}",
                     replyToId: latestThreadsPostId);
-                await Task.Delay(TimeSpan.FromSeconds(30));
-                string secondThreadsPostId = await threadsClient.PublishThreadsMediaContainer(secondCreationId);
+                var secondContainerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, secondCreationId);
+                string secondThreadsPostId = string.Empty;
+                if (secondContainerStatus.Status == "FINISHED")
+                {
+                    secondThreadsPostId = await threadsClient.PublishThreadsMediaContainer(secondCreationId);
+                }
 
                 string thirdCreationId = await threadsClient.CreateThreadsMediaContainer("TEXT",
                     $"{worstIntersectionText}",
                     replyToId: secondThreadsPostId);
-                await Task.Delay(TimeSpan.FromSeconds(30));
-                string thirdThreadsPostId = await threadsClient.PublishThreadsMediaContainer(thirdCreationId);
+                var thirdContainerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, thirdCreationId);
+                if (thirdContainerStatus.Status == "FINISHED")
+                {
+                    string thirdThreadsPostId = await threadsClient.PublishThreadsMediaContainer(thirdCreationId);
+                }
             }
             catch (Exception ex)
             {

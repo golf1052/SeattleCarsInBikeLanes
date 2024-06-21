@@ -245,6 +245,11 @@ namespace SeattleCarsInBikeLanes.Providers
                 contentBuilder.Append($"<p><a href=\"{reportedItem.BlueskyLink}\">Bluesky post</a></p>");
             }
 
+            if (!string.IsNullOrWhiteSpace(reportedItem.ThreadsLink))
+            {
+                contentBuilder.Append($"<p><a href=\"{reportedItem.ThreadsLink}\">Threads post</a></p>");
+            }
+
             TextSyndicationContent content = SyndicationContent.CreateHtmlContent(contentBuilder.ToString());
             DateTimeOffset pubDate = new DateTimeOffset(reportedItem.CreatedAt);
             SyndicationItem item = new SyndicationItem(titleBuilder.ToString(), content, null, reportedItem.TweetId, pubDate);
