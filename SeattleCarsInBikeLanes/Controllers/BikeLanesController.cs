@@ -9,8 +9,8 @@ namespace SeattleCarsInBikeLanes.Controllers
     [ApiController]
     public class BikeLanesController : ControllerBase
     {
-        private const string ExistingBikeLaneFacilitiesUrl = "https://gisrevprxy.seattle.gov/arcgis/rest/services/SDOT_EXT/BikeMap/MapServer/20/query";
-        private const string MultiUseTrailsUrl = "https://gisrevprxy.seattle.gov/arcgis/rest/services/SDOT_EXT/BikeMap/MapServer/19/query";
+        private const string ExistingBikeLaneFacilitiesUrl = "https://services.arcgis.com/ZOyb2t4B0UYuYNYH/ArcGIS/rest/services/SDOT_Bike_Facilities/FeatureServer/2/query";
+        private const string MultiUseTrailsUrl = "https://services.arcgis.com/ZOyb2t4B0UYuYNYH/ArcGIS/rest/services/SDOT_Bike_Facilities/FeatureServer/1/query";
 
         private readonly ILogger<BikeLanesController> logger;
         private readonly HttpClient httpClient;
@@ -86,7 +86,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             {
                 throw new Exception($"Error when fetching object ids for {baseUrl} {responseObject["error"]!["message"]}");
             }
-            return responseObject["objectIds"]!.ToObject<List<int>>()!;
+            return responseObject["properties"]!["objectIds"]!.ToObject<List<int>>()!;
         }
 
         private async Task<JObject> GetGeometry(string baseUrl, List<int> objectIds)
@@ -97,12 +97,12 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
 
             string outFields = string.Empty;
-            if (baseUrl.Contains("20"))
+            if (baseUrl == ExistingBikeLaneFacilitiesUrl)
             {
                 // Bike lanes
                 outFields = "OBJECTID,UNITID,CATEGORY";
             }
-            else if (baseUrl.Contains("19"))
+            else if (baseUrl == MultiUseTrailsUrl)
             {
                 // Trails
                 outFields = "OBJECTID,ORD_STNAME_CONCAT";
