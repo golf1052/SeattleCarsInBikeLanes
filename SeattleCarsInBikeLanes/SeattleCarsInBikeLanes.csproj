@@ -18,7 +18,7 @@
     <PackageReference Include="idunno.Authentication.Basic" Version="2.3.1" />
     <PackageReference Include="Imgur.API" Version="5.0.0" />
     <PackageReference Include="linqtotwitter" Version="6.15.0" />
-    <PackageReference Include="Magick.NET-Q16-AnyCPU" Version="13.5.0" />
+    <PackageReference Include="Magick.NET-Q16-AnyCPU" Version="14.0.0" />
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.22.0" />
     <PackageReference Include="Microsoft.Azure.CognitiveServices.Vision.ComputerVision" Version="7.0.1" />
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.37.1" />
