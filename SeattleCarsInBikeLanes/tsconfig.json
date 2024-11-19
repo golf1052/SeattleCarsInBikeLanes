@@ -1,0 +1,15 @@
+{
+    "include": [
+        "./wwwroot/src/**/*"
+    ],
+    "compilerOptions": {
+        "outDir": "./wwwroot/dist/",
+        "sourceMap": true,
+        "noImplicitAny": true,
+        "module": "Node16",
+        "target": "ES6",
+        "allowJs": true,
+        "moduleResolution": "Node16",
+        "resolveJsonModule": true
+    }
+}

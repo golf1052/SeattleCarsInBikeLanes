@@ -344,6 +344,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             {
                 d.TwitterAccessToken = null;
                 d.MastodonAccessToken = null;
+                d.ThreadsAccessToken = null;
 
                 string randomFileName = d.PhotoId;
                 BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");

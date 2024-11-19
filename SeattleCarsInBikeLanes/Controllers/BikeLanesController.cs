@@ -59,9 +59,10 @@ namespace SeattleCarsInBikeLanes.Controllers
         {
             JArray allFeatures = new JArray();
             List<int> objectIds = await GetObjectIds(baseUrl);
-            for (int i = 0; i < objectIds.Count; i += 250)
+            const int ObjectsPerCall = 100;
+            for (int i = 0; i < objectIds.Count; i += ObjectsPerCall)
             {
-                int upperBound = Math.Min(250, objectIds.Count - i);
+                int upperBound = Math.Min(ObjectsPerCall, objectIds.Count - i);
                 logger.LogDebug($"Fetching object ids {i} - {i + upperBound}. Remaining: {objectIds.Count - i}");
                 List<int> section = objectIds.GetRange(i, upperBound);
                 JObject featureCollection = await GetGeometry(baseUrl, section);
@@ -100,7 +101,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             if (baseUrl == ExistingBikeLaneFacilitiesUrl)
             {
                 // Bike lanes
-                outFields = "OBJECTID,UNITID,CATEGORY";
+                outFields = "OBJECTID,UNITID,CATEGORY,STYLE";
             }
             else if (baseUrl == MultiUseTrailsUrl)
             {
@@ -111,6 +112,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             const int retryCount = 10;
             for (int i = 0; i < retryCount; i++)
             {
+                // ?where=1=1&objectIds=1,2,3...&outFields=OBJECTID&f=geojson
                 Uri uri = new Uri($"{baseUrl}?where=1%3D1&objectIds={string.Join(',', objectIds)}&outFields={outFields}&f=geojson");
                 HttpResponseMessage response = await httpClient.GetAsync(uri);
                 if (!response.IsSuccessStatusCode)

@@ -126,7 +126,7 @@ function loginWithMastodon() {
     }
 
     const mastodonNextButton = document.getElementById('mastodonNextButton');
-    changeButtonToLoadingButton(mastodonNextButton, 'Next');
+    changeButtonToLoadingButton(mastodonNextButton, 'Login');
     getMastodonOAuthUrl(server)
     .then(response => {
         localStorage.setItem('mastodonEndpoint', server);
@@ -136,7 +136,7 @@ function loginWithMastodon() {
         const alertDiv = document.getElementById('modalAlertDiv');
         alertDiv.innerHTML = '';
         alertDiv.append(createAlertBanner(error.message));
-        changeLoadingButtonToRegularButton(mastodonNextButton, 'Next');
+        changeLoadingButtonToRegularButton(mastodonNextButton, 'Login');
     });
 }
 
@@ -205,9 +205,13 @@ function initMapControls() {
             if (localStorage.getItem('mastodonAccessToken')) {
                 document.getElementById('mastodonSubmittedByInput').value = `Submitted by ${loggedInMastodonFullUsername}`;
             }
+            if (window.blueskyHandle) {
+                document.getElementById('blueskySubmittedByInput').value = `Submitted by ${window.blueskyHandle}`;
+            }
         } else {
             document.getElementById('twitterSubmittedByInput').value = 'Submission';
             document.getElementById('mastodonSubmittedByInput').value = 'Submission';
+            document.getElementById('blueskySubmittedByInput').value = 'Submission';
         }
     });
 }
@@ -441,11 +445,17 @@ function initUpload2LegendHtml(metadatas) {
     
     document.getElementById('twitterSubmittedByInput').value = '';
     document.getElementById('mastodonSubmittedByInput').value = '';
+    document.getElementById('blueskySubmittedByInput').value = '';
     document.getElementById('attributeDiv').setAttribute('hidden', '');
     document.getElementById('attributeCheckbox').checked = false;
-    if ((localStorage.getItem('mastodonAccessToken') && loggedInMastodonFullUsername)) {
+    if ((localStorage.getItem('mastodonAccessToken') && loggedInMastodonFullUsername) || window.blueskyHandle) {
         if (localStorage.getItem('mastodonAccessToken') && loggedInMastodonFullUsername) {
             document.getElementById('mastodonSubmittedByInput').value = 'Submission';
+            document.getElementById('attributeDiv').removeAttribute('hidden');
+        }
+
+        if (window.blueskyHandle) {
+            document.getElementById('blueskySubmittedByInput').value = 'Submission';
             document.getElementById('attributeDiv').removeAttribute('hidden');
         }
     } else {
@@ -456,6 +466,7 @@ function initUpload2LegendHtml(metadatas) {
         document.getElementById('signInAttributeText').removeAttribute('hidden');
         document.getElementById('twitterSubmittedByInput').value = 'Submission';
         document.getElementById('mastodonSubmittedByInput').value = 'Submission';
+        document.getElementById('blueskySubmittedByInput').value = 'Submission';
     }
 
     clusterBubbleLayer.setOptions({
@@ -545,10 +556,23 @@ function initUpload2LegendHtml(metadatas) {
                         d.mastodonAccessToken = localStorage.getItem('mastodonAccessToken');
                     }
                 }
+
+                if (window.blueskyHandle) {
+                    for (const d of metadatas) {
+                        d.attribute = true;
+                        d.blueskyHandle = window.blueskyHandle;
+                        d.blueskyUserDid = window.blueskyUserDid;
+                    }
+                }
             }
             if (name === 'mastodonSubmittedBy') {
                 for (const d of metadatas) {
                     d.mastodonSubmittedBy = value;
+                }
+            }
+            if (name === 'blueskySubmittedBy') {
+                for (const d of metadatas) {
+                    d.blueskySubmittedBy = value;
                 }
             }
         }

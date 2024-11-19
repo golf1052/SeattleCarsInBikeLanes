@@ -1,5 +1,5 @@
 const isDesktop = window.screen.availWidth >= 576;
-let blueskyDid = null;
+let blueskyAdminDid = null;
 let blueskyAccessJwt = null;
 
 function createElementWithClass(tagName, className) {
@@ -160,6 +160,8 @@ function createDesktopCard(key, metadatas) {
     const gpsRow = createTextInputRow('GPS:', 'gps', `${metadata.photoLatitude}, ${metadata.photoLongitude}`, metadata.userSpecifiedLocation);
     const twitterAttributionRow = createTextInputRow('Twitter Attribution:', 'twitterSubmittedBy', metadata.twitterSubmittedBy);
     const mastodonAttributionRow = createTextInputRow('Mastodon Attribution:', 'mastodonSubmittedBy', metadata.mastodonSubmittedBy);
+    const blueskyAttributionRow = createTextInputRow('Bluesky Attribution:', 'blueskySubmittedBy', metadata.blueskySubmittedBy);
+    const twitterLinkRow = createTextInputRow('Twitter Link:', 'twitterLink', '');
 
     const copyButton = createElementWithClass('button', 'btn btn-light me-4');
     copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
@@ -170,6 +172,11 @@ function createDesktopCard(key, metadatas) {
             const splitMastodonSubmittedBy = metadata.mastodonSubmittedBy.split(' ');
             const splitUsername = splitMastodonSubmittedBy[2].split('@');
             submissionString = `Submitted by https://${splitUsername[2]}/@${splitUsername[1]}`;
+        }
+        if (submissionString === 'Submission') {
+            const splitBlueskySubmittedBy = metadata.blueskySubmittedBy.split(' ');
+            const splitHandle = splitBlueskySubmittedBy[2].split('@');
+            submissionString = `Submitted by https://bsky.app/profile/${splitHandle[1]}`;
         }
         const copyString =
             `${metadata.numberOfCars} ${carString}\n` +
@@ -186,7 +193,7 @@ function createDesktopCard(key, metadatas) {
     const buttonDiv = createElementWithClass('div', 'text-center');
     buttonDiv.append(copyButton, uploadButton, deleteButton);
 
-    form.append(numberOfCarsRow, dateRow, timeRow, locationRow, gpsRow, twitterAttributionRow, mastodonAttributionRow, buttonDiv);
+    form.append(numberOfCarsRow, dateRow, timeRow, locationRow, gpsRow, twitterAttributionRow, mastodonAttributionRow, blueskyAttributionRow, twitterLinkRow, buttonDiv);
 
     form.addEventListener('submit', (event) => {
         event.preventDefault();
@@ -230,6 +237,16 @@ function createDesktopCard(key, metadatas) {
                         metadata.mastodonSubmittedBy = value.trim();
                     }
                 }
+
+                if (name === 'blueskySubmittedBy') {
+                    if (value.trim() !== metadata.blueskySubmittedBy) {
+                        metadata.blueskySubmittedBy = value.trim();
+                    }
+                }
+
+                if (name === 'twitterLink') {
+                    metadata.twitterLink = value.trim();
+                }
             }
 
             if (!metadata.twitterSubmittedBy) {
@@ -238,6 +255,22 @@ function createDesktopCard(key, metadatas) {
             
             if (!metadata.mastodonSubmittedBy) {
                 metadata.mastodonSubmittedBy = 'Submission';
+            }
+
+            if (!metadata.blueskySubmittedBy) {
+                metadata.blueskySubmittedBy = 'Submission';
+            }
+
+            if (!metadata.threadsSubmittedBy) {
+                metadata.threadsSubmittedBy = 'Submission';
+            }
+
+            if (blueskyAdminDid) {
+                metadata.blueskyAdminDid = blueskyAdminDid;
+            }
+
+            if (blueskyAccessJwt) {
+                metadata.blueskyAccessJwt = blueskyAccessJwt;
             }
 
             uploadTweet(metadatas)
@@ -302,7 +335,7 @@ document.getElementById('postTweetButton').addEventListener('click', function(ev
     const tweetImagesTextArea = document.getElementById('tweetImagesTextArea');
     const postTweetInput = document.getElementById('postTweetInput');
     const quoteTweetInput = document.getElementById('quoteTweetInput');
-    postTweet('', tweetTextArea.value, tweetImagesTextArea.value, postTweetInput.value, quoteTweetInput.value, blueskyDid, blueskyAccessJwt)
+    postTweet('', tweetTextArea.value, tweetImagesTextArea.value, postTweetInput.value, quoteTweetInput.value, blueskyAdminDid, blueskyAccessJwt)
     .then(() => {
         tweetTextArea.value = '';
         tweetImagesTextArea.value = '';
@@ -367,7 +400,7 @@ function displayPendingPhotos() {
 
 getBlueskySession()
 .then(response => {
-    blueskyDid = response.did;
+    blueskyAdminDid = response.did;
     blueskyAccessJwt = response.accessJwt;
     displayPendingPhotos();
 });

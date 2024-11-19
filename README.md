@@ -10,7 +10,9 @@ Built with
   - [Maps](https://learn.microsoft.com/en-us/azure/azure-maps/)
 - [Bootstrap](https://getbootstrap.com/)
 - [CSV Stringify](https://csv.js.org/stringify/)
-- [Twitter](https://developer.twitter.com) ([linqtotwitter](https://github.com/JoeMayo/LinqToTwitter))
+- [Mastodon](https://docs.joinmastodon.org/api/)
+- [Bluesky](https://docs.bsky.app/) and [ATProtocol](https://atproto.com/)
+- [Threads](https://developers.facebook.com/docs/threads/)
 
 ## Contributing
 

@@ -33,6 +33,11 @@ html, body {
     background-color: #6364FF !important;
 }
 
+.bluesky-button {
+    background-color: #1185FE !important;
+    color: white;
+}
+
 .collapsing {
     transition: unset !important;
 }
