@@ -168,12 +168,12 @@ function createDesktopCard(key, metadatas) {
     copyButton.addEventListener('click', function() {
         const carString = metadata.numberOfCars === 1 ? 'car' : 'cars';
         let submissionString = 'Submission';
-        if (metadata.mastodonSubmittedBy !== 'Submission') {
+        if (metadata.mastodonSubmittedBy && metadata.mastodonSubmittedBy !== 'Submission') {
             const splitMastodonSubmittedBy = metadata.mastodonSubmittedBy.split(' ');
             const splitUsername = splitMastodonSubmittedBy[2].split('@');
             submissionString = `Submitted by https://${splitUsername[2]}/@${splitUsername[1]}`;
         }
-        if (submissionString === 'Submission') {
+        if (submissionString === 'Submission' && metadata.blueskySubmittedBy && metadata.blueskySubmittedBy !== 'Submission') {
             const splitBlueskySubmittedBy = metadata.blueskySubmittedBy.split(' ');
             const splitHandle = splitBlueskySubmittedBy[2].split('@');
             submissionString = `Submitted by https://bsky.app/profile/${splitHandle[1]}`;
