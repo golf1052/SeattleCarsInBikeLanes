@@ -8,7 +8,7 @@
   "author": "golf1052",
   "license": "MIT",
   "dependencies": {
-    "@atproto/oauth-client-browser": "^0.3.1",
+    "@atproto/oauth-client-browser": "https://gitpkg.vercel.app/golf1052/atproto/packages/oauth/oauth-client-browser/testdist?main",
     "luxon": "^3.5.0"
   },
   "devDependencies": {

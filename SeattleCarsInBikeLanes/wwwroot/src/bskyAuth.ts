@@ -37,13 +37,20 @@ const sessionStatePromise = clientInitPromise.then((result: undefined | { sessio
         } else {
             // console.log(`Restored session for ${result.session.sub}`);
         }
-        getHandleFromDid(result.session.did)
-        .then((handle) => {
+        getAuthInfo(result.session.did)
+        .then((authInfo) => {
+            (window as any).blueskyAuthInfo = authInfo;
+            return getPlcDirectoryResponse(result.session.did);
+        })
+        .then((resolveDidResponse: ResolveDidResponse) => {
+            const handle = getHandleFromResolveDidResponse(resolveDidResponse);
             if (handle.startsWith('did:plc:')) {
                 // Don't login the Bluesky user
+                delete (window as any).blueskyAuthInfo;
             } else {
                 (window as any).blueskyHandle = handle;
                 (window as any).blueskyUserDid = result.session.did;
+                (window as any).blueskyPds = getPdsFromResolveDidResponse(resolveDidResponse);
                 bskySub = result.session.sub;
 
                 blueskySignInButton.setAttribute('disabled', '');
@@ -56,6 +63,50 @@ const sessionStatePromise = clientInitPromise.then((result: undefined | { sessio
         blueskyLogoutButton.className = 'dropdown-item disabled';
     }
 });
+
+interface BlueskyAuthInfo {
+    keyId: string;
+    privateKey: string;
+    accessToken: string;
+}
+
+function getAuthInfo(did: string): Promise<BlueskyAuthInfo> {
+    const openRequest = indexedDB.open('@atproto-oauth-client');
+    let authInfo = {} as BlueskyAuthInfo;
+    return new Promise((resolve, reject) => {
+        openRequest.onsuccess = function() {
+            resolve(openRequest.result);
+        };
+        openRequest.onerror = function() {
+            reject(openRequest.error);
+        };
+    })
+    .then((db: IDBDatabase) => {
+        const transaction = db.transaction('session');
+        const objectStore = transaction.objectStore('session');
+        const sessionRequest = objectStore.get(did);
+        return new Promise((resolve, reject) => {
+            sessionRequest.onsuccess = function() {
+                resolve(sessionRequest.result);
+            };
+            sessionRequest.onerror = function() {
+                reject(sessionRequest.error);
+            };
+        });
+    })
+    .then((session: any) => {
+        authInfo.keyId = session.value.dpopKey.keyId;
+        authInfo.accessToken = session.value.tokenSet.access_token;
+        const signingKey: CryptoKey = session.value.dpopKey.keyPair.privateKey;
+        return crypto.subtle.exportKey('pkcs8', signingKey);
+    })
+    .then((keyData: ArrayBuffer) => {
+        const stringVersion = String.fromCharCode.apply(null, new Uint8Array(keyData));
+        const base64Version = btoa(stringVersion);
+        authInfo.privateKey = `-----BEGIN PRIVATE KEY-----\n${base64Version}\n-----END PRIVATE KEY-----`;
+        return authInfo;
+    });
+}
 
 interface ResolveDidResponse {
     id: string;
@@ -73,20 +124,32 @@ interface ResolveDidResponse {
     }[];
 };
 
-function getHandleFromDid(did: string): Promise<string> {
+function getPlcDirectoryResponse(did: string): Promise<ResolveDidResponse> {
     return fetch(`https://plc.directory/${did}`)
     .then((response) => {
         return response.json();
     })
     .then((response: ResolveDidResponse) => {
-        if (response.alsoKnownAs.length > 0) {
-            if (response.alsoKnownAs.length === 1) {
-                return response.alsoKnownAs[0].substring(5);
-            }
-            return response.alsoKnownAs.find(h => h.startsWith('at://')).substring(5);
-        }
-        return did;
+        return response;
     });
+}
+
+function getHandleFromResolveDidResponse(response: ResolveDidResponse): string {
+    if (response.alsoKnownAs.length > 0) {
+        if (response.alsoKnownAs.length === 1) {
+            return response.alsoKnownAs[0].substring(5);
+        }
+        return response.alsoKnownAs.find(h => h.startsWith('at://')).substring(5);
+    }
+    return response.id;
+}
+
+function getPdsFromResolveDidResponse(response: ResolveDidResponse): string {
+    if (response.service.length > 0) {
+        return response.service[0].serviceEndpoint;
+    } else {
+        throw new Error('No PDS found in DID document');
+    }
 }
 
 function login(handle: string) {

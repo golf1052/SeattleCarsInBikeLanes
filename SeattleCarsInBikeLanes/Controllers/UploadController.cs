@@ -3,6 +3,7 @@ using System.Text;
 using Azure.Maps.Search;
 using Azure.Maps.Search.Models;
 using Azure.Storage.Blobs;
+using golf1052.atproto.net;
 using golf1052.Mastodon;
 using golf1052.Mastodon.Models.Accounts;
 using ImageMagick;
@@ -338,13 +339,31 @@ namespace SeattleCarsInBikeLanes.Controllers
                         }
                     }
                 }
+
+                bool? verifiedBlueskyUser = await VerifyBlueskyUser(metadata);
+                if (verifiedBlueskyUser.HasValue && !verifiedBlueskyUser.Value)
+                {
+                    logger.LogWarning("Failed to verify Bluesky user.");
+                    foreach (var d in data)
+                    {
+                        d.BlueskySubmittedBy = "Submission";
+                        d.Attribute = false;
+                        d.BlueskyHandle = null;
+                        d.BlueskyUserDid = null;
+                    }
+                }
             }
 
             foreach (var d in data)
             {
+                // Clear all tokens and other sensitive info before saving to Azure
                 d.TwitterAccessToken = null;
                 d.MastodonAccessToken = null;
                 d.ThreadsAccessToken = null;
+                d.BlueskyUserKeyId = null;
+                d.BlueskyUserPrivateKey = null;
+                d.BlueskyUserBaseUrl = null;
+                d.BlueskyUserAccessToken = null;
 
                 string randomFileName = d.PhotoId;
                 BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");
@@ -362,6 +381,38 @@ namespace SeattleCarsInBikeLanes.Controllers
                 $"@ {metadata.PhotoCrossStreet} submitted {DateTime.Now:s}");
 
             return NoContent();
+        }
+
+        public async Task<bool?> VerifyBlueskyUser(FinalizedPhotoUploadMetadata metadata)
+        {
+            if (!string.IsNullOrWhiteSpace(metadata.BlueskyHandle) &&
+                !string.IsNullOrWhiteSpace(metadata.BlueskyUserDid) &&
+                !string.IsNullOrWhiteSpace(metadata.BlueskyUserKeyId) &&
+                !string.IsNullOrWhiteSpace(metadata.BlueskyUserPrivateKey) &&
+                !string.IsNullOrWhiteSpace(metadata.BlueskyUserBaseUrl) &&
+                !string.IsNullOrWhiteSpace(metadata.BlueskyUserAccessToken))
+            {
+                AtProtoOAuthClient blueskyClient = new AtProtoOAuthClient(metadata.BlueskyUserDid,
+                    metadata.BlueskyUserKeyId,
+                    metadata.BlueskyUserPrivateKey,
+                    metadata.BlueskyUserBaseUrl,
+                    metadata.BlueskyUserAccessToken);
+                try
+                {
+                    var profile = await blueskyClient.GetProfile();
+                    return profile.Handle == metadata.BlueskyHandle &&
+                        profile.Did == metadata.BlueskyUserDid;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to verify Bluesky user.");
+                    return false;
+                }
+            }
+            else
+            {
+                return null;
+            }
         }
 
         private DateTime? GetPhotoDate(string path)

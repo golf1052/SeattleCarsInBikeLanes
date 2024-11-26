@@ -562,6 +562,10 @@ function initUpload2LegendHtml(metadatas) {
                         d.attribute = true;
                         d.blueskyHandle = window.blueskyHandle;
                         d.blueskyUserDid = window.blueskyUserDid;
+                        d.blueskyUserKeyId = window.blueskyAuthInfo.keyId;
+                        d.blueskyUserPrivateKey = window.blueskyAuthInfo.privateKey;
+                        d.blueskyUserBaseUrl = window.blueskyPds;
+                        d.blueskyUserAccessToken = window.blueskyAuthInfo.accessToken;
                     }
                 }
             }

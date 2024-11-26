@@ -1592,10 +1592,19 @@ namespace SeattleCarsInBikeLanes.Controllers
                 string? twitterAccessToken = null,
                 string? mastodonEndpoint = null,
                 string? mastodonUsername = null,
+                string? mastodonFullUsername = null,
                 string? mastodonAccessToken = null,
                 string? blueskyHandle = null,
+                string? blueskyUserDid = null,
+                string? blueskyUserKeyId = null,
+                string? blueskyUserPrivateKey = null,
+                string? blueskyUserBaseUrl = null,
+                string? blueskyUserAccessToken = null,
                 string? threadsUsername = null,
-                string? threadsAccessToken = null) :
+                string? threadsAccessToken = null,
+                string? twitterLink = null,
+                string? blueskyAdminDid = null,
+                string? blueskyAccessJwt = null) :
                 base(numberOfCars,
                     photoId,
                     submissionId,
@@ -1616,10 +1625,19 @@ namespace SeattleCarsInBikeLanes.Controllers
                     twitterAccessToken,
                     mastodonEndpoint,
                     mastodonUsername,
+                    mastodonFullUsername,
                     mastodonAccessToken,
                     blueskyHandle,
+                    blueskyUserDid,
+                    blueskyUserKeyId,
+                    blueskyUserPrivateKey,
+                    blueskyUserBaseUrl,
+                    blueskyUserAccessToken,
                     threadsUsername,
-                    threadsAccessToken)
+                    threadsAccessToken,
+                    twitterLink,
+                    blueskyAdminDid,
+                    blueskyAccessJwt)
             {
             }
         }
