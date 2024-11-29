@@ -392,13 +392,13 @@ namespace SeattleCarsInBikeLanes.Controllers
                 !string.IsNullOrWhiteSpace(metadata.BlueskyUserBaseUrl) &&
                 !string.IsNullOrWhiteSpace(metadata.BlueskyUserAccessToken))
             {
-                AtProtoOAuthClient blueskyClient = new AtProtoOAuthClient(metadata.BlueskyUserDid,
-                    metadata.BlueskyUserKeyId,
-                    metadata.BlueskyUserPrivateKey,
-                    metadata.BlueskyUserBaseUrl,
-                    metadata.BlueskyUserAccessToken);
                 try
                 {
+                    AtProtoOAuthClient blueskyClient = new AtProtoOAuthClient(metadata.BlueskyUserDid,
+                        metadata.BlueskyUserKeyId,
+                        metadata.BlueskyUserPrivateKey,
+                        metadata.BlueskyUserBaseUrl,
+                        metadata.BlueskyUserAccessToken);
                     var profile = await blueskyClient.GetProfile();
                     return profile.Handle == metadata.BlueskyHandle &&
                         profile.Did == metadata.BlueskyUserDid;
