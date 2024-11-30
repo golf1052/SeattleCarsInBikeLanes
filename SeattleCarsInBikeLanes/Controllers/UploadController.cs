@@ -72,6 +72,7 @@ namespace SeattleCarsInBikeLanes.Controllers
 
             string submissionId = helperMethods.GetRandomFileName();
 
+            List<Task<InitialPhotoUploadWithSasUriMetadata>> metadataTasks = new List<Task<InitialPhotoUploadWithSasUriMetadata>>();
             List<InitialPhotoUploadWithSasUriMetadata> metadata = new List<InitialPhotoUploadWithSasUriMetadata>();
             Dictionary<int, string> exceptions = new Dictionary<int, string>();
             for (int i = 0; i < files.Count; i++)
@@ -79,12 +80,36 @@ namespace SeattleCarsInBikeLanes.Controllers
                 IFormFile? file = files[i];
                 try
                 {
-                    InitialPhotoUploadWithSasUriMetadata data = await ProcessInitialUpload(file, submissionId, i);
-                    metadata.Add(data);
+                    metadataTasks.Add(ProcessInitialUpload(file, submissionId, i));
                 }
                 catch (Exception ex)
                 {
                     exceptions.Add(i, ex.Message);
+                }
+            }
+
+            await Task.WhenAll(metadataTasks);
+
+            for (int i = 0; i < metadataTasks.Count; i++)
+            {
+                var metadataTask = metadataTasks[i];
+                if (metadataTask.IsFaulted)
+                {
+                    if (metadataTask.Exception != null)
+                    {
+                        if (exceptions.ContainsKey(i))
+                        {
+                            exceptions[i] += $"\n{metadataTask.Exception.Message}";
+                        }
+                        else
+                        {
+                            exceptions.Add(i, metadataTask.Exception.Message);
+                        }
+                    }
+                }
+                else
+                {
+                    metadata.Add(metadataTask.Result);
                 }
             }
 
@@ -146,21 +171,29 @@ namespace SeattleCarsInBikeLanes.Controllers
                     VisualFeatureTypes.Adult
                 };
 
-                ImageAnalysis imageAnalysisResults = await computerVisionClient.AnalyzeImageInStreamAsync(fileStream2, visualFeatureTypes);
+                Task<ImageAnalysis> imageAnalysisResultsTask = computerVisionClient.AnalyzeImageInStreamAsync(fileStream2, visualFeatureTypes);
+                Task<ReverseSearchCrossStreetAddressResultItem?>? crossStreetItemTask = null;
+                if (photoLocation != null)
+                {
+                    crossStreetItemTask = helperMethods.ReverseSearchCrossStreet(photoLocation, mapsSearchClient);
+                }
+
+                // No idea why this is not detected as null free since we're doing the filter
+                await Task.WhenAll(new List<Task?>() { imageAnalysisResultsTask, crossStreetItemTask }.Where(t => t != null)!);
+
                 fileStream2.Dispose();
 
+                ImageAnalysis imageAnalysisResults = imageAnalysisResultsTask.Result;
                 if (imageAnalysisResults.Adult.IsAdultContent || imageAnalysisResults.Adult.IsGoryContent || imageAnalysisResults.Adult.IsRacyContent)
                 {
                     throw new BikeLaneException("Error: Photo does not pass content check.");
                 }
 
-                string randomFileName = helperMethods.GetRandomFileName();
-
                 ReverseSearchCrossStreetAddressResultItem? crossStreetItem = null;
                 string? crossStreet = null;
-                if (photoLocation != null)
+                if (crossStreetItemTask != null)
                 {
-                    crossStreetItem = await helperMethods.ReverseSearchCrossStreet(photoLocation, mapsSearchClient);
+                    crossStreetItem = crossStreetItemTask.Result;
                     if (crossStreetItem == null)
                     {
                         throw new BikeLaneException("Error: Could not determine cross street.");
@@ -171,6 +204,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                     }
                 }
 
+                string randomFileName = helperMethods.GetRandomFileName();
                 InitialPhotoUploadMetadata metadata;
                 if (photoDate != null && photoLocation != null && crossStreet != null)
                 {
@@ -193,11 +227,13 @@ namespace SeattleCarsInBikeLanes.Controllers
 
                 BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");
                 using var fileStream3 = System.IO.File.OpenRead(tempFile);
-                await photoBlobClient.UploadAsync(fileStream3);
+                Task uploadPhotoTask = photoBlobClient.UploadAsync(fileStream3);
                 fileStream3.Dispose();
 
                 BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.json");
-                await metadataBlobClient.UploadAsync(new BinaryData(metadata));
+                Task uploadMetadataTask = metadataBlobClient.UploadAsync(new BinaryData(metadata));
+
+                await Task.WhenAll(uploadPhotoTask, uploadMetadataTask);
 
                 Uri sasUri = await photoBlobClient.GenerateUserDelegationReadOnlySasUri(DateTimeOffset.UtcNow.AddMinutes(10));
                 return InitialPhotoUploadWithSasUriMetadata.FromMetadata(sasUri.ToString(), metadata);

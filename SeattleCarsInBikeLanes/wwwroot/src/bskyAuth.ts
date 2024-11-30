@@ -3,6 +3,7 @@ import * as elementHelpers from './element-helpers';
 
 const blueskySignInButton = document.getElementById('blueskySignInButton') as HTMLButtonElement;
 const blueskyLogoutButton: HTMLAnchorElement = document.getElementById('blueskyLogoutButton') as HTMLAnchorElement;
+const blueskyHandleInput: HTMLInputElement = document.getElementById('blueskyHandleInput') as HTMLInputElement;
 const blueskyNextButton: HTMLButtonElement = document.getElementById('blueskyNextButton') as HTMLButtonElement;
 
 let bskySub: string | null = null;
@@ -166,8 +167,7 @@ function login(handle: string) {
 }
 
 function loginWithBluesky() {
-    const blueskyHandle = document.getElementById('blueskyHandleInput') as HTMLInputElement;
-    const handle = blueskyHandle.value;
+    const handle = blueskyHandleInput.value;
     elementHelpers.changeButtonToLoadingButton(blueskyNextButton, 'Login');
     login(handle);
     elementHelpers.changeLoadingButtonToRegularButton(blueskyNextButton, 'Login');
@@ -191,7 +191,7 @@ blueskyNextButton.addEventListener('click', () => {
     loginWithBluesky();
 });
 
-blueskyNextButton.addEventListener('keydown', function(event) {
+blueskyHandleInput.addEventListener('keydown', function(event) {
     if (event.key === 'Enter') {
         loginWithBluesky();
     }
