@@ -46,6 +46,22 @@ May or may not be up to date. Do a find all on "GetSecret" to confirm.
 2. In Program.cs update the AuthorityHost URL to use the tenant ID instead of common
 3. Finally exclude all credential types except for InteractiveBrowserCredentials. That must be specifically included. 
 
+### Extracting Bluesky Key from Local Client
+
+In console
+
+```javascript
+const openRequest = indexedDB.open('@atproto-oauth-client');
+```
+
+```javscript
+const sessionRequest = openRequest.result.transaction('session').objectStore('session').get('did:plc:penphldurhndgdxxn3ezvmoi');
+```
+
+```javascript
+let privateKey = sessionRequest.result.value.dpopKey.keyPair.privateKey;
+```
+
 ## Useful Links
 
 - [Azure Maps Samples](https://samples.azuremaps.com/)
