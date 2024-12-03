@@ -1,6 +1,4 @@
-﻿using Microsoft.Azure.CognitiveServices.Vision.ComputerVision.Models;
-
-namespace SeattleCarsInBikeLanes.Storage.Models
+﻿namespace SeattleCarsInBikeLanes.Storage.Models
 {
     public abstract class AbstractPhotoUploadMetadata
     {
@@ -67,5 +65,11 @@ namespace SeattleCarsInBikeLanes.Storage.Models
             PhotoLongitude = photoLongitude;
             Tags = tags;
         }
+    }
+
+    public class ImageTag
+    {
+        public string Name { get; set; } = default!;
+        public float Confidence { get; set; } = default!;
     }
 }

@@ -1,5 +1,8 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
+using Azure;
+using Azure.AI.ContentSafety;
+using Azure.AI.Vision.ImageAnalysis;
 using Azure.Identity;
 using Azure.Maps.Search;
 using Azure.Security.KeyVault.Secrets;
@@ -13,7 +16,6 @@ using Imgur.API.Endpoints;
 using Imgur.API.Models;
 using LinqToTwitter;
 using LinqToTwitter.OAuth;
-using Microsoft.Azure.CognitiveServices.Vision.ComputerVision;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Cosmos.Spatial;
 using SeattleCarsInBikeLanes.Database;
@@ -155,12 +157,16 @@ namespace SeattleCarsInBikeLanes
             services.AddSingleton(c =>
             {
                 SecretClient client = c.GetRequiredService<SecretClient>();
-                KeyVaultSecret computerVisionTokenSecret = client.GetSecret("computervision");
-                string computerVisionToken = computerVisionTokenSecret.Value;
-                return new ComputerVisionClient(new ApiKeyServiceClientCredentials(computerVisionToken), c.GetRequiredService<HttpClient>(), false)
-                {
-                    Endpoint = "https://seattlecarsinbikelanesvision.cognitiveservices.azure.com/"
-                };
+                KeyVaultSecret imageAnalysisTokenSecret = client.GetSecret("computervision");
+                string imageAnalysisToken = imageAnalysisTokenSecret.Value;
+                return new ImageAnalysisClient(new Uri("https://seattlecarsinbikelanesvision.cognitiveservices.azure.com/"), new AzureKeyCredential(imageAnalysisToken));
+            });
+            services.AddSingleton(c =>
+            {
+                SecretClient client = c.GetRequiredService<SecretClient>();
+                KeyVaultSecret contentSafetyTokenSecret = client.GetSecret("contentsafety");
+                string contentSafetyToken = contentSafetyTokenSecret.Value;
+                return new ContentSafetyClient(new Uri("https://carsinbikelanes-content-safety.cognitiveservices.azure.com/"), new AzureKeyCredential(contentSafetyToken));
             });
             services.AddSingleton(c =>
             {

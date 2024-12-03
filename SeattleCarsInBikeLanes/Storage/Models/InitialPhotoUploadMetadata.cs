@@ -1,6 +1,4 @@
-﻿using Microsoft.Azure.CognitiveServices.Vision.ComputerVision.Models;
-
-namespace SeattleCarsInBikeLanes.Storage.Models
+﻿namespace SeattleCarsInBikeLanes.Storage.Models
 {
     public class InitialPhotoUploadMetadata : AbstractPhotoUploadMetadata
     {

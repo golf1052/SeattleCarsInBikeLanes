@@ -1,5 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Text;
+using Azure.AI.ContentSafety;
+using Azure.AI.Vision.ImageAnalysis;
 using Azure.Maps.Search;
 using Azure.Maps.Search.Models;
 using Azure.Storage.Blobs;
@@ -10,8 +12,6 @@ using ImageMagick;
 using LinqToTwitter;
 using LinqToTwitter.OAuth;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.CognitiveServices.Vision.ComputerVision;
-using Microsoft.Azure.CognitiveServices.Vision.ComputerVision.Models;
 using Microsoft.Azure.Cosmos.Spatial;
 using SeattleCarsInBikeLanes.Providers;
 using SeattleCarsInBikeLanes.Storage.Models;
@@ -29,7 +29,8 @@ namespace SeattleCarsInBikeLanes.Controllers
             new Position(-122.436522, 47.495082),
             new Position(-122.235787, 47.735525));
         private readonly ILogger<UploadController> logger;
-        private readonly ComputerVisionClient computerVisionClient;
+        private readonly ImageAnalysisClient imageAnalysisClient;
+        private readonly ContentSafetyClient contentSafetyClient;
         private readonly MapsSearchClient mapsSearchClient;
         private readonly BlobContainerClient blobContainerClient;
         private readonly MastodonClientProvider mastodonClientProvider;
@@ -37,7 +38,8 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly HelperMethods helperMethods;
 
         public UploadController(ILogger<UploadController> logger,
-            ComputerVisionClient computerVisionClient,
+            ImageAnalysisClient imageAnalysisClient,
+            ContentSafetyClient contentSafetyClient,
             MapsSearchClient mapsSearchClient,
             BlobContainerClient blobContainerClient,
             MastodonClientProvider mastodonClientProvider,
@@ -45,7 +47,8 @@ namespace SeattleCarsInBikeLanes.Controllers
             HelperMethods helperMethods)
         {
             this.logger = logger;
-            this.computerVisionClient = computerVisionClient;
+            this.imageAnalysisClient = imageAnalysisClient;
+            this.contentSafetyClient = contentSafetyClient;
             this.mapsSearchClient = mapsSearchClient;
             this.blobContainerClient = blobContainerClient;
             this.mastodonClientProvider = mastodonClientProvider;
@@ -165,13 +168,10 @@ namespace SeattleCarsInBikeLanes.Controllers
                 tempFile = tempFile2;
                 using var fileStream2 = System.IO.File.OpenRead(tempFile);
 
-                List<VisualFeatureTypes?> visualFeatureTypes = new List<VisualFeatureTypes?>()
-                {
-                    VisualFeatureTypes.Tags,
-                    VisualFeatureTypes.Adult
-                };
+                Task<Azure.Response<AnalyzeImageResult>> contentSafetyAnalyzeImageTask = contentSafetyClient.AnalyzeImageAsync(BinaryData.FromStream(fileStream2));
+                fileStream2.Seek(0, SeekOrigin.Begin);
+                Task<Azure.Response<ImageAnalysisResult>> analyzeImageTask = imageAnalysisClient.AnalyzeAsync(BinaryData.FromStream(fileStream2), VisualFeatures.Tags);
 
-                Task<ImageAnalysis> imageAnalysisResultsTask = computerVisionClient.AnalyzeImageInStreamAsync(fileStream2, visualFeatureTypes);
                 Task<ReverseSearchCrossStreetAddressResultItem?>? crossStreetItemTask = null;
                 if (photoLocation != null)
                 {
@@ -179,14 +179,38 @@ namespace SeattleCarsInBikeLanes.Controllers
                 }
 
                 // No idea why this is not detected as null free since we're doing the filter
-                await Task.WhenAll(new List<Task?>() { imageAnalysisResultsTask, crossStreetItemTask }.Where(t => t != null)!);
+                await Task.WhenAll(new List<Task?>() { crossStreetItemTask, contentSafetyAnalyzeImageTask, analyzeImageTask }.Where(t => t != null)!);
 
                 fileStream2.Dispose();
 
-                ImageAnalysis imageAnalysisResults = imageAnalysisResultsTask.Result;
-                if (imageAnalysisResults.Adult.IsAdultContent || imageAnalysisResults.Adult.IsGoryContent || imageAnalysisResults.Adult.IsRacyContent)
+                AnalyzeImageResult contentSafetyAnalyzeImageResult = contentSafetyAnalyzeImageTask.Result.Value;
+                ImageCategoriesAnalysis? hateCategory = contentSafetyAnalyzeImageResult.CategoriesAnalysis.FirstOrDefault(c => c.Category == ImageCategory.Hate);
+                ImageCategoriesAnalysis? selfHarmCategory = contentSafetyAnalyzeImageResult.CategoriesAnalysis.FirstOrDefault(c => c.Category == ImageCategory.SelfHarm);
+                ImageCategoriesAnalysis? sexualCategory = contentSafetyAnalyzeImageResult.CategoriesAnalysis.FirstOrDefault(c => c.Category == ImageCategory.Sexual);
+                ImageCategoriesAnalysis? violenceCategory = contentSafetyAnalyzeImageResult.CategoriesAnalysis.FirstOrDefault(c => c.Category == ImageCategory.Violence);
+                if ((hateCategory != null && hateCategory.Severity > 2) ||
+                    (selfHarmCategory != null && selfHarmCategory.Severity > 2) ||
+                    (sexualCategory != null && sexualCategory.Severity > 2) ||
+                    (violenceCategory != null && violenceCategory.Severity > 2))
                 {
+                    logger.LogWarning($"Photo does not pass content check. Analysis results: " +
+                    $"Hate: {hateCategory?.Severity}, Self Harm: {selfHarmCategory?.Severity}, Sexual: {sexualCategory?.Severity}, Violence: {violenceCategory?.Severity}");
                     throw new BikeLaneException("Error: Photo does not pass content check.");
+                }
+
+                ImageAnalysisResult analyzeImageResult = analyzeImageTask.Result.Value;
+                static List<ImageTag> AzureTagToImageTag(IReadOnlyList<DetectedTag> tags)
+                {
+                    List<ImageTag> imageTags = new List<ImageTag>();
+                    foreach (var tag in tags)
+                    {
+                        imageTags.Add(new ImageTag()
+                        {
+                            Name = tag.Name,
+                            Confidence = tag.Confidence
+                        });
+                    }
+                    return imageTags;
                 }
 
                 ReverseSearchCrossStreetAddressResultItem? crossStreetItem = null;
@@ -215,25 +239,25 @@ namespace SeattleCarsInBikeLanes.Controllers
                         photoLocation.Latitude.ToString("#.#####"),
                         photoLocation.Longitude.ToString("#.#####"),
                         crossStreet,
-                        imageAnalysisResults.Tags.ToList());
+                        AzureTagToImageTag(analyzeImageResult.Tags.Values));
                 }
                 else
                 {
                     metadata = new InitialPhotoUploadMetadata(randomFileName,
                         submissionId,
                         index,
-                        imageAnalysisResults.Tags.ToList());
+                        AzureTagToImageTag(analyzeImageResult.Tags.Values));
                 }
 
                 BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");
                 using var fileStream3 = System.IO.File.OpenRead(tempFile);
                 Task uploadPhotoTask = photoBlobClient.UploadAsync(fileStream3);
-                fileStream3.Dispose();
 
                 BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.json");
                 Task uploadMetadataTask = metadataBlobClient.UploadAsync(new BinaryData(metadata));
 
                 await Task.WhenAll(uploadPhotoTask, uploadMetadataTask);
+                fileStream3.Dispose();
 
                 Uri sasUri = await photoBlobClient.GenerateUserDelegationReadOnlySasUri(DateTimeOffset.UtcNow.AddMinutes(10));
                 return InitialPhotoUploadWithSasUriMetadata.FromMetadata(sasUri.ToString(), metadata);
