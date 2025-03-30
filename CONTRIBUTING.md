@@ -36,9 +36,23 @@ May or may not be up to date. Do a find all on "GetSecret" to confirm.
 - imgur-client-id: Client ID for Imgur API. Used for uploading images to Imgur.
 - imgur-client-secret: Client secret for Imgur API. Used for uploading images to Imgur.
 - imgur-refresh-token: Refresh token for Imgur API. Used for uploading images to Imgur.
+- threads-access-token: Access token for Threads API. Needs to be refreshed every ~90 days.
 - slack-user-id: User ID of Slack member who finalized uploaded messages are sent to.
 - slackbot-token: Legacy Slack bot token used for sending Slackbot messages.
 - social-ridetransit-access-token: Access token for Mastodon server client. Used for posting to https://social.ridetrans.it
+
+#### Get New Threads API Key
+
+1. Go to https://developers.facebook.com
+2. Open the "Cars In Bike Lanes Seattle" app
+3. Go to "Use cases"
+4. On "Access the Threads API" click "Customize"
+5. Click "Settings" under "Access the Threads API"
+6. Under "User Token Generator" and "carbikelanesea" click "Generate Access Token"
+7. Log in if needed and copy the new access token
+8. Log in to Azure portal, go to the Key Vault, open Secrets
+9. Look for "threads-access-token"
+10. Create a new version of the secret, paste in the key, and click create
 
 ### Running Profiler in Visual Studio
 
