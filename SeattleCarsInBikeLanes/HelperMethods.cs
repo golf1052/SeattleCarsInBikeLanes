@@ -473,6 +473,12 @@ namespace SeattleCarsInBikeLanes
             return $"https://bsky.app/profile/{splitUri[2]}/post/{splitUri[4]}";
         }
 
+        public virtual string GetAtUrlFromBskyUrl(string bskyUrl, string userDid)
+        {
+            string postId = bskyUrl.Split('/').Last(s => !string.IsNullOrWhiteSpace(s));
+            return $"at://{userDid}/app.bsky.feed.post/{postId}";
+        }
+
         public async Task<ThreadsMediaContainerStatus> WaitForThreadsMediaContainer(ThreadsClient threadsClient,
             string containerId,
             long delayInMilliseconds = 250,

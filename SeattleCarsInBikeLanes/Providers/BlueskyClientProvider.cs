@@ -1,4 +1,5 @@
 ﻿using Azure.Security.KeyVault.Secrets;
+using FishyFlip;
 using golf1052.atproto.net;
 using golf1052.atproto.net.Models.AtProto.Server;
 
@@ -34,6 +35,22 @@ namespace SeattleCarsInBikeLanes.Providers
         public virtual AtProtoClient GetClient(string did, string accessJwt)
         {
             return new AtProtoClient(httpClient, did, accessJwt);
+        }
+
+        public virtual async Task<ATProtocol> GetFishyFlipClient()
+        {
+            var atProto = new ATProtocolBuilder()
+                .WithLogger(logger)
+                .Build();
+
+            string password = secretClient.GetSecret("bluesky-app-password").Value.Value;
+            var (session, error) = await atProto.AuthenticateWithPasswordResultAsync("seattle.carinbikelane.com", password);
+            if (session is null)
+            {
+                // failed to authenticate
+                throw new Exception("FishyFlip failed to authenticate");
+            }
+            return atProto;
         }
     }
 }

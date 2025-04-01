@@ -2,6 +2,11 @@
 using Azure.Maps.Search;
 using Azure.Security.KeyVault.Secrets;
 using Azure.Storage.Blobs;
+using FishyFlip;
+using FishyFlip.Lexicon.App.Bsky.Embed;
+using FishyFlip.Lexicon.App.Bsky.Feed;
+using FishyFlip.Models;
+using FishyFlip.Tools;
 using Flurl;
 using golf1052.atproto.net;
 using golf1052.atproto.net.Models.AtProto.Repo;
@@ -638,7 +643,107 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
             else if (request.PostUrl.Contains("twitter.com") || request.PostUrl.Contains("x.com"))
             {
-                throw new Exception("Reading tweets from Twitter no longer works. Please copy/paste the tweet body, image links, and tweet link into the appropriate locations.");
+                return BadRequest("Reading tweets from Twitter no longer works. Please copy/paste the tweet body, image links, and tweet link into the appropriate locations.");
+            }
+            else if (request.PostUrl.Contains("bsky.app"))
+            {
+                var fishyFlipClient = await blueskyClientProvider.GetFishyFlipClient();
+                string atUrl = helperMethods.GetAtUrlFromBskyUrl(request.PostUrl, blueskyClient.Did!);
+                ATUri atUri = ATUri.Create(atUrl);
+                var (success, error) = await fishyFlipClient.GetPostsAsync([atUri]);
+                if (error is not null || success is null)
+                {
+                    return BadRequest($"Unable to get post from {request.PostUrl}");
+                }
+                if (success.Posts.Count == 0)
+                {
+                    return BadRequest($"No posts found from {request.PostUrl}");
+                }
+
+                Post? blueskyPost = success.Posts[0].PostRecord;
+
+                if (blueskyPost is null || blueskyPost.Text is null)
+                {
+                    return BadRequest($"No post found from {request.PostUrl}");
+                }
+
+                string skeetText = blueskyPost.Text;
+                List<ReportedItem>? reportedItems = await helperMethods.TextToReportedItems(skeetText, mapsSearchClient);
+                if (reportedItems == null)
+                {
+                    return BadRequest($"Couldn't find any reported items in skeet text.");
+                }
+
+                foreach (var reportedItem in reportedItems)
+                {
+                    reportedItem.CreatedAt = blueskyPost.CreatedAt ?? DateTime.UtcNow;
+                    reportedItem.BlueskyLink = request.PostUrl;
+                }
+
+                List<string> imageLinks = new List<string>();
+                switch (success.Posts[0].Embed)
+                {
+                    case ViewRecordDef viewRecordDef:
+                        switch (viewRecordDef.Record)
+                        {
+                            case ViewRecord viewRecord:
+                                if (viewRecord.Embeds is null || viewRecord.Embeds.Count == 0)
+                                {
+                                    return BadRequest("No embeds found in skeet.");
+                                }
+                                switch (viewRecord.Embeds[0])
+                                {
+                                    case ViewImages viewImages:
+                                        imageLinks = viewImages.Images.Select(i => i.Fullsize).ToList();
+                                        break;
+                                    default:
+                                        break;
+                                }
+                                break;
+                            default:
+                                break;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+
+                List<Stream> pictureStreams = new List<Stream>();
+                foreach (var imageLink in imageLinks)
+                {
+                    Stream? pictureStream = await helperMethods.DownloadImage(imageLink, httpClient);
+                    if (pictureStream == null)
+                    {
+                        return BadRequest($"Couldn't get stream from image link {imageLink}");
+                    }
+                    pictureStreams.Add(pictureStream);
+                }
+
+                if (pictureStreams.Count == 0)
+                {
+                    return BadRequest("No picture streams for skeet.");
+                }
+
+                // Upload the pictures to imgur
+                await UploadImagesToImgur(reportedItems, pictureStreams);
+
+                // Then upload to the three platforms
+                Task mastodonUploadTask = UploadPostToMastodon(mastodonClient, reportedItems, pictureStreams, skeetText, skeetText);
+                Task threadsUploadTask = UploadPostToThreads(threadsClient, reportedItems, imageLinks, skeetText);
+                await Task.WhenAll(mastodonUploadTask, threadsUploadTask);
+
+                foreach (var reportedItem in reportedItems)
+                {
+                    bool addedItem = await reportedItemsDatabase.AddReportedItem(reportedItem);
+                    if (!addedItem)
+                    {
+                        logger.LogWarning($"Failed to update DB. DB ID {reportedItem.TweetId}. Imgur url: {string.Join(' ', reportedItem.ImgurUrls)}");
+                    }
+
+                    await feedProvider.AddReportedItemToFeed(reportedItem);
+                }
+
+                helperMethods.DisposePictureStreams(pictureStreams);
             }
 
             return NoContent();
