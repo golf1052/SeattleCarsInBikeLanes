@@ -36,6 +36,7 @@
     <PackageReference Include="System.ServiceModel.Syndication" Version="9.0.3" />
   </ItemGroup>
 
+  <ItemGroup>
   </ItemGroup>
 
   <ItemGroup>
