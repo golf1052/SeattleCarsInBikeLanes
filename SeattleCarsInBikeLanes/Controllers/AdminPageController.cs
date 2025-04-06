@@ -696,6 +696,14 @@ namespace SeattleCarsInBikeLanes.Controllers
                                     case ViewImages viewImages:
                                         imageLinks = viewImages.Images.Select(i => i.Fullsize).ToList();
                                         break;
+                                    case ViewRecordWithMedia viewRecordWithMedia:
+                                        ViewImages? recordMediaImages = viewRecordWithMedia.Media as ViewImages;
+                                        if (recordMediaImages == null)
+                                        {
+                                            return BadRequest("Media embedded in record is not a type ViewImages");
+                                        }
+                                        imageLinks = recordMediaImages.Images.Select(i => i.Fullsize).ToList();
+                                        break;
                                     default:
                                         break;
                                 }
