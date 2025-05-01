@@ -1274,67 +1274,70 @@ namespace SeattleCarsInBikeLanes.Controllers
                 }
 
                 CreateRecordResponse latestSkeet = firstSkeet;
-                if (mostCars.Count > 1)
+                if (!skipMostCars)
                 {
-                    for (int i = 1; i < mostCars.Count; i++)
+                    if (mostCars.Count > 1)
                     {
-                        var item = mostCars[i];
-                        string latestSkeetText = $"{mostCarsText} ";
-                        string latestSkeetLink = GetSocialLinkForBluesky(item)!;
-                        string latestSkeetAtUri = GetAtUriLinkFromBlueskyLink(latestSkeetLink);
-                        GetFeedPostsResponse latestSkeetBlueskySkeetList = await blueskyClient.GetFeedPosts(new List<string>() { latestSkeetAtUri });
-                        BskyPostView<BskyPost> latestSkeetBlueskySkeet = latestSkeetBlueskySkeetList.Posts[0];
-                        BskyFacet latestSkeetFacet = new BskyFacet
+                        for (int i = 1; i < mostCars.Count; i++)
                         {
-                            Index = new BskyByteSlice()
+                            var item = mostCars[i];
+                            string latestSkeetText = $"{mostCarsText} ";
+                            string latestSkeetLink = GetSocialLinkForBluesky(item)!;
+                            string latestSkeetAtUri = GetAtUriLinkFromBlueskyLink(latestSkeetLink);
+                            GetFeedPostsResponse latestSkeetBlueskySkeetList = await blueskyClient.GetFeedPosts(new List<string>() { latestSkeetAtUri });
+                            BskyPostView<BskyPost> latestSkeetBlueskySkeet = latestSkeetBlueskySkeetList.Posts[0];
+                            BskyFacet latestSkeetFacet = new BskyFacet
                             {
-                                ByteStart = latestSkeetText.Length,
-                                ByteEnd = latestSkeetText.Length + latestSkeetLink.Length
-                            },
-                            Features = new List<BskyFeature>()
+                                Index = new BskyByteSlice()
+                                {
+                                    ByteStart = latestSkeetText.Length,
+                                    ByteEnd = latestSkeetText.Length + latestSkeetLink.Length
+                                },
+                                Features = new List<BskyFeature>()
                             {
                                 new BskyLink()
                                 {
                                     Uri = latestSkeetLink
                                 }
                             }
-                        };
-                        latestSkeetText += latestSkeetLink;
-                        latestSkeet = await blueskyClient.CreateRecord(new CreateRecordRequest<BskyPost<BskyRecord>>()
-                        {
-                            Repo = blueskyClient.Did!,
-                            Collection = BskyPost.Type,
-                            Record = new BskyPost<BskyRecord>()
+                            };
+                            latestSkeetText += latestSkeetLink;
+                            latestSkeet = await blueskyClient.CreateRecord(new CreateRecordRequest<BskyPost<BskyRecord>>()
                             {
-                                Text = latestSkeetText,
-                                CreatedAt = DateTime.UtcNow,
-                                Facets = new List<BskyFacet>()
+                                Repo = blueskyClient.Did!,
+                                Collection = BskyPost.Type,
+                                Record = new BskyPost<BskyRecord>()
+                                {
+                                    Text = latestSkeetText,
+                                    CreatedAt = DateTime.UtcNow,
+                                    Facets = new List<BskyFacet>()
                                 {
                                     latestSkeetFacet
                                 },
-                                Reply = new BskyPostReplyRef()
-                                {
-                                    Root = new AtProtoStrongRef()
+                                    Reply = new BskyPostReplyRef()
                                     {
-                                        Cid = firstSkeet.Cid,
-                                        Uri = firstSkeet.Uri
+                                        Root = new AtProtoStrongRef()
+                                        {
+                                            Cid = firstSkeet.Cid,
+                                            Uri = firstSkeet.Uri
+                                        },
+                                        Parent = new AtProtoStrongRef()
+                                        {
+                                            Cid = latestSkeet.Cid,
+                                            Uri = latestSkeet.Uri
+                                        }
                                     },
-                                    Parent = new AtProtoStrongRef()
+                                    Embed = new BskyRecord()
                                     {
-                                        Cid = latestSkeet.Cid,
-                                        Uri = latestSkeet.Uri
-                                    }
-                                },
-                                Embed = new BskyRecord()
-                                {
-                                    Record = new BskyViewRecord()
-                                    {
-                                        Uri = latestSkeetBlueskySkeet.Uri,
-                                        Cid = latestSkeetBlueskySkeet.Cid
+                                        Record = new BskyViewRecord()
+                                        {
+                                            Uri = latestSkeetBlueskySkeet.Uri,
+                                            Cid = latestSkeetBlueskySkeet.Cid
+                                        }
                                     }
                                 }
-                            }
-                        });
+                            });
+                        }
                     }
                 }
                 string secondSkeetText = $"{mostRidiculousText} ";
@@ -1528,6 +1531,10 @@ namespace SeattleCarsInBikeLanes.Controllers
 
             string[] splitBlueskyLink = blueskyLink.Split('/');
             string did = splitBlueskyLink[4];
+            if (did == "seattle.carinbikelane.com")
+            {
+                did = "did:plc:na7rhfhytqgjqebzr4j54jrw";
+            }
             string rKey = splitBlueskyLink.Last();
             return $"at://{did}/app.bsky.feed.post/{rKey}";
         }
