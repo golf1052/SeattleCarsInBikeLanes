@@ -712,6 +712,9 @@ namespace SeattleCarsInBikeLanes.Controllers
                                 break;
                         }
                         break;
+                    case ViewImages viewImages:
+                        imageLinks = viewImages.Images.Select(i => i.Fullsize).ToList();
+                        break;
                     default:
                         break;
                 }
