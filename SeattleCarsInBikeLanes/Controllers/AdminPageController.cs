@@ -684,9 +684,11 @@ namespace SeattleCarsInBikeLanes.Controllers
                 switch (success.Posts[0].Embed)
                 {
                     case ViewRecordDef viewRecordDef:
+                    {
                         switch (viewRecordDef.Record)
                         {
                             case ViewRecord viewRecord:
+                            {
                                 if (viewRecord.Embeds is null || viewRecord.Embeds.Count == 0)
                                 {
                                     return BadRequest("No embeds found in skeet.");
@@ -694,28 +696,49 @@ namespace SeattleCarsInBikeLanes.Controllers
                                 switch (viewRecord.Embeds[0])
                                 {
                                     case ViewImages viewImages:
+                                    {
                                         imageLinks = viewImages.Images.Select(i => i.Fullsize).ToList();
                                         break;
+                                    }
                                     case ViewRecordWithMedia viewRecordWithMedia:
+                                    {
                                         ViewImages? recordMediaImages = viewRecordWithMedia.Media as ViewImages;
                                         if (recordMediaImages == null)
                                         {
+                                            logger.LogError($"Media embedded in record is not a type ViewImages for post {request.PostUrl}");
                                             return BadRequest("Media embedded in record is not a type ViewImages");
                                         }
                                         imageLinks = recordMediaImages.Images.Select(i => i.Fullsize).ToList();
                                         break;
+                                    }
                                     default:
                                         break;
                                 }
                                 break;
+                            }
                             default:
                                 break;
                         }
                         break;
+                    }
                     case ViewImages viewImages:
+                    {
                         imageLinks = viewImages.Images.Select(i => i.Fullsize).ToList();
                         break;
+                    }
+                    case ViewRecordWithMedia viewRecordWithMedia:
+                    {
+                        ViewImages? recordMediaImages = viewRecordWithMedia.Media as ViewImages;
+                        if (recordMediaImages == null)
+                        {
+                            logger.LogError($"Media embedded in record is not a type ViewImages for post {request.PostUrl}");
+                            return BadRequest("Media embedded in record is not a type ViewImages");
+                        }
+                        imageLinks = recordMediaImages.Images.Select(i => i.Fullsize).ToList();
+                        break;
+                    }
                     default:
+                        logger.LogError($"Unexpected Bluesky embed type {success.Posts[0].Embed!.Type} on post {request.PostUrl}");
                         break;
                 }
 
