@@ -940,16 +940,6 @@ function initMap() {
             map.events.add('featureUnselected', spiderClusterManager, function(e) {
                 spiderClusterManager.hideSpiderCluster();
             });
-            
-            map.events.add('click', symbolLayer, function(e) {
-                if (e && e.shapes && e.shapes.length > 0) {
-                    if (e.shapes[0].getProperties().cluster) {
-
-                    } else {
-                        showReportedItemPopup(e.shapes[0].getProperties(), popup, map);
-                    }
-                }
-            });
 
             map.layers.add(symbolLayer);
 

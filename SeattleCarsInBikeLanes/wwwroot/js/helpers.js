@@ -143,8 +143,30 @@ function getMastodonOEmbed(mastodonLink) {
     });
 }
 
+function getBlueskyOEmbed(blueskyLink) {
+    const width = window.innerWidth < 576 ? 220 : 400;
+    const height = window.innerWidth < 576 ? 200 : 400;
+    return fetch(`api/Bluesky/oembed?url=${blueskyLink}&width=${width}&height=${height}`)
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Error when fetching Bluesky oEmbed. ${response}`);
+        }
+
+        return response.text();
+    })
+    .then(response => {
+        if (response) {
+            return response;
+        } else {
+            return null;
+        }
+    });
+}
+
 function getOEmbed(properties) {
-    if (properties.mastodonLink) {
+    if (properties.blueskyLink) {
+        return getBlueskyOEmbed(properties.blueskyLink);
+    } else if (properties.mastodonLink) {
         return getMastodonOEmbed(properties.mastodonLink);
     } else {
         return getTwitterOEmbed(getTweetId(properties));
@@ -269,6 +291,7 @@ function showReportedItemPopup(properties, popup, map) {
             twttr.ready(twttr => {
                 twttr.widgets.load();
             });
+            window.bluesky.scan();
         }
     });
 }
