@@ -5,6 +5,7 @@ let popup = null;
 let filterLegendControl = null;
 let uploadLegendControl = null;
 let bikeLaneLegendControl = null;
+let filterStatusLegendControl = null;
 let locationInputHasFocus = false;
 let userMustSelectLocation = false;
 let selectedPosition = null;
@@ -36,19 +37,21 @@ function toggleUploadLegendControl() {
 function toggleLegendControl(legendControl) {
     if (legendControl) {
         if (legendControl.getOptions().visible) {
-            legendControl.setOptions({
-                visible: false
-            });
+            setLegendControlVisibility(legendControl, false);
         } else {
             if (window.innerWidth < 576) {
                 const navbarToggler = document.getElementById('navbarToggler');
                 navbarToggler.click();
             }
-            legendControl.setOptions({
-                visible: true
-            });
+            setLegendControlVisibility(legendControl, true);
         }
     }
+}
+
+function setLegendControlVisibility(legendControl, visible) {
+    legendControl.setOptions({
+        visible: visible
+    });
 }
 
 function toggleBikeLanes() {
@@ -216,6 +219,34 @@ function initMapControls() {
     });
 }
 
+function getFilterStatusSummary(params) {
+    const summary = [];
+    if (params.get('minDate')) {
+        if (!params.get('maxDate')) {
+            const now = luxon.DateTime.now();
+            const start = luxon.DateTime.fromISO(params.get('minDate'));
+            const yearsDiff = now.diff(start, 'years').toObject().years;
+            const monthsDiff = now.diff(start, 'months').toObject().months;
+            const weeksDiff = now.diff(start, 'weeks').toObject().weeks;
+            if (yearsDiff >= 1) {
+                const roundYearsDiff = Math.round(yearsDiff);
+                const yearStr = roundYearsDiff === 1 ? 'year' : 'years';
+                summary.push(`Viewing results from the last ${roundYearsDiff} ${yearStr}`);
+            } else if (monthsDiff >= 1) {
+                const roundMonthsDiff = Math.round(monthsDiff);
+                const monthStr = roundMonthsDiff === 1 ? 'month' : 'months';
+                summary.push(`Viewing results from the last ${roundMonthsDiff} ${monthStr}`);
+            } else {
+                const roundWeeksDiff = Math.round(weeksDiff);
+                const weekStr = roundWeeksDiff === 1 ? 'week' : 'weeks';
+                summary.push(`Viewing results from the last ${roundWeeksDiff} ${weekStr}`);
+            }
+        }
+    }
+
+    return summary.join();
+}
+
 function initFilterLegendHtml() {
     document.getElementById('minDateInput').addEventListener('focus', function (event) {
         const checkedItem = document.querySelector('input[name="dateRadios"]:checked');
@@ -320,6 +351,22 @@ function initFilterLegendHtml() {
             if (name === 'distanceFromLocationInMiles' && value) {
                 params.set(name, value);
             }
+        }
+
+        // Update filter status legend
+        if (filterStatusLegendControl) {
+            const filterStatusSummary = getFilterStatusSummary(params);
+            if (!filterStatusSummary || filterStatusSummary === '') {
+                setLegendControlVisibility(filterStatusLegendControl, false);
+            } else {
+                setLegendControlVisibility(filterStatusLegendControl, true);
+            }
+            filterStatusLegendControl.setOptions({
+                legends: [{
+                    type: 'html',
+                    html: `<div style="min-width:150px;">${filterStatusSummary}</div>`
+                }]
+            });
         }
 
         reportedItemsPromise = searchReportedItems(params);
@@ -737,6 +784,19 @@ function initMap() {
                 }]
             });
             map.controls.add(uploadLegendControl, { position: 'bottom-right' });
+
+            // Add filter status legend control (top-right)
+            filterStatusLegendControl = new atlas.control.LegendControl({
+                title: 'Current Filters',
+                style: 'auto',
+                showToggle: false,
+                visible: true,
+                legends: [{
+                    type: 'html',
+                    html: `<div style="min-width:150px;">${getFilterStatusSummary(searchParams)}</div>`
+                }]
+            });
+            map.controls.add(filterStatusLegendControl, { position: 'top-right' });
 
             dataSource = createDataSource(reportedItems);
             map.sources.add(dataSource);
