@@ -2,6 +2,7 @@
 using Azure.Maps.Search;
 using Azure.Security.KeyVault.Secrets;
 using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using FishyFlip;
 using FishyFlip.Lexicon.App.Bsky.Embed;
 using FishyFlip.Lexicon.App.Bsky.Feed;
@@ -110,7 +111,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         public async Task<Dictionary<string, List<FinalizedPhotoUploadWithSasUriMetadata>>> GetPendingPhotos()
         {
             Dictionary<string, List<FinalizedPhotoUploadWithSasUriMetadata>> submissions = new Dictionary<string, List<FinalizedPhotoUploadWithSasUriMetadata>>();
-            var blobs = blobContainerClient.GetBlobsAsync(prefix: UploadController.FinalizedUploadPrefix);
+            var blobs = blobContainerClient.GetBlobsAsync(BlobTraits.None, BlobStates.None, UploadController.FinalizedUploadPrefix, CancellationToken.None);
             await foreach (var blob in blobs)
             {
                 if (blob.Name.EndsWith(".jpeg"))
@@ -1022,7 +1023,18 @@ namespace SeattleCarsInBikeLanes.Controllers
                 await blueskyClient.DeleteRecord(deleteRecordRequest);
             }
 
-            // TODO: Add Threads deletion support once Threads API supports deletion
+            if (reportedItem.ThreadsLink != null)
+            {
+                ThreadsMediaObject? mediaObject = await threadsClient.GetUserScopedThreadsMediaObjectFromUrl(reportedItem.ThreadsLink);
+                if (mediaObject != null)
+                {
+                    var response = await threadsClient.DeleteThreadsMediaObject(mediaObject.Id);
+                    if (!response.Success)
+                    {
+                        logger.LogWarning($"Could not delete Threads post {reportedItem.ThreadsLink} for {reportedItem.TweetId}");
+                    }
+                }
+            }
 
             await feedProvider.RemoveReportedItemFromFeed(reportedItem);
 

@@ -1,4 +1,5 @@
 ﻿using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using SeattleCarsInBikeLanes.Controllers;
 
 namespace SeattleCarsInBikeLanes
@@ -25,7 +26,7 @@ namespace SeattleCarsInBikeLanes
         {
             while (true)
             {
-                var blobs = blobContainerClient.GetBlobsAsync(prefix: UploadController.InitialUploadPrefix);
+                var blobs = blobContainerClient.GetBlobsAsync(BlobTraits.None, BlobStates.None, UploadController.InitialUploadPrefix, CancellationToken.None);
                 DateTimeOffset now = DateTimeOffset.UtcNow;
                 await foreach (var blob in blobs)
                 {
