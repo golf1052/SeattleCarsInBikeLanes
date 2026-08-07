@@ -924,58 +924,79 @@ namespace SeattleCarsInBikeLanes.Controllers
             List<string> tweetImageLinks,
             string threadsBody)
         {
-            if (tweetImageLinks.Count == 1)
+            try
             {
-                string threadsMediaContainerId = await threadsClient.CreateThreadsMediaContainer("IMAGE",
-                    threadsBody,
-                    tweetImageLinks[0]);
-                // Threads API recommends waiting 30 seconds between creating the media container and publishing it
-                // but we'll check the container status API instead.
-                var containerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, threadsMediaContainerId);
-                if (containerStatus.Status == "FINISHED")
+                if (tweetImageLinks.Count == 1)
                 {
-                    string threadsPostId = await threadsClient.PublishThreadsMediaContainer(threadsMediaContainerId);
-                    ThreadsMediaObject uploadedThreadPost = await threadsClient.GetThreadsMediaObject(threadsPostId,
-                        "id,permalink");
-
-                    foreach (var reportedItem in reportedItems)
+                    string threadsMediaContainerId = await threadsClient.CreateThreadsMediaContainer("IMAGE",
+                        threadsBody,
+                        tweetImageLinks[0]);
+                    // Threads API recommends waiting 30 seconds between creating the media container and publishing it
+                    // but we'll check the container status API instead.
+                    var containerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, threadsMediaContainerId);
+                    if (containerStatus.Status == "FINISHED")
                     {
-                        reportedItem.ThreadsLink = uploadedThreadPost.Permalink;
+                        string threadsPostId = await threadsClient.PublishThreadsMediaContainer(threadsMediaContainerId);
+                        ThreadsMediaObject uploadedThreadPost = await threadsClient.GetThreadsMediaObject(threadsPostId,
+                            "id,permalink");
+
+                        foreach (var reportedItem in reportedItems)
+                        {
+                            reportedItem.ThreadsLink = uploadedThreadPost.Permalink;
+                        }
+                    }
+                }
+                else if (tweetImageLinks.Count > 1)
+                {
+                    List<string> containerIds = new List<string>(tweetImageLinks.Count);
+                    foreach (var imageLink in tweetImageLinks)
+                    {
+                        string threadsMediaContainerId = await threadsClient.CreateThreadsMediaContainer("IMAGE",
+                            null,
+                            imageLink,
+                            null,
+                            null,
+                            true);
+                        containerIds.Add(threadsMediaContainerId);
+                    }
+
+                    // Each carousel item container must finish processing before it can be attached to the carousel
+                    // container, otherwise Threads rejects them as "invalid, nonexistent, or expired".
+                    foreach (var containerId in containerIds)
+                    {
+                        var itemContainerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, containerId);
+                        if (itemContainerStatus.Status != "FINISHED")
+                        {
+                            logger.LogError($"Failed to publish Threads status. Carousel item container {containerId} was in status {itemContainerStatus.Status} instead of FINISHED. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Text {threadsBody}");
+                            return;
+                        }
+                    }
+
+                    string carouselContainerId = await threadsClient.CreateThreadsMediaContainer("CAROUSEL",
+                        threadsBody,
+                        null,
+                        null,
+                        null,
+                        null,
+                        containerIds);
+                    var containerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, carouselContainerId);
+                    if (containerStatus.Status == "FINISHED")
+                    {
+                        string threadsPostId = await threadsClient.PublishThreadsMediaContainer(carouselContainerId);
+                        ThreadsMediaObject uploadedThreadsPost = await threadsClient.GetThreadsMediaObject(threadsPostId,
+                            "id,permalink");
+
+                        foreach (var reportedItem in reportedItems)
+                        {
+                            reportedItem.ThreadsLink = uploadedThreadsPost.Permalink;
+                        }
                     }
                 }
             }
-            else if (tweetImageLinks.Count > 1)
+            catch (Exception ex)
             {
-                List<string> containerIds = new List<string>(tweetImageLinks.Count);
-                foreach (var imageLink in tweetImageLinks)
-                {
-                    string threadsMediaContainerId = await threadsClient.CreateThreadsMediaContainer("IMAGE",
-                        null,
-                        imageLink,
-                        null,
-                        null,
-                        true);
-                    containerIds.Add(threadsMediaContainerId);
-                }
-                string carouselContainerId = await threadsClient.CreateThreadsMediaContainer("CAROUSEL",
-                    threadsBody,
-                    null,
-                    null,
-                    null,
-                    null,
-                    containerIds);
-                var containerStatus = await helperMethods.WaitForThreadsMediaContainer(threadsClient, carouselContainerId);
-                if (containerStatus.Status == "FINISHED")
-                {
-                    string threadsPostId = await threadsClient.PublishThreadsMediaContainer(carouselContainerId);
-                    ThreadsMediaObject uploadedThreadsPost = await threadsClient.GetThreadsMediaObject(threadsPostId,
-                        "id,permalink");
-
-                    foreach (var reportedItem in reportedItems)
-                    {
-                        reportedItem.ThreadsLink = uploadedThreadsPost.Permalink;
-                    }
-                }
+                logger.LogError(ex, $"Failed to publish Threads status. Imgur links: {string.Join(' ', reportedItems[0].ImgurUrls)} Text {threadsBody}");
+                return;
             }
         }
 
