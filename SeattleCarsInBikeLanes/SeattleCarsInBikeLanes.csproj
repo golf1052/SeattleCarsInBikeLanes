@@ -7,14 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Remove="tsconfig.json" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="tsconfig.json" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Azure.AI.ContentSafety" Version="1.0.0" />
     <PackageReference Include="Azure.AI.Vision.ImageAnalysis" Version="1.0.0" />
     <PackageReference Include="Azure.Identity" Version="1.17.1" />
@@ -24,8 +16,9 @@
     <PackageReference Include="FishyFlip" Version="4.2.0" />
     <PackageReference Include="golf1052.atproto.net" Version="0.6.0" />
     <PackageReference Include="golf1052.Mastodon" Version="0.7.1" />
-    <PackageReference Include="golf1052.ThreadsAPI" Version="0.2.0" />
+    <PackageReference Include="golf1052.ThreadsAPI" Version="0.3.0" />
     <PackageReference Include="HtmlAgilityPack" Version="1.12.4" />
+    <PackageReference Include="idunno.AtProto" Version="3.1.0" />
     <PackageReference Include="idunno.Authentication.Basic" Version="2.4.0" />
     <PackageReference Include="Imgur.API" Version="5.0.0" />
     <PackageReference Include="linqtotwitter" Version="6.15.0" />

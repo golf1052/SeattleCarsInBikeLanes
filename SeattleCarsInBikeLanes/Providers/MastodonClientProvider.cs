@@ -38,7 +38,11 @@ namespace SeattleCarsInBikeLanes.Providers
 
             if (environment.IsDevelopment())
             {
-                redirectUri = "https://localhost:7152/mastodonredirect";
+                // Mastodon accepts several redirect URIs, one per line, and the authorization
+                // request may then use any of them. Register both development origins so sign in
+                // works whether the site is browsed at https://localhost:7152 or at
+                // http://127.0.0.1:5152, which is where Bluesky OAuth testing has to run.
+                redirectUri = "https://localhost:7152/mastodonredirect\nhttp://127.0.0.1:5152/mastodonredirect";
                 clientId = "-ClientId-Dev";
                 clientSecret = "-ClientSecret-Dev";
                 accessToken = "-AccessToken-Dev";

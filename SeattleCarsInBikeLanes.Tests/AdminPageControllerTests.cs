@@ -19,11 +19,13 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Contrib.HttpClient;
 using SeattleCarsInBikeLanes.Controllers;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.Database.Models;
+using SeattleCarsInBikeLanes.Models;
 using SeattleCarsInBikeLanes.Providers;
 using static SeattleCarsInBikeLanes.Controllers.AdminPageController;
 
@@ -49,6 +51,7 @@ namespace SeattleCarsInBikeLanes.Tests
         private Mock<MastodonClientProvider>? mockMastodonClientProvider;
         private Mock<FeedProvider>? mockFeedProvider;
         private Mock<BlueskyClientProvider>? mockBlueskyClientProvider;
+        private Mock<BlueskyOAuthProvider>? mockBlueskyOAuthProvider;
         private Mock<MastodonClient>? mockMastodonClient;
         private Mock<AtProtoClient>? mockBlueskyClient;
         private Mock<ThreadsClient>? mockThreadsClient;
@@ -94,6 +97,18 @@ namespace SeattleCarsInBikeLanes.Tests
             mockBlueskyClientProvider = new Mock<BlueskyClientProvider>(NullLogger<BlueskyClientProvider>.Instance,
                 mockSecretClient.Object,
                 mockHttpMessageHandler.CreateClient());
+            mockBlueskyOAuthProvider = new Mock<BlueskyOAuthProvider>(
+                Options.Create(new BlueskyOAuthOptions()
+                {
+                    ClientId = "https://localhost/client-metadata.json",
+                    RedirectUri = "https://localhost/blueskyredirect"
+                }),
+                NullLoggerFactory.Instance,
+                NullLogger<BlueskyOAuthProvider>.Instance);
+            // Null means "no newer handle known", so the stored handle is used as-is and the tests
+            // stay offline.
+            mockBlueskyOAuthProvider.Setup(m => m.ResolveHandleFromDid(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string?)null);
             mockMastodonClient = new Mock<MastodonClient>("https://mastodon.social",
                 mockHttpMessageHandler.CreateClient());
             mockBlueskyClient = new Mock<AtProtoClient>(mockHttpMessageHandler.CreateClient(), null!, null!);
@@ -135,6 +150,7 @@ namespace SeattleCarsInBikeLanes.Tests
                 mockMastodonClientProvider.Object,
                 mockFeedProvider.Object,
                 mockBlueskyClientProvider.Object,
+                mockBlueskyOAuthProvider.Object,
                 mockThreadsClient.Object);
         }
 

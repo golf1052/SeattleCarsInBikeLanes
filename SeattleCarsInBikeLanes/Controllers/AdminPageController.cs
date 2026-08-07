@@ -50,6 +50,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly MastodonClientProvider mastodonClientProvider;
         private readonly FeedProvider feedProvider;
         private readonly BlueskyClientProvider blueskyClientProvider;
+        private readonly BlueskyOAuthProvider blueskyOAuthProvider;
         private readonly ThreadsClient threadsClient;
 
         public AdminPageController(ILogger<AdminPageController> logger,
@@ -63,6 +64,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             MastodonClientProvider mastodonClientProvider,
             FeedProvider feedProvider,
             BlueskyClientProvider blueskyClientProvider,
+            BlueskyOAuthProvider blueskyOAuthProvider,
             ThreadsClient threadsClient)
         {
             this.logger = logger;
@@ -75,6 +77,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             this.mastodonClientProvider = mastodonClientProvider;
             this.feedProvider = feedProvider;
             this.blueskyClientProvider = blueskyClientProvider;
+            this.blueskyOAuthProvider = blueskyOAuthProvider;
             this.threadsClient = threadsClient;
 
             SingleUserAuthorizer auth = new SingleUserAuthorizer()
@@ -174,6 +177,24 @@ namespace SeattleCarsInBikeLanes.Controllers
             else
             {
                 carsString = "cars";
+            }
+
+            // Handles can be reassigned between a report being submitted and being published, and
+            // that gap is often days. The DID is permanent, so re-resolve the current handle from
+            // it rather than attributing the post to a handle that may now belong to someone else.
+            if (!string.IsNullOrWhiteSpace(metadata.BlueskyUserDid))
+            {
+                string? currentHandle = await blueskyOAuthProvider.ResolveHandleFromDid(metadata.BlueskyUserDid);
+                if (!string.IsNullOrWhiteSpace(currentHandle) && currentHandle != metadata.BlueskyHandle)
+                {
+                    logger.LogInformation("Bluesky handle for {Did} changed from {OldHandle} to {NewHandle} since submission.",
+                        metadata.BlueskyUserDid, metadata.BlueskyHandle, currentHandle);
+
+                    foreach (var d in data)
+                    {
+                        d.BlueskyHandle = currentHandle;
+                    }
+                }
             }
 
             string postBody = $"{metadata.NumberOfCars} {carsString}\n" +
@@ -1813,10 +1834,6 @@ namespace SeattleCarsInBikeLanes.Controllers
                 string? mastodonAccessToken = null,
                 string? blueskyHandle = null,
                 string? blueskyUserDid = null,
-                string? blueskyUserKeyId = null,
-                string? blueskyUserPrivateKey = null,
-                string? blueskyUserBaseUrl = null,
-                string? blueskyUserAccessToken = null,
                 string? threadsUsername = null,
                 string? threadsAccessToken = null,
                 string? twitterLink = null,
@@ -1846,10 +1863,6 @@ namespace SeattleCarsInBikeLanes.Controllers
                     mastodonAccessToken,
                     blueskyHandle,
                     blueskyUserDid,
-                    blueskyUserKeyId,
-                    blueskyUserPrivateKey,
-                    blueskyUserBaseUrl,
-                    blueskyUserAccessToken,
                     threadsUsername,
                     threadsAccessToken,
                     twitterLink,

@@ -2,12 +2,10 @@
 
 ## Things You'll Need
 
-- [.NET 8](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
+- [.NET 10](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 - Optional but recommended: [Visual Studio 2022 Community](https://visualstudio.microsoft.com/vs/) or [Visual Studio Code](https://code.visualstudio.com/)
 - Either [Azure Powershell](https://learn.microsoft.com/en-us/powershell/azure/install-az-ps?view=azps-8.3.0) or [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
   - Used for authenticating to Azure to connect to Azure resources locally if not logging into Visual Studio or Visual Studio Code.
-- [Node.js](https://nodejs.org/)
-  - Tested with Node.js 18.19
 
 ## Running Locally
 
@@ -15,15 +13,44 @@
 - No Azure Maps tiles and search.
 - No Cosmos DB. You can use the [emulator](https://learn.microsoft.com/en-us/azure/cosmos-db/local-emulator) and import the [sample data](./sampledbdata.json) into it using the [Cosmos DB data migration tool](https://github.com/azure/azure-documentdb-datamigrationtool).
 
-### Building Typescript
+### Signing in with Bluesky locally
 
-Currently only the Bluesky portion of the front-end requires Typescript building. Run all `npx` commands from `SeattleCarsInBikeLanes` directory.
+Bluesky sign in uses the [atproto profile of OAuth](https://atproto.com/specs/oauth). The server is the
+OAuth client, so no Bluesky tokens ever reach the browser.
 
-When making changes
-- `npx webpack --watch`
+Locally it uses the spec's localhost development exception, which means no publicly reachable client
+metadata document is needed. Two things to know:
 
-Before deploy
-- `npx webpack`
+- **Browse to `http://127.0.0.1:5152`, not `localhost`.** The exception requires a loopback callback
+  on `127.0.0.1`, and cookies are scoped per host, so starting at `localhost` would leave the login
+  state cookie on a different host than the callback and sign in would fail.
+- HTTPS redirection is disabled in Development for the same reason, since the callback is plain HTTP.
+
+Production configuration lives under `BlueskyOAuth` in `appsettings.json`, and the client metadata
+document is generated at `/client-metadata.json` so its `client_id` always matches the URL it is
+served from. In Development that endpoint returns 404 on purpose, because the localhost exception
+means the authorization server synthesizes the metadata instead of fetching it.
+
+#### What the 127.0.0.1 dev origin does and doesn't affect
+
+Verified working over `http://127.0.0.1:5152`: the map and Azure Maps tiles, Bluesky sign in, report
+submission, `/AdminPage`, the guessing game including its SignalR hub, and the clipboard buttons.
+`127.0.0.1` counts as a
+[potentially trustworthy origin](https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy),
+so browser APIs that require a secure context still work even though the connection is plain HTTP.
+
+**Mastodon sign in follows whichever origin you browse from.** In Development the OAuth redirect URL
+is derived from the incoming request rather than hardcoded, so it stays on the same origin as the
+page that started the login. This matters because the redirect page reads `mastodonEndpoint` back out
+of `localStorage`, which is scoped per origin, so being bounced to a different origin loses it. Both
+`https://localhost:7152/mastodonredirect` and `http://127.0.0.1:5152/mastodonredirect` need to be
+registered as redirect URIs on the Mastodon application, one per line. New instance registrations
+request both automatically. Production keeps a fixed redirect URL so it cannot be influenced by a
+forged `Host` header.
+
+The Twitter and Threads redirects are still hardcoded to `https://localhost:7152`, so those flows
+would need the same treatment plus new redirect URIs registered in their developer consoles. Neither
+has a sign in entry point in the UI today.
 
 ### Secrets List
 

@@ -1,18 +1,20 @@
 ﻿using System.Diagnostics;
+using System.Security.Claims;
 using System.Text;
 using Azure.AI.ContentSafety;
 using Azure.AI.Vision.ImageAnalysis;
 using Azure.Maps.Search;
 using Azure.Maps.Search.Models;
 using Azure.Storage.Blobs;
-using golf1052.atproto.net;
 using golf1052.Mastodon;
 using golf1052.Mastodon.Models.Accounts;
 using ImageMagick;
 using LinqToTwitter;
 using LinqToTwitter.OAuth;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Cosmos.Spatial;
+using SeattleCarsInBikeLanes.Models;
 using SeattleCarsInBikeLanes.Providers;
 using SeattleCarsInBikeLanes.Storage.Models;
 
@@ -400,17 +402,22 @@ namespace SeattleCarsInBikeLanes.Controllers
                     }
                 }
 
-                bool? verifiedBlueskyUser = await VerifyBlueskyUser(metadata);
+                bool? verifiedBlueskyUser = await ApplyBlueskyIdentity(data);
                 if (verifiedBlueskyUser.HasValue && !verifiedBlueskyUser.Value)
                 {
-                    logger.LogWarning("Failed to verify Bluesky user.");
                     foreach (var d in data)
                     {
-                        d.BlueskySubmittedBy = "Submission";
                         d.Attribute = false;
-                        d.BlueskyHandle = null;
-                        d.BlueskyUserDid = null;
                     }
+                }
+            }
+            else
+            {
+                // Not attributing, so make sure nothing the client sent survives.
+                foreach (var d in data)
+                {
+                    d.BlueskyHandle = null;
+                    d.BlueskyUserDid = null;
                 }
             }
 
@@ -420,10 +427,6 @@ namespace SeattleCarsInBikeLanes.Controllers
                 d.TwitterAccessToken = null;
                 d.MastodonAccessToken = null;
                 d.ThreadsAccessToken = null;
-                d.BlueskyUserKeyId = null;
-                d.BlueskyUserPrivateKey = null;
-                d.BlueskyUserBaseUrl = null;
-                d.BlueskyUserAccessToken = null;
 
                 string randomFileName = d.PhotoId;
                 BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");
@@ -443,36 +446,59 @@ namespace SeattleCarsInBikeLanes.Controllers
             return NoContent();
         }
 
-        public async Task<bool?> VerifyBlueskyUser(FinalizedPhotoUploadMetadata metadata)
+        /// <summary>
+        /// Applies the signed in Bluesky identity to the submission.
+        /// </summary>
+        /// <remarks>
+        /// The identity comes from the authenticated principal, established when the user signed in
+        /// with Bluesky, and never from the request body.
+        /// </remarks>
+        public async Task<bool?> ApplyBlueskyIdentity(List<FinalizedPhotoUploadMetadata> data)
         {
-            if (!string.IsNullOrWhiteSpace(metadata.BlueskyHandle) &&
-                !string.IsNullOrWhiteSpace(metadata.BlueskyUserDid) &&
-                !string.IsNullOrWhiteSpace(metadata.BlueskyUserKeyId) &&
-                !string.IsNullOrWhiteSpace(metadata.BlueskyUserPrivateKey) &&
-                !string.IsNullOrWhiteSpace(metadata.BlueskyUserBaseUrl) &&
-                !string.IsNullOrWhiteSpace(metadata.BlueskyUserAccessToken))
+            AuthenticateResult authentication =
+                await HttpContext.AuthenticateAsync(BlueskyAuthDefaults.AnyScheme);
+
+            string? did = authentication.Succeeded
+                ? authentication.Principal.FindFirstValue(BlueskyAuthDefaults.DidClaim)
+                : null;
+            string? handle = authentication.Succeeded
+                ? authentication.Principal.FindFirstValue(BlueskyAuthDefaults.HandleClaim)
+                : null;
+
+            bool signedIn = !string.IsNullOrWhiteSpace(did) && !string.IsNullOrWhiteSpace(handle);
+
+            // Whether or not the submission asked for Bluesky attribution, only a signed in user
+            // can receive it.
+            bool attributionRequested = data.Any(d =>
+                !string.IsNullOrWhiteSpace(d.BlueskySubmittedBy) &&
+                d.BlueskySubmittedBy.StartsWith("Submitted by", StringComparison.Ordinal));
+
+            foreach (var d in data)
             {
-                try
+                if (signedIn)
                 {
-                    AtProtoOAuthClient blueskyClient = new AtProtoOAuthClient(metadata.BlueskyUserDid,
-                        metadata.BlueskyUserKeyId,
-                        metadata.BlueskyUserPrivateKey,
-                        metadata.BlueskyUserBaseUrl,
-                        metadata.BlueskyUserAccessToken);
-                    var profile = await blueskyClient.GetProfile();
-                    return profile.Handle == metadata.BlueskyHandle &&
-                        profile.Did == metadata.BlueskyUserDid;
+                    d.BlueskyHandle = handle;
+                    d.BlueskyUserDid = did;
                 }
-                catch (Exception ex)
+                else
                 {
-                    logger.LogError(ex, "Failed to verify Bluesky user.");
-                    return false;
+                    d.BlueskyHandle = null;
+                    d.BlueskyUserDid = null;
+
+                    if (attributionRequested)
+                    {
+                        d.BlueskySubmittedBy = "Submission";
+                    }
                 }
             }
-            else
+
+            if (attributionRequested && !signedIn)
             {
-                return null;
+                logger.LogWarning("Bluesky attribution was requested without a signed in Bluesky user.");
+                return false;
             }
+
+            return signedIn ? true : null;
         }
 
         private DateTime? GetPhotoDate(string path)

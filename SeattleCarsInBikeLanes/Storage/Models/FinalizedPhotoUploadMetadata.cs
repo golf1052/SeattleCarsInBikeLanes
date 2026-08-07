@@ -16,10 +16,6 @@
         public string? MastodonAccessToken { get; set; }
         public string? BlueskyHandle { get; set; }
         public string? BlueskyUserDid { get; set; }
-        public string? BlueskyUserKeyId { get; set; }
-        public string? BlueskyUserPrivateKey { get; set; }
-        public string? BlueskyUserBaseUrl { get; set; }
-        public string? BlueskyUserAccessToken { get; set; }
         public string? ThreadsUsername { get; set; }
         public string? ThreadsAccessToken { get; set; }
         public bool UserSpecifiedDateTime { get; set; }
@@ -58,10 +54,6 @@
             string? mastodonAccessToken = null,
             string? blueskyHandle = null,
             string? blueskyUserDid = null,
-            string? blueskyUserKeyId = null,
-            string? blueskyUserPrivateKey = null,
-            string? blueskyUserBaseUrl = null,
-            string? blueskyUserAccessToken = null,
             string? threadsUsername = null,
             string? threadsAccessToken = null,
             string? twitterLink = null,
@@ -91,10 +83,6 @@
             MastodonAccessToken = mastodonAccessToken;
             BlueskyHandle = blueskyHandle;
             BlueskyUserDid = blueskyUserDid;
-            BlueskyUserKeyId = blueskyUserKeyId;
-            BlueskyUserPrivateKey = blueskyUserPrivateKey;
-            BlueskyUserBaseUrl = blueskyUserBaseUrl;
-            BlueskyUserAccessToken = blueskyUserAccessToken;
             ThreadsUsername = threadsUsername;
             ThreadsAccessToken = threadsAccessToken;
             TwitterLink = twitterLink;

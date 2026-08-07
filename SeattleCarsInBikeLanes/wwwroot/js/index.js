@@ -607,12 +607,9 @@ function initUpload2LegendHtml(metadatas) {
                 if (window.blueskyHandle) {
                     for (const d of metadatas) {
                         d.attribute = true;
-                        d.blueskyHandle = window.blueskyHandle;
-                        d.blueskyUserDid = window.blueskyUserDid;
-                        d.blueskyUserKeyId = window.blueskyAuthInfo.keyId;
-                        d.blueskyUserPrivateKey = window.blueskyAuthInfo.privateKey;
-                        d.blueskyUserBaseUrl = window.blueskyPds;
-                        d.blueskyUserAccessToken = window.blueskyAuthInfo.accessToken;
+                        // Identity comes from the session cookie on the server. Anything sent from
+                        // here is ignored, so there is nothing sensitive to hand over.
+                        d.blueskySubmittedBy = `Submitted by ${window.blueskyHandle}`;
                     }
                 }
             }

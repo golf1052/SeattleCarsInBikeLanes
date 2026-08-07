@@ -13,21 +13,33 @@ namespace SeattleCarsInBikeLanes.Controllers
     {
         private readonly List<string> Scopes = new List<string>() { "read:accounts" };
         private readonly MastodonClientProvider mastodonClientProvider;
-        private readonly string redirectUrl;
+        private readonly IWebHostEnvironment environment;
 
         public MastodonController(MastodonClientProvider mastodonClientProvider,
             IWebHostEnvironment environment)
         {
             this.mastodonClientProvider = mastodonClientProvider;
-            if (environment.IsDevelopment())
-            {
-                redirectUrl = "https://localhost:7152/mastodonredirect";
-            }
-            else
-            {
-                redirectUrl = "https://seattle.carinbikelane.com/mastodonredirect";
-            }
+            this.environment = environment;
         }
+
+        /// <summary>
+        /// The URL Mastodon sends the user back to after they approve.
+        /// </summary>
+        /// <remarks>
+        /// This must be byte for byte identical in the authorization request and the later token
+        /// exchange, and must match one of the redirect URIs registered with the instance.
+        ///
+        /// In development it follows whichever origin the browser is actually on. Bluesky OAuth
+        /// testing runs at http://127.0.0.1:5152 because the atproto localhost exception requires a
+        /// loopback callback, while other work runs at https://localhost:7152, and a fixed value
+        /// would send the user to the other origin. That breaks sign in, because the redirect page
+        /// reads the Mastodon endpoint back out of localStorage, which is scoped per origin.
+        ///
+        /// Production stays fixed so the redirect can never be influenced by a forged Host header.
+        /// </remarks>
+        private string RedirectUrl => environment.IsDevelopment()
+            ? $"{Request.Scheme}://{Request.Host}/mastodonredirect"
+            : "https://seattle.carinbikelane.com/mastodonredirect";
 
         [HttpGet("oembed")]
         public async Task<string?> GetOEmbed([FromQuery] string url, [FromQuery] int width, [FromQuery] int height)
@@ -60,7 +72,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             MastodonClient mastodonClient = await mastodonClientProvider.GetClient(endpointUri);
             return new MastodonOAuthUrlResponse()
             {
-                AuthUrl = mastodonClient.AuthorizeUser(redirectUrl, Scopes)
+                AuthUrl = mastodonClient.AuthorizeUser(RedirectUrl, Scopes)
             };
         }
 
@@ -82,7 +94,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         {
             request.ServerUrl = request.ServerUrl.ToLower();
             MastodonClient mastodonClient = await mastodonClientProvider.GetClient(new Uri(request.ServerUrl));
-            return await mastodonClient.ObtainToken("authorization_code", redirectUrl, code, Scopes);
+            return await mastodonClient.ObtainToken("authorization_code", RedirectUrl, code, Scopes);
         }
 
         public class MastodonOAuthUrlRequest

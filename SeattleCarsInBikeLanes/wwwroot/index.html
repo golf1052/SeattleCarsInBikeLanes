@@ -307,7 +307,7 @@
             </div>
           </div>
         </div>
-        <div id="signInAttributeText" hidden>Sign in with Mastodon to attribute this submission to you</div>
+        <div id="signInAttributeText" hidden>Sign in with Mastodon or Bluesky to attribute this submission to you</div>
         <div id="attributeDiv" class="form-check" hidden>
           <input type="checkbox" class="form-check-input" id="attributeCheckbox" name="attributeCheck">
           <label for="attribtueCheckbox" class="form-check-label">Attribute</label>
@@ -342,13 +342,13 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h1 class="modal-title fs-5" id="blueskyHandleModalLabel">Bluesky username</h1>
+            <h1 class="modal-title fs-5" id="blueskyHandleModalLabel">Sign in with Bluesky</h1>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
             <div id="blueskyModalAlertDiv"></div>
-            <p>Enter your Bluesky username, for example "blueskyuser.bsky.social"</p>
-            <input id="blueskyHandleInput" type="text" class="form-control" placeholder="Enter Bluesky username" required>
+            <p>Enter your Bluesky handle, for example "blueskyuser.bsky.social"</p>
+            <input id="blueskyHandleInput" type="text" class="form-control" placeholder="Enter Bluesky handle" required>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -379,9 +379,9 @@
     <script src="js/azure-maps-spider-clusters.min.js"></script>
     <script src="js/element-helpers.js"></script>
     <script src="js/helpers.js"></script>
+    <script src="js/bluesky-auth.js"></script>
     <script src="js/bikelanes.js"></script>
     <script src="js/index.js"></script>
-    <script defer="defer" src="dist/bluesky.bundle.js"></script>
     <script type="module" src="js/csvexport.js"></script>
 </body>
 </html>

@@ -19,20 +19,7 @@ jobs:
       - name: Set up .NET Core
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
-
-      - name: Install npm dependencies
-        working-directory: SeattleCarsInBikeLanes
-        run: npm install
-      
-      - name: Run webpack
-        working-directory: SeattleCarsInBikeLanes
-        run: npx webpack
+          dotnet-version: '10.0.x'
 
       - name: Build with dotnet
         run: dotnet build SeattleCarsInBikeLanes/SeattleCarsInBikeLanes.csproj --configuration Release

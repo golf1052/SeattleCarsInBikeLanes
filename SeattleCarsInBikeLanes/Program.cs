@@ -16,6 +16,9 @@ using Imgur.API.Endpoints;
 using Imgur.API.Models;
 using LinqToTwitter;
 using LinqToTwitter.OAuth;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Cosmos.Spatial;
 using SeattleCarsInBikeLanes.Database;
@@ -51,6 +54,9 @@ namespace SeattleCarsInBikeLanes
                 {
                     policy.WithOrigins("https://localhost:7152",
                         "http://localhost:5152",
+                        // Bluesky OAuth development uses the atproto localhost exception, which
+                        // requires a 127.0.0.1 loopback callback, so the dev site is browsed there.
+                        "http://127.0.0.1:5152",
                         "https://seattle.carinbikelane.com");
                 });
             });
@@ -58,10 +64,30 @@ namespace SeattleCarsInBikeLanes
             builder.Services.AddControllers();
             builder.Services.AddSignalR();
 
+            builder.Services.Configure<BlueskyOAuthOptions>(
+                builder.Configuration.GetSection(BlueskyOAuthOptions.SectionName));
+
+            // Persist the data protection key ring across restarts. It protects the Bluesky session
+            // cookie and the in flight OAuth state, so ephemeral keys would sign everyone out on
+            // every restart and break logins that are mid redirect. On App Service the framework
+            // already persists keys to %HOME%\ASP.NET\DataProtection-Keys, which is durable and
+            // shared by every instance of the app; setting the application name keeps the ring
+            // stable across slot swaps.
+            builder.Services.AddDataProtection()
+                .SetApplicationName("SeattleCarsInBikeLanes");
+
             builder.Services.AddAuthentication(BasicAuthenticationDefaults.AuthenticationScheme)
                 .AddBasic(options =>
                 {
                     options.Realm = "Admin page";
+
+                    // The handler refuses to respond over plain HTTP by default, returning 421 with
+                    // no WWW-Authenticate header, so the browser never prompts and the admin page
+                    // looks broken. Development runs on http://127.0.0.1 because the atproto
+                    // localhost OAuth exception requires a plain HTTP loopback callback, so allow it
+                    // there. Loopback traffic never leaves the machine. Production stays HTTPS only.
+                    options.AllowInsecureProtocol = builder.Environment.IsDevelopment();
+
                     options.Events = new BasicAuthenticationEvents()
                     {
                         OnValidateCredentials = context =>
@@ -91,6 +117,45 @@ namespace SeattleCarsInBikeLanes
 
                             return Task.CompletedTask;
                         }
+                    };
+                })
+                .AddCookie(BlueskyAuthDefaults.CookieScheme, cookieOptions =>
+                {
+                    cookieOptions.Cookie.Name = BlueskyAuthDefaults.SessionCookie;
+                    cookieOptions.Cookie.HttpOnly = true;
+                    cookieOptions.Cookie.SameSite = SameSiteMode.Lax;
+                    cookieOptions.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+                    cookieOptions.ExpireTimeSpan = TimeSpan.FromDays(90);
+                    cookieOptions.SlidingExpiration = true;
+
+                    // This scheme only ever guards API calls, so answer with status codes instead
+                    // of redirecting to a login page that does not exist.
+                    cookieOptions.Events = new CookieAuthenticationEvents()
+                    {
+                        OnRedirectToLogin = context =>
+                        {
+                            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                            return Task.CompletedTask;
+                        },
+                        OnRedirectToAccessDenied = context =>
+                        {
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            return Task.CompletedTask;
+                        }
+                    };
+                })
+                .AddScheme<AuthenticationSchemeOptions, BlueskyBearerAuthenticationHandler>(
+                    BlueskyAuthDefaults.BearerScheme, _ => { })
+                .AddPolicyScheme(BlueskyAuthDefaults.AnyScheme, BlueskyAuthDefaults.AnyScheme, policyOptions =>
+                {
+                    // Browsers send a cookie, the mobile app sends a bearer token.
+                    policyOptions.ForwardDefaultSelector = context =>
+                    {
+                        string? authorization = context.Request.Headers.Authorization.FirstOrDefault();
+                        return !string.IsNullOrWhiteSpace(authorization) &&
+                            authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                            ? BlueskyAuthDefaults.BearerScheme
+                            : BlueskyAuthDefaults.CookieScheme;
                     };
                 });
 
@@ -235,6 +300,9 @@ namespace SeattleCarsInBikeLanes
                     c.GetRequiredService<HttpClient>());
             });
             services.AddSingleton<GuessGameManager>();
+            services.AddSingleton<BlueskyOAuthProvider>();
+            services.AddSingleton<BlueskyLoginStateStore>();
+            services.AddSingleton<BlueskyTokenIssuer>();
             services.AddSingleton(c =>
             {
                 SecretClient secretClient = c.GetRequiredService<SecretClient>();
@@ -263,7 +331,12 @@ namespace SeattleCarsInBikeLanes
 
             // Configure the HTTP request pipeline.
 
-            app.UseHttpsRedirection();
+            // The atproto localhost development exception requires a plain http loopback callback,
+            // so redirecting to https locally would break sign in. Production is unaffected.
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseHttpsRedirection();
+            }
 
             app.UseDefaultFiles();
 
