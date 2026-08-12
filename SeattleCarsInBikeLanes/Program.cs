@@ -21,6 +21,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Cosmos.Spatial;
+using Microsoft.Extensions.Caching.Memory;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.GuessGame;
 using SeattleCarsInBikeLanes.Models;
@@ -292,6 +293,12 @@ namespace SeattleCarsInBikeLanes
                 return new SlackbotProvider(c.GetRequiredService<ILogger<SlackbotProvider>>(),
                     c.GetRequiredService<HttpClient>(),
                     c.GetRequiredService<SecretClient>());
+            });
+            services.AddSingleton(c =>
+            {
+                return new DeviceBlocklistProvider(c.GetRequiredService<ILogger<DeviceBlocklistProvider>>(),
+                    c.GetRequiredService<BlobContainerClient>(),
+                    c.GetRequiredService<IMemoryCache>());
             });
             services.AddSingleton(c =>
             {

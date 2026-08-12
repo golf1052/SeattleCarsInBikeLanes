@@ -115,3 +115,9 @@ let privateKey = sessionRequest.result.value.dpopKey.keyPair.privateKey;
 1. `dotnet build -c Release`
 2. `dotnet pack -c Release`
 3. `dotnet nuget push <path to .nupkg> -k <NuGet API key>`
+
+# Mobile App
+
+## Identifier
+
+golf1052.SeattleCarsInBikeLanes.Mobile

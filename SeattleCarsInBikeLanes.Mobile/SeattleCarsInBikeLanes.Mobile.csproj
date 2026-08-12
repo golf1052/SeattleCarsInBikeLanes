@@ -1,0 +1,122 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net10.0-android;net10.0-ios</TargetFrameworks>
+		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+		<!-- Uncomment to also build the tizen app. You will need to install tizen by following this: https://github.com/Samsung/Tizen.NET -->
+		<!-- <TargetFrameworks>$(TargetFrameworks);net9.0-tizen</TargetFrameworks> -->
+
+		<!-- Note for MacCatalyst:
+		The default runtime is maccatalyst-x64, except in Release config, in which case the default is maccatalyst-x64;maccatalyst-arm64.
+		When specifying both architectures, use the plural <RuntimeIdentifiers> instead of the singular <RuntimeIdentifier>.
+		The Mac App Store will NOT accept apps with ONLY maccatalyst-arm64 indicated;
+		either BOTH runtimes must be indicated or ONLY macatalyst-x64. -->
+		<!-- For example: <RuntimeIdentifiers>maccatalyst-x64;maccatalyst-arm64</RuntimeIdentifiers> -->
+
+		<OutputType>Exe</OutputType>
+		<RootNamespace>SeattleCarsInBikeLanes.Mobile</RootNamespace>
+		<UseMaui>true</UseMaui>
+		<SingleProject>true</SingleProject>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- Display name -->
+		<ApplicationTitle>Cars In Bike Lanes</ApplicationTitle>
+
+		<!-- App Identifier -->
+		<ApplicationId>golf1052.SeattleCarsInBikeLanes.Mobile</ApplicationId>
+
+		<!-- Versions -->
+		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+		<ApplicationVersion>1</ApplicationVersion>
+
+		<!-- CommunityToolkit.Maui.Camera requires iOS 15.0, PHPickerViewController multi select
+		     requires 14.0, and Photos content editing behaves consistently from 16.0 onwards. -->
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">16.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
+		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'tizen'">6.5</SupportedOSPlatformVersion>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- App Icon -->
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
+
+		<!-- Splash Screen -->
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
+
+		<!-- Images -->
+		<MauiImage Include="Resources\Images\*" />
+
+		<!-- Custom Fonts -->
+		<MauiFont Include="Resources\Fonts\*" />
+
+		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
+		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Maui.Camera" Version="6.1.0" />
+		<PackageReference Include="CommunityToolkit.Maui.Core" Version="15.0.0" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+		<PackageReference Include="ExifLibNet" Version="2.1.4" />
+		<PackageReference Include="MetadataExtractor" Version="2.9.3" />
+		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.90" />
+		<PackageReference Include="Microsoft.Maui.Controls.Maps" Version="10.0.90" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.10" />
+		<PackageReference Include="Sentry.Maui" Version="6.8.0" />
+		<PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
+		<PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.11" />
+
+		<!-- sqlite-net-pcl pins the 2.1.11 native libraries, and the Android build of SQLite in
+		     that version has a published advisory (GHSA-2m69-gcr7-jv3q). 2.1.12 is a native only
+		     patch release, so pulling it forward keeps the managed API identical. -->
+		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3.android" Version="2.1.12" />
+		<PackageReference Include="XmpCore" Version="6.1.10.1" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\SeattleCarsInBikeLanes.Mobile.Core\SeattleCarsInBikeLanes.Mobile.Core.csproj" />
+	</ItemGroup>
+
+	<!-- JpegXmpWritePluginMDE lives outside this repo, under the user profile. Its depth
+	     relative to this project differs by machine because OneDrive is mounted at
+	     %USERPROFILE%\OneDrive on Windows but ~/Library/CloudStorage/OneDrive-Personal on
+	     macOS, so probe both layouts. Override JpegXmpWritePluginMDEProject to point elsewhere. -->
+	<PropertyGroup>
+		<JpegXmpWritePluginMDERelativePath>Documents/GitHub/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE.csproj</JpegXmpWritePluginMDERelativePath>
+		<JpegXmpWritePluginMDEProject Condition="'$(JpegXmpWritePluginMDEProject)' == '' And Exists('$(MSBuildThisFileDirectory)../../../../$(JpegXmpWritePluginMDERelativePath)')">$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)../../../../$(JpegXmpWritePluginMDERelativePath)'))</JpegXmpWritePluginMDEProject>
+		<JpegXmpWritePluginMDEProject Condition="'$(JpegXmpWritePluginMDEProject)' == '' And Exists('$(MSBuildThisFileDirectory)../../../../../../$(JpegXmpWritePluginMDERelativePath)')">$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)../../../../../../$(JpegXmpWritePluginMDERelativePath)'))</JpegXmpWritePluginMDEProject>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="$(JpegXmpWritePluginMDEProject)" Condition="'$(JpegXmpWritePluginMDEProject)' != ''" />
+	</ItemGroup>
+
+	<Target Name="ValidateJpegXmpWritePluginMDEReference" BeforeTargets="CoreCompile" Condition="'$(JpegXmpWritePluginMDEProject)' == ''">
+		<Error Text="Could not locate JpegXmpWritePluginMDE.csproj. Clone it to '$(UserProfile)$(HOME)/Documents/GitHub/JpegXmpWritePluginMDE' or build with -p:JpegXmpWritePluginMDEProject=&lt;full path&gt;." />
+	</Target>
+
+	<!-- OneDrive tags files with com.apple.FinderInfo extended attributes, and .NET's file copy on
+	     macOS preserves extended attributes, so those tags follow the files into the .app bundle.
+	     codesign then fails with "resource fork, Finder information, or similar detritus not
+	     allowed". Strip the offending attributes from the project tree before the build (so they
+	     never get copied) and from the app bundle right before it is signed (to also catch files
+	     produced during the build, e.g. ibtool output and extracted .xcframework archives).
+	     The conditions live on the targets rather than in a PropertyGroup because
+	     TargetPlatformIdentifier is only set once the SDK targets are imported. -->
+	<Target Name="StripAppleDetritusFromProject" BeforeTargets="BeforeBuild"
+			Condition="$([MSBuild]::IsOSPlatform('osx')) And ('$(TargetPlatformIdentifier)' == 'ios' Or '$(TargetPlatformIdentifier)' == 'maccatalyst')">
+		<Exec Command="xattr -d -r -s com.apple.FinderInfo &quot;$(MSBuildProjectDirectory)&quot; 2&gt;/dev/null; xattr -d -r -s com.apple.ResourceFork &quot;$(MSBuildProjectDirectory)&quot; 2&gt;/dev/null; exit 0"
+			  ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low" />
+	</Target>
+
+	<Target Name="StripAppleDetritusFromAppBundle" BeforeTargets="_CodesignAppBundle"
+			Condition="$([MSBuild]::IsOSPlatform('osx')) And '$(AppBundleDir)' != '' And Exists('$(AppBundleDir)')">
+		<Exec Command="xattr -d -r -s com.apple.FinderInfo &quot;$(AppBundleDir)&quot; 2&gt;/dev/null; xattr -d -r -s com.apple.ResourceFork &quot;$(AppBundleDir)&quot; 2&gt;/dev/null; exit 0"
+			  ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low" />
+	</Target>
+
+</Project>

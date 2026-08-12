@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewmodels="clr-namespace:SeattleCarsInBikeLanes.Mobile.ViewModels"
+             x:Class="SeattleCarsInBikeLanes.Mobile.Views.CameraPage"
+             x:DataType="viewmodels:CameraViewModel"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="Black">
+
+    <ContentPage.Resources>
+        <!-- Shared so a photo looks and behaves the same whichever of the two sections it is in. -->
+        <DataTemplate x:Key="PhotoRollItemTemplate" x:DataType="viewmodels:PhotoItemViewModel">
+            <Grid>
+                <Image Source="{Binding Thumbnail}" Aspect="AspectFill" HeightRequest="110" />
+
+                <Border IsVisible="{Binding IsSelected}"
+                        Stroke="{StaticResource Primary}"
+                        StrokeThickness="3"
+                        BackgroundColor="Transparent" />
+
+                <!-- The checkmark is how the user tells an already reported photo from one that
+                     still needs sending. -->
+                <Label Text="&#xE73E;"
+                       FontFamily="FluentIcons"
+                       FontSize="18"
+                       TextColor="White"
+                       BackgroundColor="#CC107C10"
+                       Padding="4,2"
+                       HorizontalOptions="End"
+                       VerticalOptions="Start"
+                       IsVisible="{Binding Submitted}" />
+
+                <Label Text="Imported"
+                       FontSize="10"
+                       TextColor="White"
+                       BackgroundColor="#99000000"
+                       Padding="4,2"
+                       HorizontalOptions="Start"
+                       VerticalOptions="End"
+                       IsVisible="{Binding IsImported}" />
+
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="PhotoTapped" />
+                </Grid.GestureRecognizers>
+            </Grid>
+        </DataTemplate>
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="*, Auto, Auto">
+
+        <!-- The camera view is added here once a camera is known to exist. Putting it in the XAML
+             unconditionally means its handler connects on load, and the toolkit throws from an
+             async void when the device has no camera, which takes the whole app down on launch. -->
+        <Grid x:Name="CameraHost" Grid.Row="0" />
+
+        <!-- Touch on the preview lives on its own layer rather than on the camera view itself,
+             because the preview is a native view and a MAUI gesture landing on it is not something
+             to rely on. The background has to be an explicit transparent rather than left unset or
+             iOS will not hit test it at all. Declared before the roll so the roll covers it. -->
+        <Grid x:Name="PreviewOverlay"
+              Grid.Row="0"
+              BackgroundColor="Transparent"
+              IsVisible="{Binding IsPreviewInteractive}">
+
+            <Grid.GestureRecognizers>
+                <PinchGestureRecognizer PinchUpdated="CameraPinchUpdated" />
+                <TapGestureRecognizer Tapped="PreviewTapped" />
+            </Grid.GestureRecognizers>
+
+            <!-- Moved to the tap with a translation, so it is anchored to the top left corner and
+                 kept out of hit testing to leave the next tap alone. -->
+            <Border x:Name="FocusReticle"
+                    WidthRequest="72"
+                    HeightRequest="72"
+                    HorizontalOptions="Start"
+                    VerticalOptions="Start"
+                    BackgroundColor="Transparent"
+                    Stroke="#FFD60A"
+                    StrokeThickness="1.5"
+                    StrokeShape="RoundRectangle 6"
+                    InputTransparent="True"
+                    IsVisible="False" />
+
+            <Border x:Name="ZoomPill"
+                    HorizontalOptions="Center"
+                    VerticalOptions="End"
+                    Margin="0,0,0,16"
+                    Padding="14,6"
+                    MinimumWidthRequest="52"
+                    MinimumHeightRequest="36"
+                    BackgroundColor="#66000000"
+                    Stroke="#44FFFFFF"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 18"
+                    IsVisible="{Binding CanZoom}"
+                    SemanticProperties.Description="Zoom level, tap to change">
+
+                <Label Text="{Binding ZoomLabel}"
+                       TextColor="White"
+                       FontSize="14"
+                       FontAttributes="Bold"
+                       HorizontalTextAlignment="Center"
+                       VerticalTextAlignment="Center" />
+
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding CycleZoomCommand}" />
+                </Border.GestureRecognizers>
+            </Border>
+        </Grid>
+
+        <!-- Sits over the preview so the camera never has to be torn down and restarted. -->
+        <Grid Grid.Row="0"
+              BackgroundColor="Black"
+              RowDefinitions="*, Auto, Auto"
+              IsVisible="{Binding IsRollVisible}">
+
+            <CollectionView x:Name="PhotoRoll"
+                            Grid.Row="0"
+                            ItemsSource="{Binding PendingPhotos}"
+                            SelectionMode="None"
+                            ItemTemplate="{StaticResource PhotoRollItemTemplate}"
+                            Margin="8">
+                <CollectionView.ItemsLayout>
+                    <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="4" VerticalItemSpacing="4" />
+                </CollectionView.ItemsLayout>
+                <CollectionView.EmptyView>
+                    <Label Text="Nothing waiting to be reported. Take a photo, or import from your library."
+                           TextColor="White"
+                           HorizontalTextAlignment="Center"
+                           VerticalTextAlignment="Center"
+                           Margin="24" />
+                </CollectionView.EmptyView>
+            </CollectionView>
+
+            <!-- Reported photos are folded away by default so the handful still waiting on the
+                 user is not buried under everything they have ever sent. -->
+            <Grid Grid.Row="1"
+                  ColumnDefinitions="Auto, *"
+                  ColumnSpacing="8"
+                  Padding="14,10"
+                  BackgroundColor="#1AFFFFFF"
+                  IsVisible="{Binding HasReportedPhotos}">
+
+                <Label Grid.Column="0"
+                       Text="{Binding ReportedToggleGlyph}"
+                       FontFamily="FluentIcons"
+                       FontSize="16"
+                       TextColor="White"
+                       VerticalOptions="Center" />
+
+                <Label Grid.Column="1"
+                       Text="{Binding ReportedHeader}"
+                       TextColor="White"
+                       FontSize="14"
+                       VerticalOptions="Center" />
+
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding ToggleReportedPhotosCommand}" />
+                </Grid.GestureRecognizers>
+            </Grid>
+
+            <CollectionView x:Name="ReportedPhotoRoll"
+                            Grid.Row="2"
+                            ItemsSource="{Binding ReportedPhotos}"
+                            SelectionMode="None"
+                            ItemTemplate="{StaticResource PhotoRollItemTemplate}"
+                            Margin="8,4"
+                            HeightRequest="{Binding ReportedRollHeight}"
+                            IsVisible="{Binding AreReportedPhotosExpanded}">
+                <CollectionView.ItemsLayout>
+                    <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="4" VerticalItemSpacing="4" />
+                </CollectionView.ItemsLayout>
+            </CollectionView>
+        </Grid>
+
+        <VerticalStackLayout Grid.Row="1" Padding="12" Spacing="8">
+
+            <Label Text="{Binding StatusMessage}"
+                   TextColor="White"
+                   BackgroundColor="#CC7A1F1F"
+                   Padding="10"
+                   IsVisible="{Binding StatusMessage, Converter={StaticResource IsNotNullConverter}}" />
+
+            <Label Text="The app can only see the photos you've shared with it, so its album is hidden. Allow access to all photos in Settings to use the camera roll here."
+                   TextColor="White"
+                   BackgroundColor="#CC7A5A1F"
+                   Padding="10"
+                   IsVisible="{Binding HasLimitedPhotoAccess}" />
+
+            <Label Text="No camera is available on this device. You can still import photos from your library."
+                   TextColor="White"
+                   BackgroundColor="#CC7A5A1F"
+                   Padding="10"
+                   IsVisible="{Binding HasNoCamera}" />
+
+            <Grid ColumnDefinitions="*, Auto" ColumnSpacing="8">
+                <Button Grid.Column="0"
+                        Text="Report selected photos"
+                        Clicked="ReportClicked"
+                        IsVisible="{Binding CanReport}" />
+
+                <Button Grid.Column="1"
+                        BackgroundColor="#CC7A1F1F"
+                        WidthRequest="52"
+                        HeightRequest="44"
+                        Clicked="DeleteClicked"
+                        IsVisible="{Binding CanDelete}"
+                        SemanticProperties.Description="Delete selected photos">
+                    <Button.ImageSource>
+                        <!-- trash can icon -->
+                        <FontImageSource FontFamily="FluentIcons" Glyph="&#xF34C;" Color="White" Size="20" />
+                    </Button.ImageSource>
+                </Button>
+            </Grid>
+        </VerticalStackLayout>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*, Auto, *" Padding="16,8,16,16" ColumnSpacing="12">
+
+            <!-- Doubles as the roll toggle and as a peek at the most recent shot. -->
+            <ImageButton Grid.Column="0"
+                         Source="{Binding LatestThumbnail}"
+                         Aspect="AspectFill"
+                         WidthRequest="52"
+                         HeightRequest="52"
+                         CornerRadius="8"
+                         BackgroundColor="#33FFFFFF"
+                         HorizontalOptions="Start"
+                         Command="{Binding ToggleRollCommand}" />
+
+            <Button Grid.Column="1"
+                    x:Name="CaptureButton"
+                    WidthRequest="72"
+                    HeightRequest="72"
+                    CornerRadius="36"
+                    BackgroundColor="White"
+                    BorderColor="#88FFFFFF"
+                    BorderWidth="4"
+                    Clicked="CaptureClicked"
+                    SemanticProperties.Description="Take a photo" />
+
+            <HorizontalStackLayout Grid.Column="2" HorizontalOptions="End" Spacing="8">
+                <Button Command="{Binding ImportCommand}"
+                        BackgroundColor="#33FFFFFF"
+                        WidthRequest="52"
+                        HeightRequest="52"
+                        CornerRadius="8"
+                        SemanticProperties.Description="Import photos">
+                    <Button.ImageSource>
+                        <!-- image library icon -->
+                        <FontImageSource FontFamily="FluentIcons" Glyph="&#xF422;" Color="White" Size="20" />
+                    </Button.ImageSource>
+                </Button>
+
+                <Button x:Name="SwitchCameraButton"
+                        BackgroundColor="#33FFFFFF"
+                        WidthRequest="52"
+                        HeightRequest="52"
+                        CornerRadius="8"
+                        Clicked="SwitchCameraClicked"
+                        SemanticProperties.Description="Switch camera">
+                    <Button.ImageSource>
+                        <!-- camera flip icon -->
+                        <FontImageSource FontFamily="FluentIcons" Glyph="&#xF13F;" Color="White" Size="20" />
+                    </Button.ImageSource>
+                </Button>
+            </HorizontalStackLayout>
+        </Grid>
+
+        <ActivityIndicator Grid.RowSpan="3"
+                           IsRunning="{Binding IsBusy}"
+                           IsVisible="{Binding IsBusy}"
+                           Color="White"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+    </Grid>
+</ContentPage>

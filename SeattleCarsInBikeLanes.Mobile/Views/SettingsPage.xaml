@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewmodels="clr-namespace:SeattleCarsInBikeLanes.Mobile.ViewModels"
+             x:Class="SeattleCarsInBikeLanes.Mobile.Views.SettingsPage"
+             x:DataType="viewmodels:SettingsViewModel"
+             Title="Settings">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="24">
+
+            <Label Text="{Binding StatusMessage}"
+                   TextColor="{StaticResource Primary}"
+                   IsVisible="{Binding StatusMessage, Converter={StaticResource IsNotNullConverter}}" />
+
+            <VerticalStackLayout Spacing="8">
+                <Label Text="Account" FontAttributes="Bold" FontSize="18" />
+
+                <Label Text="Sign in so the reports you send can be credited to you."
+                       IsVisible="{Binding IsSignedIn, Converter={StaticResource InvertedBoolConverter}}" />
+
+                <Label Text="{Binding AccountName, StringFormat='Bluesky: {0}'}"
+                       IsVisible="{Binding AccountName, Converter={StaticResource IsNotNullConverter}}" />
+
+                <Label Text="{Binding MastodonName, StringFormat='Mastodon: {0}'}"
+                       IsVisible="{Binding MastodonName, Converter={StaticResource IsNotNullConverter}}" />
+
+                <Button Text="Sign in"
+                        Clicked="SignInClicked"
+                        HorizontalOptions="Start"
+                        IsVisible="{Binding IsSignedIn, Converter={StaticResource InvertedBoolConverter}}" />
+
+                <Button Text="Sign out"
+                        Command="{Binding SignOutCommand}"
+                        HorizontalOptions="Start"
+                        IsVisible="{Binding IsSignedIn}" />
+
+                <HorizontalStackLayout Spacing="8" IsVisible="{Binding IsSignedIn}">
+                    <Switch IsToggled="{Binding AttributeByDefault}" />
+                    <Label Text="Credit my reports by default" VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="8">
+                <Label Text="Photos" FontAttributes="Bold" FontSize="18" />
+                <Label Text="Photos taken in the app are saved to your &quot;Cars in Bike Lanes&quot; album. Imported photos stay where they are."
+                       FontSize="12"
+                       TextColor="Gray" />
+                <Button Text="Forget imported photos"
+                        Command="{Binding ClearImportedPhotosCommand}"
+                        HorizontalOptions="Start" />
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="8">
+                <Label Text="Device" FontAttributes="Bold" FontSize="18" />
+                <Label Text="This ID is sent with your reports so abuse can be dealt with without affecting everyone else. It doesn't identify you."
+                       FontSize="12"
+                       TextColor="Gray" />
+                <Label Text="{Binding DeviceId}" FontSize="12" FontFamily="Monospace" />
+                <Button Text="Copy device ID"
+                        Command="{Binding CopyDeviceIdCommand}"
+                        HorizontalOptions="Start" />
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="8">
+                <Label Text="About" FontAttributes="Bold" FontSize="18" />
+                <Label Text="{Binding AppVersion, StringFormat='Version {0}'}" FontSize="12" TextColor="Gray" />
+                <Button Text="Open the website" Command="{Binding OpenWebsiteCommand}" HorizontalOptions="Start" />
+                <Button Text="Source code" Command="{Binding OpenSourceCommand}" HorizontalOptions="Start" />
+            </VerticalStackLayout>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

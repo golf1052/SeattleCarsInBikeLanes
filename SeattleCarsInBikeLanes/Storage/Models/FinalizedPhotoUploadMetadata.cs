@@ -20,6 +20,15 @@
         public string? ThreadsAccessToken { get; set; }
         public bool UserSpecifiedDateTime { get; set; }
         public bool UserSpecifiedLocation { get; set; }
+
+        /// <summary>
+        /// Which device submitted the report, when it came from the mobile app.
+        /// </summary>
+        /// <remarks>
+        /// Set by the server from the request header, never from the request body, so it cannot be
+        /// forged to blame another device. It identifies an install, not a person.
+        /// </remarks>
+        public string? DeviceId { get; set; }
         public string? TwitterLink { get; set; }
         public string? BlueskyAdminDid { get; set; }
         public string? BlueskyAccessJwt { get; set; }

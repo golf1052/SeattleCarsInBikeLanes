@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewmodels="clr-namespace:SeattleCarsInBikeLanes.Mobile.ViewModels"
+             x:Class="SeattleCarsInBikeLanes.Mobile.Views.ReportPage"
+             x:DataType="viewmodels:ReportViewModel"
+             Title="New report">
+
+    <Grid RowDefinitions="*, Auto">
+        <ScrollView>
+            <VerticalStackLayout Padding="16" Spacing="16">
+
+                <CollectionView ItemsSource="{Binding Thumbnails}"
+                                HeightRequest="200"
+                                ItemsLayout="HorizontalList">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="ImageSource">
+                            <Image Source="{Binding .}" Aspect="AspectFill" WidthRequest="200" Margin="0,0,8,0" />
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <Border IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNullConverter}}"
+                        BackgroundColor="#FFF4F4"
+                        Stroke="#D13438"
+                        Padding="12">
+                    <Label Text="{Binding ErrorMessage}" TextColor="#A4262C" />
+                </Border>
+
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Number of cars" FontAttributes="Bold" />
+                    <Stepper Minimum="1"
+                             Maximum="20"
+                             Increment="1"
+                             Value="{Binding NumberOfCars}"
+                             HorizontalOptions="Start" />
+                    <Label Text="{Binding NumberOfCars, StringFormat='{0}'}" />
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="When" FontAttributes="Bold" />
+                    <DatePicker x:Name="DatePicker" Date="{Binding Date}" />
+                    <TimePicker Time="{Binding Time}" />
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Where" FontAttributes="Bold" />
+                    <Label Text="{Binding CrossStreet}"
+                           IsVisible="{Binding CrossStreet, Converter={StaticResource IsNotNullConverter}}" />
+                    <Label Text="{Binding LocationDescription}" FontSize="12" TextColor="Gray" />
+                    <Button Text="Pick on map" Clicked="PickLocationClicked" HorizontalOptions="Start" />
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="4" IsVisible="{Binding CanAttribute}">
+                    <Label Text="Attribution" FontAttributes="Bold" />
+                    <HorizontalStackLayout Spacing="8">
+                        <Switch IsToggled="{Binding Attribute}" />
+                        <Label Text="{Binding AttributionName, StringFormat='Credit this report to {0}'}"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+
+                <Label Text="Sign in from Settings to have your reports credited to you."
+                       FontSize="12"
+                       TextColor="Gray"
+                       IsVisible="{Binding CanAttribute, Converter={StaticResource InvertedBoolConverter}}" />
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <VerticalStackLayout Grid.Row="1" Padding="16" Spacing="8">
+            <HorizontalStackLayout Spacing="8"
+                                   HorizontalOptions="Center"
+                                   IsVisible="{Binding IsUploading}">
+                <ActivityIndicator IsRunning="{Binding IsUploading}" VerticalOptions="Center" />
+                <Label Text="Submitting report..." VerticalOptions="Center" />
+            </HorizontalStackLayout>
+            <Button Text="Submit report"
+                    Clicked="SubmitClicked"
+                    IsEnabled="{Binding IsUploading, Converter={StaticResource InvertedBoolConverter}}" />
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

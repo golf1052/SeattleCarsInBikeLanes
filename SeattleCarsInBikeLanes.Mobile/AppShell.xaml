@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="SeattleCarsInBikeLanes.Mobile.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:views="clr-namespace:SeattleCarsInBikeLanes.Mobile.Views"
+    Shell.FlyoutBehavior="Disabled"
+    Title="Cars in Bike Lanes">
+
+    <TabBar>
+        <!-- The camera is first so a cold launch lands on a live preview, which is the whole
+             reason the app exists. -->
+        <Tab Title="Camera">
+            <ShellContent ContentTemplate="{DataTemplate views:CameraPage}" Route="CameraPage" />
+        </Tab>
+        <Tab Title="Map">
+            <ShellContent ContentTemplate="{DataTemplate views:MapPage}" Route="MapPage" />
+        </Tab>
+        <Tab Title="Settings">
+            <ShellContent ContentTemplate="{DataTemplate views:SettingsPage}" Route="SettingsPage" />
+        </Tab>
+    </TabBar>
+</Shell>

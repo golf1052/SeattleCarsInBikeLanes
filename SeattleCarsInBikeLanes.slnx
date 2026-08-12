@@ -3,6 +3,8 @@
   <Project Path="../atproto.net/golf1052.atproto.net/golf1052.atproto.net.csproj" />
   <Project Path="../MastodonAPI/golf1052.Mastodon/golf1052.Mastodon.csproj" />
   <Project Path="../ThreadsAPI/golf1052.ThreadsAPI/golf1052.ThreadsAPI.csproj" />
+  <Project Path="SeattleCarsInBikeLanes.Mobile.Core.Tests/SeattleCarsInBikeLanes.Mobile.Core.Tests.csproj" />
+  <Project Path="SeattleCarsInBikeLanes.Mobile.Core/SeattleCarsInBikeLanes.Mobile.Core.csproj" />
   <Project Path="SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.csproj">
     <Deploy Solution="Debug|*" />
   </Project>
