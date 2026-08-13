@@ -211,7 +211,7 @@
                               BackgroundColor="#CC7A1F1F">
 
                             <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                <Label Text="{Binding Description, StringFormat='Report of {0} wasn''t sent'}"
+                                <Label Text="{Binding Title}"
                                        TextColor="White"
                                        FontSize="13"
                                        FontAttributes="Bold" />
@@ -224,8 +224,7 @@
                                     Padding="10,4"
                                     HeightRequest="34"
                                     VerticalOptions="Center"
-                                    Command="{Binding Source={RelativeSource AncestorType={x:Type viewmodels:CameraViewModel}}, Path=RetryReportCommand}"
-                                    CommandParameter="{Binding .}" />
+                                    Command="{Binding RetryCommand}" />
 
                             <Button Grid.Column="2"
                                     Text="Discard"
@@ -234,8 +233,7 @@
                                     HeightRequest="34"
                                     BackgroundColor="#66000000"
                                     VerticalOptions="Center"
-                                    Command="{Binding Source={RelativeSource AncestorType={x:Type viewmodels:CameraViewModel}}, Path=DiscardReportCommand}"
-                                    CommandParameter="{Binding .}" />
+                                    Command="{Binding DiscardCommand}" />
                         </Grid>
                     </DataTemplate>
                 </BindableLayout.ItemTemplate>

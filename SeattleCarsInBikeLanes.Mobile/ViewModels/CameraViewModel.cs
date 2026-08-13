@@ -77,18 +77,36 @@ public sealed partial class PhotoItemViewModel : ObservableObject
 /// <summary>
 /// A report the app gave up on, and what the user can do about it.
 /// </summary>
-public sealed class FailedReportViewModel
+/// <remarks>
+/// The row carries its own commands rather than reaching back up to the page's view model with a
+/// RelativeSource binding. An ancestor binding that does not resolve fails silently, which here
+/// would mean a Retry button that quietly does nothing, and nothing in this project validates XAML
+/// at build time to catch that.
+/// </remarks>
+public sealed partial class FailedReportViewModel : ObservableObject
 {
-    public FailedReportViewModel(QueuedReport report)
+    private readonly IUploadQueue uploadQueue;
+
+    public FailedReportViewModel(QueuedReport report, IUploadQueue uploadQueue)
     {
+        this.uploadQueue = uploadQueue;
+
         Id = report.Id;
-        Description = report.Description;
+        Title = $"Report of {report.Description} wasn't sent";
         Error = report.LastError ?? "The report couldn't be sent.";
     }
 
     public string Id { get; }
 
-    public string Description { get; }
+    /// <summary>
+    /// What the row is about.
+    /// </summary>
+    /// <remarks>
+    /// Built here rather than with a StringFormat in the markup. An apostrophe cannot be escaped
+    /// inside a markup extension's quoted string, and getting that wrong is a parse error the build
+    /// does not catch: the template is only read when the page is first shown.
+    /// </remarks>
+    public string Title { get; }
 
     /// <summary>
     /// Why it failed, in the server's own words where it gave any.
@@ -98,6 +116,22 @@ public sealed class FailedReportViewModel
     /// than a generic apology: "Photo not taken in Seattle" tells somebody exactly what happened.
     /// </remarks>
     public string Error { get; }
+
+    /// <summary>
+    /// Puts the report back in the queue.
+    /// </summary>
+    [RelayCommand]
+    private async Task RetryAsync() => await uploadQueue.RetryAsync(Id);
+
+    /// <summary>
+    /// Throws the report away.
+    /// </summary>
+    /// <remarks>
+    /// Its photos go back to being unreported rather than disappearing, because the user may well
+    /// want to fix whatever the site objected to and try again.
+    /// </remarks>
+    [RelayCommand]
+    private async Task DiscardAsync() => await uploadQueue.DiscardAsync(Id);
 }
 
 /// <summary>
@@ -738,7 +772,7 @@ public sealed partial class CameraViewModel : ObservableObject
         FailedReports.Clear();
         foreach (QueuedReport report in queued.Where(report => report.State == UploadQueueState.Failed))
         {
-            FailedReports.Add(new FailedReportViewModel(report));
+            FailedReports.Add(new FailedReportViewModel(report, uploadQueue));
         }
 
         int sending = queued.Count(report => report.State == UploadQueueState.Uploading);
@@ -754,38 +788,6 @@ public sealed partial class CameraViewModel : ObservableObject
         };
 
         OnPropertyChanged(nameof(CanReport));
-    }
-
-    /// <summary>
-    /// Puts a report the app gave up on back in the queue.
-    /// </summary>
-    [RelayCommand]
-    private async Task RetryReportAsync(FailedReportViewModel? report)
-    {
-        if (report is null)
-        {
-            return;
-        }
-
-        await uploadQueue.RetryAsync(report.Id);
-    }
-
-    /// <summary>
-    /// Throws a report the app gave up on away.
-    /// </summary>
-    /// <remarks>
-    /// Its photos go back to being unreported rather than disappearing, because the user may well
-    /// want to fix whatever the site objected to and try again.
-    /// </remarks>
-    [RelayCommand]
-    private async Task DiscardReportAsync(FailedReportViewModel? report)
-    {
-        if (report is null)
-        {
-            return;
-        }
-
-        await uploadQueue.DiscardAsync(report.Id);
     }
 
     private async void ReloadAfterCompletion()
