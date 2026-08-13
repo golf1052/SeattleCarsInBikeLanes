@@ -13,7 +13,7 @@ namespace SeattleCarsInBikeLanes.Mobile.ViewModels;
 public sealed partial class ReportViewModel : ObservableObject
 {
     private readonly IUploadService uploadService;
-    private readonly IPhotoCatalog photoCatalog;
+    private readonly IUploadQueue uploadQueue;
     private readonly IPhotoLibraryService photoLibrary;
     private readonly IAuthService authService;
     private readonly ILogger<ReportViewModel> logger;
@@ -21,13 +21,13 @@ public sealed partial class ReportViewModel : ObservableObject
     private IReadOnlyList<ReportPhoto> photos = Array.Empty<ReportPhoto>();
 
     public ReportViewModel(IUploadService uploadService,
-        IPhotoCatalog photoCatalog,
+        IUploadQueue uploadQueue,
         IPhotoLibraryService photoLibrary,
         IAuthService authService,
         ILogger<ReportViewModel> logger)
     {
         this.uploadService = uploadService;
-        this.photoCatalog = photoCatalog;
+        this.uploadQueue = uploadQueue;
         this.photoLibrary = photoLibrary;
         this.authService = authService;
         this.logger = logger;
@@ -66,7 +66,6 @@ public sealed partial class ReportViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsUploading { get; set; }
-
     [ObservableProperty]
     public partial string? ErrorMessage { get; set; }
 
@@ -158,9 +157,20 @@ public sealed partial class ReportViewModel : ObservableObject
     partial void OnTimeChanged(TimeSpan value) => UserSpecifiedDateTime = true;
 
     /// <summary>
-    /// Uploads the photos and submits the report.
+    /// Validates the report and hands it to the upload queue.
     /// </summary>
-    /// <returns>True when the report was accepted.</returns>
+    /// <remarks>
+    /// Nothing here touches the network. The user is outdoors on a phone, and making them stand and
+    /// watch a several megabyte upload is the wrong shape for the moment they are in, so the report
+    /// is written down and sent afterwards.
+    ///
+    /// Everything the server could tell the app about the photos used to come back mid submit, and
+    /// the report was re-checked against it. That is gone, and can be, because the check that runs
+    /// here already insists on a date and an in-bounds location before a report is accepted at all.
+    /// The server's reading of the EXIF is a refinement rather than a missing piece, so it is merged
+    /// in when the report is actually sent and the user never has to be there for it.
+    /// </remarks>
+    /// <returns>True when the report was queued.</returns>
     public async Task<bool> SubmitAsync(CancellationToken cancellationToken = default)
     {
         if (IsUploading)
@@ -187,71 +197,20 @@ public sealed partial class ReportViewModel : ObservableObject
 
         try
         {
-            List<UploadPhoto> toUpload = new List<UploadPhoto>(photos.Count);
-            foreach (ReportPhoto photo in photos)
+            if (!await uploadQueue.EnqueueAsync(photos, draft, cancellationToken))
             {
-                byte[]? jpeg = await photoLibrary.GetPhotoDataAsync(photo.Id, cancellationToken);
-                if (jpeg is null)
-                {
-                    ErrorMessage = "One of the photos could not be read. It may have been deleted.";
-                    return false;
-                }
-
-                toUpload.Add(new UploadPhoto(photo.Id, jpeg));
-            }
-
-            UploadPreparation preparation = await uploadService.PrepareAsync(toUpload, cancellationToken);
-
-            // The server reads the photo's own EXIF, and it is more trustworthy than anything the
-            // app guessed, so its answers win unless the user overrode them.
-            if (!UserSpecifiedDateTime && preparation.PhotoDateTime is DateTime serverDate)
-            {
-                SetDateTime(serverDate, userSpecified: false);
-            }
-
-            if (!UserSpecifiedLocation && preparation.Location is GeoPosition serverLocation)
-            {
-                SetLocation(serverLocation, userSpecified: false);
-            }
-
-            CrossStreet ??= preparation.CrossStreet;
-
-            draft = BuildDraft();
-            draft.CrossStreet = CrossStreet;
-
-            validation = ReportValidator.Validate(draft,
-                photos.Count,
-                uploadService.BoundingBox,
-                uploadService.Limits.MaxPhotosPerReport,
-                DateTime.Now);
-
-            if (!validation.IsValid)
-            {
-                ErrorMessage = validation.Error;
+                // The only way to get here is a photo already spoken for by a report still on its
+                // way out, which the roll would have shown had it caught up.
+                ErrorMessage = "One of these photos has already been reported.";
                 return false;
             }
 
-            await uploadService.FinalizeAsync(preparation, draft, authService.CurrentIdentity, cancellationToken);
-
-            await photoCatalog.MarkSubmittedAsync(photos, preparation.SubmissionId, cancellationToken);
-
             return true;
-        }
-        catch (UploadException ex)
-        {
-            ErrorMessage = ex.IsBlocked
-                ? "This device can't submit reports."
-                : ex.Message;
-            return false;
-        }
-        catch (OperationCanceledException)
-        {
-            return false;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to submit a report.");
-            ErrorMessage = "Couldn't reach the site. Check your connection and try again.";
+            logger.LogError(ex, "Failed to queue a report.");
+            ErrorMessage = "Couldn't save that report. Try again.";
             return false;
         }
         finally

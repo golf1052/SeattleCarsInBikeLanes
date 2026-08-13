@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using SeattleCarsInBikeLanes.Mobile.Core.Metadata;
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
 
@@ -75,7 +76,12 @@ public sealed class PhotoCatalog : IPhotoCatalog
     /// <summary>
     /// Upload state keyed by asset id, so scrolling the roll does not re-read the same photos.
     /// </summary>
-    private readonly Dictionary<string, bool> uploadStateCache = new Dictionary<string, bool>(StringComparer.Ordinal);
+    /// <remarks>
+    /// Concurrent because reports are now sent from a background queue, so the flag is written from
+    /// a worker thread while the roll is being read on the UI thread.
+    /// </remarks>
+    private readonly ConcurrentDictionary<string, bool> uploadStateCache =
+        new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
 
     public PhotoCatalog(IPhotoLibraryService photoLibrary,
         IImportedPhotoStore importedPhotos,
@@ -259,7 +265,7 @@ public sealed class PhotoCatalog : IPhotoCatalog
 
         foreach (string id in ids)
         {
-            uploadStateCache.Remove(id);
+            uploadStateCache.TryRemove(id, out _);
         }
     }
 

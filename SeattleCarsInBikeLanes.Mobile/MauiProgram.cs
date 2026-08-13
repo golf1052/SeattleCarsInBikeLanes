@@ -95,17 +95,25 @@ public static class MauiProgram
 		services.AddSingleton<IImportedPhotoStore>(_ => new ImportedPhotoStore(
 			Path.Combine(FileSystem.AppDataDirectory, "importedphotos.db3")));
 
+		services.AddSingleton<IUploadQueueStore>(_ => new UploadQueueStore(
+			Path.Combine(FileSystem.AppDataDirectory, "uploadqueue.db3")));
+
 		services.AddSingleton<IDeviceIdentityService, DeviceIdentityService>();
 		services.AddSingleton<ICaptureService, CaptureService>();
 		services.AddSingleton<IPhotoCatalog, PhotoCatalog>();
 		services.AddSingleton<IAuthService, AuthService>();
 		services.AddSingleton<IUploadService, UploadService>();
 
+		// A singleton because a report outlives the page that created it. Everything about the
+		// queue would be pointless if it died with the report sheet.
+		services.AddSingleton<IUploadQueue, UploadQueue>();
+
 #if IOS
 		services.AddSingleton<IPhotoLibraryService, Platforms.iOS.PhotoLibraryService>();
 		services.AddSingleton<IWebViewCookieBridge, Platforms.iOS.WebViewCookieBridge>();
 		services.AddSingleton<IImageResizer, Platforms.iOS.ImageResizer>();
 		services.AddSingleton<ICameraDeviceService, Platforms.iOS.CameraDeviceService>();
+		services.AddSingleton<IBackgroundWorkScope, Platforms.iOS.BackgroundWorkScope>();
 #else
 		// The app is iOS first. These keep the other targets building, and make the gaps fail
 		// visibly instead of looking like an empty photo library and a sign in that never works.
@@ -113,6 +121,7 @@ public static class MauiProgram
 		services.AddSingleton<IWebViewCookieBridge, NullWebViewCookieBridge>();
 		services.AddSingleton<IImageResizer, PassthroughImageResizer>();
 		services.AddSingleton<ICameraDeviceService, CameraDeviceService>();
+		services.AddSingleton<IBackgroundWorkScope, NullBackgroundWorkScope>();
 #endif
 	}
 

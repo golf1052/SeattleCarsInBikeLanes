@@ -41,6 +41,74 @@ public sealed class ReportDraft
     /// The cross street, when the server has told us one.
     /// </summary>
     public string? CrossStreet { get; set; }
+
+    /// <summary>
+    /// Takes a copy, so a report can be sent without the queue's own record being changed.
+    /// </summary>
+    /// <remarks>
+    /// Sending merges the server's reading of the photo into the draft, and a second attempt has to
+    /// start from what the user actually filled in rather than from whatever the failed attempt
+    /// left behind.
+    /// </remarks>
+    public ReportDraft Clone() => new ReportDraft()
+    {
+        NumberOfCars = NumberOfCars,
+        TakenAt = TakenAt,
+        Location = Location,
+        UserSpecifiedDateTime = UserSpecifiedDateTime,
+        UserSpecifiedLocation = UserSpecifiedLocation,
+        Attribute = Attribute,
+        CrossStreet = CrossStreet
+    };
+}
+
+/// <summary>
+/// Folds what the server read out of the photos into the report the user filled in.
+/// </summary>
+/// <remarks>
+/// The server reads the EXIF itself, and for a photo that carries one its answer is better than
+/// anything the app worked out. It is only ever a refinement though: the app will not queue a report
+/// without a date and an in-bounds location, so nothing here can leave the draft less complete than
+/// it arrived, and each value is only taken if it is usable on its own terms. Anything the user
+/// typed is left alone, because they were looking at the thing being reported and the camera's clock
+/// was not.
+/// </remarks>
+public static class ReportDraftMerge
+{
+    public static ReportDraft WithServerValues(ReportDraft draft,
+        DateTime? photoDateTime,
+        GeoPosition? location,
+        string? crossStreet,
+        BoundingBox boundingBox,
+        DateTime now)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        ArgumentNullException.ThrowIfNull(boundingBox);
+
+        ReportDraft merged = draft.Clone();
+
+        // A camera with a wrong clock can report a date in the future, which the server would then
+        // refuse at finalize, so the app's own answer stands in that case.
+        if (!merged.UserSpecifiedDateTime && photoDateTime is DateTime serverDate && serverDate <= now)
+        {
+            merged.TakenAt = serverDate;
+        }
+
+        if (!merged.UserSpecifiedLocation && location is GeoPosition serverLocation &&
+            boundingBox.Contains(serverLocation))
+        {
+            merged.Location = serverLocation;
+        }
+
+        // Only ever filled in, never replaced: a cross street the user moved the pin away from
+        // belongs to the old position.
+        if (string.IsNullOrWhiteSpace(merged.CrossStreet) && !merged.UserSpecifiedLocation)
+        {
+            merged.CrossStreet = crossStreet;
+        }
+
+        return merged;
+    }
 }
 
 /// <summary>

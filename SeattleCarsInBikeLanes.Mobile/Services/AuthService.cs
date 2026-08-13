@@ -19,6 +19,11 @@ public interface IAuthService
     event EventHandler? IdentityChanged;
 
     /// <summary>
+    /// Loads whatever was stored last time the app ran.
+    /// </summary>
+    Task InitializeAsync();
+
+    /// <summary>
     /// Re-reads the session from the web view and the site.
     /// </summary>
     Task<AttributionIdentity?> RefreshAsync(CancellationToken cancellationToken = default);
@@ -75,6 +80,11 @@ public sealed class AuthService : IAuthService
     /// <summary>
     /// Loads whatever was stored last time the app ran.
     /// </summary>
+    /// <remarks>
+    /// Run at startup rather than from a page, because a report can be sent from the queue without
+    /// the user having opened anything that would otherwise refresh the identity, and a report that
+    /// was meant to be credited to somebody would go up anonymous.
+    /// </remarks>
     public async Task InitializeAsync()
     {
         blueskyToken = await TryGetAsync(BlueskyTokenKey);

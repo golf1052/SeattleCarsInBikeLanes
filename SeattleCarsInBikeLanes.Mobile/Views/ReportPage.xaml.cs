@@ -92,7 +92,9 @@ public partial class ReportPage : ContentPage, IQueryAttributable
                 return;
             }
 
-            await DisplayAlertAsync("Thanks", "Your report was submitted.", "OK");
+            // Straight back to the camera. The report has been written down and the camera page
+            // says so, which is more use than a modal alert confirming something that has not
+            // actually happened yet.
             await Shell.Current.GoToAsync("..");
         }
         catch (Exception ex)

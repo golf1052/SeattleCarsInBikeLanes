@@ -29,6 +29,22 @@
 	<key>XSAppIconAssets</key>
 	<string>Assets.xcassets/appicon.appiconset</string>
 
+	<!-- Reports are sent from a queue rather than while the user waits, so the app has to be able
+	     to finish sending one after they have put their phone away. The processing mode covers the
+	     scheduled wake for reports that had no signal at the time; the short lived task taken
+	     around an upload in flight needs no declaration. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
+	</array>
+
+	<!-- iOS refuses to register a background task identifier that is not listed here. Must match
+	     BackgroundUploadTask.Identifier. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>golf1052.SeattleCarsInBikeLanes.Mobile.uploadqueue</string>
+	</array>
+
 	<key>NSCameraUsageDescription</key>
 	<string>Take photos of cars parked in bike lanes so you can report them without leaving the app.</string>
 

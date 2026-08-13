@@ -30,6 +30,18 @@
                        VerticalOptions="Start"
                        IsVisible="{Binding Submitted}" />
 
+                <!-- A queued photo has not reached the site, so it does not carry the checkmark.
+                     Without a badge of its own it would look untouched and invite the user to
+                     report the same thing twice. -->
+                <Label Text="{Binding QueueBadge}"
+                       FontSize="10"
+                       TextColor="White"
+                       BackgroundColor="{Binding QueueBadgeColor}"
+                       Padding="4,2"
+                       HorizontalOptions="End"
+                       VerticalOptions="Start"
+                       IsVisible="{Binding QueueBadge, Converter={StaticResource IsNotNullConverter}}" />
+
                 <Label Text="Imported"
                        FontSize="10"
                        TextColor="White"
@@ -174,6 +186,60 @@
         </Grid>
 
         <VerticalStackLayout Grid.Row="1" Padding="12" Spacing="8">
+
+            <!-- Stands in for the confirmation the report sheet used to show. It says what is true
+                 now rather than what was true when the user tapped submit, and it clears itself
+                 when the report lands. -->
+            <Label Text="{Binding QueueSummary}"
+                   TextColor="White"
+                   BackgroundColor="#CC1F4E7A"
+                   Padding="10"
+                   IsVisible="{Binding HasQueueSummary}" />
+
+            <!-- The site refuses reports for reasons the user has to see and can often act on, so
+                 a report the app gave up on is put in front of them with both ways out. A bindable
+                 layout rather than a CollectionView because this sits in an auto sized row, where a
+                 CollectionView has nothing to measure itself against and collapses to nothing. -->
+            <VerticalStackLayout BindableLayout.ItemsSource="{Binding FailedReports}"
+                                 Spacing="4"
+                                 IsVisible="{Binding HasFailedReports}">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate x:DataType="viewmodels:FailedReportViewModel">
+                        <Grid ColumnDefinitions="*, Auto, Auto"
+                              ColumnSpacing="8"
+                              Padding="10"
+                              BackgroundColor="#CC7A1F1F">
+
+                            <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                <Label Text="{Binding Description, StringFormat='Report of {0} wasn''t sent'}"
+                                       TextColor="White"
+                                       FontSize="13"
+                                       FontAttributes="Bold" />
+                                <Label Text="{Binding Error}" TextColor="White" FontSize="12" />
+                            </VerticalStackLayout>
+
+                            <Button Grid.Column="1"
+                                    Text="Retry"
+                                    FontSize="12"
+                                    Padding="10,4"
+                                    HeightRequest="34"
+                                    VerticalOptions="Center"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type viewmodels:CameraViewModel}}, Path=RetryReportCommand}"
+                                    CommandParameter="{Binding .}" />
+
+                            <Button Grid.Column="2"
+                                    Text="Discard"
+                                    FontSize="12"
+                                    Padding="10,4"
+                                    HeightRequest="34"
+                                    BackgroundColor="#66000000"
+                                    VerticalOptions="Center"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type viewmodels:CameraViewModel}}, Path=DiscardReportCommand}"
+                                    CommandParameter="{Binding .}" />
+                        </Grid>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
 
             <Label Text="{Binding StatusMessage}"
                    TextColor="White"

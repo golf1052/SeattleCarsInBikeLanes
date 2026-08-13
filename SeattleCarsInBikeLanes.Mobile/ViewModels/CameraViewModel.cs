@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SeattleCarsInBikeLanes.Mobile.Core.Camera;
+using SeattleCarsInBikeLanes.Mobile.Core.Upload;
 using SeattleCarsInBikeLanes.Mobile.Services;
 
 namespace SeattleCarsInBikeLanes.Mobile.ViewModels;
@@ -32,11 +33,71 @@ public sealed partial class PhotoItemViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
+    /// <summary>
+    /// Where the photo's report has got to, when there is one waiting to be sent.
+    /// </summary>
+    /// <remarks>
+    /// A photo whose report is still in the queue has not reached the site and does not carry the
+    /// submitted flag, so without this it would sit in the roll looking untouched and invite the
+    /// user to report it a second time.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsQueued))]
+    [NotifyPropertyChangedFor(nameof(QueueBadge))]
+    [NotifyPropertyChangedFor(nameof(QueueBadgeColor))]
+    public partial UploadQueueState? QueueState { get; set; }
+
+    /// <summary>
+    /// Whether the photo is already spoken for by a report on its way out.
+    /// </summary>
+    public bool IsQueued => QueueState is UploadQueueState.Pending or UploadQueueState.Uploading;
+
+    /// <summary>
+    /// The short label the tile carries while its report is on its way.
+    /// </summary>
+    public string? QueueBadge => QueueState switch
+    {
+        UploadQueueState.Uploading => "Sending",
+        UploadQueueState.Pending => "Queued",
+        UploadQueueState.Failed => "Failed",
+        _ => null
+    };
+
+    public Color QueueBadgeColor => QueueState == UploadQueueState.Failed
+        ? Color.FromArgb("#CC7A1F1F")
+        : Color.FromArgb("#CC1F4E7A");
+
     public void Update(ReportPhoto photo)
     {
         Photo = photo;
         Submitted = photo.Submitted;
     }
+}
+
+/// <summary>
+/// A report the app gave up on, and what the user can do about it.
+/// </summary>
+public sealed class FailedReportViewModel
+{
+    public FailedReportViewModel(QueuedReport report)
+    {
+        Id = report.Id;
+        Description = report.Description;
+        Error = report.LastError ?? "The report couldn't be sent.";
+    }
+
+    public string Id { get; }
+
+    public string Description { get; }
+
+    /// <summary>
+    /// Why it failed, in the server's own words where it gave any.
+    /// </summary>
+    /// <remarks>
+    /// The site explains itself in language written for users, and repeating it is far more use
+    /// than a generic apology: "Photo not taken in Seattle" tells somebody exactly what happened.
+    /// </remarks>
+    public string Error { get; }
 }
 
 /// <summary>
@@ -65,23 +126,27 @@ public sealed partial class CameraViewModel : ObservableObject
     private readonly IPhotoCatalog photoCatalog;
     private readonly IPhotoLibraryService photoLibrary;
     private readonly IUploadService uploadService;
+    private readonly IUploadQueue uploadQueue;
     private readonly ICaptureService captureService;
     private readonly ILogger<CameraViewModel> logger;
 
     public CameraViewModel(IPhotoCatalog photoCatalog,
         IPhotoLibraryService photoLibrary,
         IUploadService uploadService,
+        IUploadQueue uploadQueue,
         ICaptureService captureService,
         ILogger<CameraViewModel> logger)
     {
         this.photoCatalog = photoCatalog;
         this.photoLibrary = photoLibrary;
         this.uploadService = uploadService;
+        this.uploadQueue = uploadQueue;
         this.captureService = captureService;
         this.logger = logger;
 
         PendingPhotos = new ObservableCollection<PhotoItemViewModel>();
         ReportedPhotos = new ObservableCollection<PhotoItemViewModel>();
+        FailedReports = new ObservableCollection<FailedReportViewModel>();
 
         PendingPhotos.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPhotos));
         ReportedPhotos.CollectionChanged += (_, _) =>
@@ -91,6 +156,14 @@ public sealed partial class CameraViewModel : ObservableObject
             OnPropertyChanged(nameof(ReportedHeader));
             OnPropertyChanged(nameof(ReportedRollHeight));
         };
+
+        FailedReports.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasFailedReports));
+
+        uploadQueue.Changed += (_, _) => ApplyQueueState();
+
+        // A report reaching the site is what moves its photos into the reported section, and it can
+        // happen while the user is sitting on this page watching.
+        uploadQueue.Completed += (_, _) => ReloadAfterCompletion();
     }
 
     /// <summary>
@@ -107,6 +180,27 @@ public sealed partial class CameraViewModel : ObservableObject
     /// has to do something about.
     /// </remarks>
     public ObservableCollection<PhotoItemViewModel> ReportedPhotos { get; }
+
+    /// <summary>
+    /// The reports the app stopped trying to send.
+    /// </summary>
+    public ObservableCollection<FailedReportViewModel> FailedReports { get; }
+
+    public bool HasFailedReports => FailedReports.Count > 0;
+
+    /// <summary>
+    /// What the queue is doing, when it is doing anything.
+    /// </summary>
+    /// <remarks>
+    /// This is the confirmation the report sheet used to give with an alert. It is better placed
+    /// here: it says what is actually true right now rather than what was true a moment ago, and it
+    /// goes away by itself when the report lands.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasQueueSummary))]
+    public partial string? QueueSummary { get; set; }
+
+    public bool HasQueueSummary => !string.IsNullOrEmpty(QueueSummary);
 
     public bool HasPhotos => PendingPhotos.Count > 0 || ReportedPhotos.Count > 0;
 
@@ -287,13 +381,20 @@ public sealed partial class CameraViewModel : ObservableObject
     /// A selection outlives closing the roll, so this has to be tied to the roll being up as well.
     /// Otherwise the report button sits over the live camera preview, which is nowhere near the
     /// photos it would be reporting.
+    ///
+    /// A photo whose report is already in the queue is excluded too. It has not reached the site
+    /// yet, so nothing else about it says it is spoken for, and reporting it again would put two
+    /// copies of the same thing up.
     /// </remarks>
     public bool CanReport
     {
         get
         {
-            int selected = SelectedPhotos.Count;
-            return IsRollVisible && selected > 0 && selected <= MaxPhotosPerReport;
+            IReadOnlyList<PhotoItemViewModel> selected = SelectedPhotos;
+            return IsRollVisible &&
+                selected.Count > 0 &&
+                selected.Count <= MaxPhotosPerReport &&
+                !selected.Any(photo => photo.IsQueued);
         }
     }
 
@@ -422,9 +523,13 @@ public sealed partial class CameraViewModel : ObservableObject
 
         photo.IsSelected = !photo.IsSelected;
 
-        StatusMessage = SelectedPhotos.Count > MaxPhotosPerReport
+        IReadOnlyList<PhotoItemViewModel> selected = SelectedPhotos;
+
+        StatusMessage = selected.Count > MaxPhotosPerReport
             ? $"A report can have at most {MaxPhotosPerReport} photos. Deselect some to report, or delete them."
-            : null;
+            : selected.Any(item => item.IsQueued)
+                ? "One of these photos is already on its way to the site."
+                : null;
 
         OnPropertyChanged(nameof(CanReport));
         OnPropertyChanged(nameof(CanDelete));
@@ -593,8 +698,107 @@ public sealed partial class CameraViewModel : ObservableObject
 
         RefreshLatestThumbnail();
 
+        ApplyQueueState();
+
         OnPropertyChanged(nameof(CanReport));
         OnPropertyChanged(nameof(CanDelete));
+    }
+
+    /// <summary>
+    /// Brings the roll into line with what the upload queue is doing.
+    /// </summary>
+    /// <remarks>
+    /// Cheap enough to run on every queue change, and running it on every change is what keeps a
+    /// photo's badge honest while a report is in flight.
+    /// </remarks>
+    private void ApplyQueueState()
+    {
+        if (!MainThread.IsMainThread)
+        {
+            MainThread.BeginInvokeOnMainThread(ApplyQueueState);
+            return;
+        }
+
+        IReadOnlyList<QueuedReport> queued = uploadQueue.Reports;
+
+        Dictionary<string, UploadQueueState> byPhoto = new Dictionary<string, UploadQueueState>(StringComparer.Ordinal);
+        foreach (QueuedReport report in queued)
+        {
+            foreach (ReportPhoto photo in report.Photos)
+            {
+                byPhoto[photo.Id] = report.State;
+            }
+        }
+
+        foreach (PhotoItemViewModel item in PendingPhotos.Concat(ReportedPhotos))
+        {
+            item.QueueState = byPhoto.TryGetValue(item.Id, out UploadQueueState state) ? state : null;
+        }
+
+        FailedReports.Clear();
+        foreach (QueuedReport report in queued.Where(report => report.State == UploadQueueState.Failed))
+        {
+            FailedReports.Add(new FailedReportViewModel(report));
+        }
+
+        int sending = queued.Count(report => report.State == UploadQueueState.Uploading);
+        int waiting = queued.Count(report => report.State == UploadQueueState.Pending);
+
+        QueueSummary = (sending, waiting) switch
+        {
+            (0, 0) => null,
+            (> 0, 0) => "Sending your report…",
+            (> 0, _) => $"Sending your report… {waiting} more waiting.",
+            (0, 1) => "1 report waiting to send.",
+            _ => $"{waiting} reports waiting to send."
+        };
+
+        OnPropertyChanged(nameof(CanReport));
+    }
+
+    /// <summary>
+    /// Puts a report the app gave up on back in the queue.
+    /// </summary>
+    [RelayCommand]
+    private async Task RetryReportAsync(FailedReportViewModel? report)
+    {
+        if (report is null)
+        {
+            return;
+        }
+
+        await uploadQueue.RetryAsync(report.Id);
+    }
+
+    /// <summary>
+    /// Throws a report the app gave up on away.
+    /// </summary>
+    /// <remarks>
+    /// Its photos go back to being unreported rather than disappearing, because the user may well
+    /// want to fix whatever the site objected to and try again.
+    /// </remarks>
+    [RelayCommand]
+    private async Task DiscardReportAsync(FailedReportViewModel? report)
+    {
+        if (report is null)
+        {
+            return;
+        }
+
+        await uploadQueue.DiscardAsync(report.Id);
+    }
+
+    private async void ReloadAfterCompletion()
+    {
+        try
+        {
+            await ReloadPhotosAsync();
+        }
+        catch (Exception ex)
+        {
+            // async void, reached from an event the queue raises on its own schedule.
+            logger.LogError(ex, "Failed to refresh the roll after a report was sent.");
+        }
     }
 
     /// <summary>
