@@ -123,11 +123,46 @@
         <!-- Sits over the preview so the camera never has to be torn down and restarted. -->
         <Grid Grid.Row="0"
               BackgroundColor="Black"
-              RowDefinitions="*, Auto, Auto"
+              RowDefinitions="Auto, Auto, Auto, *, Auto, Auto"
               IsVisible="{Binding IsRollVisible}">
 
+            <!-- Pinned above the roll rather than left in it. The photo the user has just taken is
+                 the one they came here to report, and it looks like every other photo they have
+                 taken this week. -->
+            <Label Grid.Row="0"
+                   Text="{Binding RecentHeader}"
+                   TextColor="White"
+                   FontSize="14"
+                   FontAttributes="Bold"
+                   Padding="14,10"
+                   BackgroundColor="#1AFFFFFF"
+                   IsVisible="{Binding HasRecentPhotos}" />
+
+            <CollectionView x:Name="RecentPhotoRoll"
+                            Grid.Row="1"
+                            ItemsSource="{Binding RecentPhotos}"
+                            SelectionMode="None"
+                            ItemTemplate="{StaticResource PhotoRollItemTemplate}"
+                            Margin="8,8,8,4"
+                            HeightRequest="{Binding RecentRollHeight}"
+                            IsVisible="{Binding HasRecentPhotos}">
+                <CollectionView.ItemsLayout>
+                    <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="4" VerticalItemSpacing="4" />
+                </CollectionView.ItemsLayout>
+            </CollectionView>
+
+            <!-- Only worth saying when there is a just taken section above to tell these apart
+                 from. -->
+            <Label Grid.Row="2"
+                   Text="Earlier"
+                   TextColor="White"
+                   FontSize="14"
+                   Padding="14,10"
+                   BackgroundColor="#1AFFFFFF"
+                   IsVisible="{Binding HasEarlierPhotos}" />
+
             <CollectionView x:Name="PhotoRoll"
-                            Grid.Row="0"
+                            Grid.Row="3"
                             ItemsSource="{Binding PendingPhotos}"
                             SelectionMode="None"
                             ItemTemplate="{StaticResource PhotoRollItemTemplate}"
@@ -136,17 +171,20 @@
                     <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="4" VerticalItemSpacing="4" />
                 </CollectionView.ItemsLayout>
                 <CollectionView.EmptyView>
+                    <!-- Hidden when the just taken section is holding everything, where saying
+                         there is nothing waiting would flatly contradict the photos on screen. -->
                     <Label Text="Nothing waiting to be reported. Take a photo, or import from your library."
                            TextColor="White"
                            HorizontalTextAlignment="Center"
                            VerticalTextAlignment="Center"
-                           Margin="24" />
+                           Margin="24"
+                           IsVisible="{Binding HasRecentPhotos, Converter={StaticResource InvertedBoolConverter}}" />
                 </CollectionView.EmptyView>
             </CollectionView>
 
             <!-- Reported photos are folded away by default so the handful still waiting on the
                  user is not buried under everything they have ever sent. -->
-            <Grid Grid.Row="1"
+            <Grid Grid.Row="4"
                   ColumnDefinitions="Auto, *"
                   ColumnSpacing="8"
                   Padding="14,10"
@@ -172,7 +210,7 @@
             </Grid>
 
             <CollectionView x:Name="ReportedPhotoRoll"
-                            Grid.Row="2"
+                            Grid.Row="5"
                             ItemsSource="{Binding ReportedPhotos}"
                             SelectionMode="None"
                             ItemTemplate="{StaticResource PhotoRollItemTemplate}"

@@ -1,13 +1,14 @@
 using System.Collections.Concurrent;
 using SeattleCarsInBikeLanes.Mobile.Core.Metadata;
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
+using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 
 namespace SeattleCarsInBikeLanes.Mobile.Services;
 
 /// <summary>
 /// A photo as the app presents it: an asset plus where it came from and whether it has been sent.
 /// </summary>
-public sealed class ReportPhoto
+public sealed class ReportPhoto : IPhotoMoment
 {
     public required string Id { get; init; }
 

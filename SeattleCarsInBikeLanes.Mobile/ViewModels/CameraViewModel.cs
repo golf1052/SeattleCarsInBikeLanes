@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SeattleCarsInBikeLanes.Mobile.Core.Camera;
+using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 using SeattleCarsInBikeLanes.Mobile.Core.Upload;
 using SeattleCarsInBikeLanes.Mobile.Services;
 
@@ -146,7 +147,7 @@ public sealed partial class CameraViewModel : ObservableObject
     private const int ThumbnailPixelSize = 240;
 
     /// <summary>
-    /// Mirrors the roll's layout in CameraPage.xaml, which the reported section's height is worked
+    /// Mirrors the roll's layout in CameraPage.xaml, which the fixed sections' heights are worked
     /// out from.
     /// </summary>
     private const int RollColumns = 3;
@@ -155,7 +156,10 @@ public sealed partial class CameraViewModel : ObservableObject
 
     private const double ThumbnailSpacing = 4;
 
-    private const double MaxReportedRollHeight = 244;
+    /// <summary>
+    /// The most a pinned section may take when it has the page to itself.
+    /// </summary>
+    private const double MaxPinnedRollHeight = 244;
 
     private readonly IPhotoCatalog photoCatalog;
     private readonly IPhotoLibraryService photoLibrary;
@@ -163,6 +167,37 @@ public sealed partial class CameraViewModel : ObservableObject
     private readonly IUploadQueue uploadQueue;
     private readonly ICaptureService captureService;
     private readonly ILogger<CameraViewModel> logger;
+
+    /// <summary>
+    /// Photos the user has taken out of an automatic selection, which are never put back into one.
+    /// </summary>
+    /// <remarks>
+    /// Deselecting is the user saying the app guessed wrong. Guessing the same way again the next
+    /// time they open the roll would be the app arguing with them, and the roll is reloaded often
+    /// enough that it would happen constantly. Kept for the life of the view model rather than
+    /// written down, because it is about this ride rather than about the photo.
+    /// </remarks>
+    private readonly HashSet<string> deselectedPhotoIds = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The photos the last automatic selection ticked.
+    /// </summary>
+    /// <remarks>
+    /// Kept so a later suggestion can take back the earlier one. Without this, a photo taken while
+    /// the roll was already open would arrive after something older had been suggested, and the
+    /// guard against overwriting a selection would leave the user one tap from reporting the wrong
+    /// photo.
+    /// </remarks>
+    private readonly HashSet<string> autoSelectedPhotoIds = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Set once the user has touched the selection themselves.
+    /// </summary>
+    /// <remarks>
+    /// From that point the selection belongs to them and nothing here changes it, until the roll is
+    /// reloaded and the selection is dropped anyway.
+    /// </remarks>
+    private bool selectionAdjustedByUser;
 
     public CameraViewModel(IPhotoCatalog photoCatalog,
         IPhotoLibraryService photoLibrary,
@@ -179,16 +214,37 @@ public sealed partial class CameraViewModel : ObservableObject
         this.logger = logger;
 
         PendingPhotos = new ObservableCollection<PhotoItemViewModel>();
+        RecentPhotos = new ObservableCollection<PhotoItemViewModel>();
         ReportedPhotos = new ObservableCollection<PhotoItemViewModel>();
         FailedReports = new ObservableCollection<FailedReportViewModel>();
 
-        PendingPhotos.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPhotos));
+        PendingPhotos.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasPhotos));
+            OnPropertyChanged(nameof(HasEarlierPhotos));
+        };
+
+        RecentPhotos.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasPhotos));
+            OnPropertyChanged(nameof(HasRecentPhotos));
+            OnPropertyChanged(nameof(HasEarlierPhotos));
+            OnPropertyChanged(nameof(RecentHeader));
+            OnPropertyChanged(nameof(RecentRollHeight));
+
+            // The two pinned sections share a height budget, so one growing takes from the other.
+            OnPropertyChanged(nameof(ReportedRollHeight));
+        };
+
         ReportedPhotos.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(HasPhotos));
             OnPropertyChanged(nameof(HasReportedPhotos));
             OnPropertyChanged(nameof(ReportedHeader));
             OnPropertyChanged(nameof(ReportedRollHeight));
+
+            // The two pinned sections share a height budget, so one appearing takes from the other.
+            OnPropertyChanged(nameof(RecentRollHeight));
         };
 
         FailedReports.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasFailedReports));
@@ -201,9 +257,19 @@ public sealed partial class CameraViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The photos that still need reporting.
+    /// The photos that still need reporting, other than the ones just taken.
     /// </summary>
     public ObservableCollection<PhotoItemViewModel> PendingPhotos { get; }
+
+    /// <summary>
+    /// The unreported photos from the last few minutes.
+    /// </summary>
+    /// <remarks>
+    /// Pinned above the rest of the roll rather than left in it. The user has just pointed their
+    /// phone at something and come here to report it, and a roll of their own photos all looks
+    /// alike, so the one they came for should not have to be picked out by eye.
+    /// </remarks>
+    public ObservableCollection<PhotoItemViewModel> RecentPhotos { get; }
 
     /// <summary>
     /// The photos that have already been reported.
@@ -214,6 +280,12 @@ public sealed partial class CameraViewModel : ObservableObject
     /// has to do something about.
     /// </remarks>
     public ObservableCollection<PhotoItemViewModel> ReportedPhotos { get; }
+
+    /// <summary>
+    /// Every tile in the roll, whichever section it is in.
+    /// </summary>
+    private IEnumerable<PhotoItemViewModel> AllPhotos =>
+        RecentPhotos.Concat(PendingPhotos).Concat(ReportedPhotos);
 
     /// <summary>
     /// The reports the app stopped trying to send.
@@ -236,7 +308,29 @@ public sealed partial class CameraViewModel : ObservableObject
 
     public bool HasQueueSummary => !string.IsNullOrEmpty(QueueSummary);
 
-    public bool HasPhotos => PendingPhotos.Count > 0 || ReportedPhotos.Count > 0;
+    public bool HasPhotos => PendingPhotos.Count > 0 || RecentPhotos.Count > 0 || ReportedPhotos.Count > 0;
+
+    public bool HasRecentPhotos => RecentPhotos.Count > 0;
+
+    /// <summary>
+    /// Whether the older photos need a heading of their own.
+    /// </summary>
+    /// <remarks>
+    /// Only worth saying when there is a just taken section above them to tell them apart from.
+    /// With nothing recent the roll is just the roll.
+    /// </remarks>
+    public bool HasEarlierPhotos => RecentPhotos.Count > 0 && PendingPhotos.Count > 0;
+
+    public string RecentHeader => RecentPhotos.Count == 1 ? "Just taken" : $"Just taken ({RecentPhotos.Count})";
+
+    /// <summary>
+    /// How tall the just taken section should be.
+    /// </summary>
+    /// <remarks>
+    /// Same reasoning as <see cref="ReportedRollHeight"/>: a CollectionView in an auto sized row
+    /// has nothing to measure against and collapses.
+    /// </remarks>
+    public double RecentRollHeight => Math.Min(RollHeightFor(RecentPhotos.Count), PinnedSectionCap);
 
     public bool HasReportedPhotos => ReportedPhotos.Count > 0;
 
@@ -247,6 +341,8 @@ public sealed partial class CameraViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ReportedToggleGlyph))]
+    [NotifyPropertyChangedFor(nameof(RecentRollHeight))]
+    [NotifyPropertyChangedFor(nameof(ReportedRollHeight))]
     public partial bool AreReportedPhotosExpanded { get; set; }
 
     /// <summary>
@@ -263,14 +359,30 @@ public sealed partial class CameraViewModel : ObservableObject
     /// of reported photos do not leave a wall of empty space, and capped so the section can never
     /// crowd out the photos still waiting to be reported.
     /// </remarks>
-    public double ReportedRollHeight
+    public double ReportedRollHeight => Math.Min(RollHeightFor(ReportedPhotos.Count), PinnedSectionCap);
+
+    /// <summary>
+    /// The most either pinned section may take.
+    /// </summary>
+    /// <remarks>
+    /// Both sit in auto sized rows either side of the roll, which is the only part of the page that
+    /// can give. Left to themselves on a small phone they add up to more than the screen has and
+    /// squeeze the photos still waiting to be reported down to nothing, and there is no outer
+    /// scroll to recover them with. Sharing the budget means two sections showing at once are each
+    /// held to a single row.
+    /// </remarks>
+    private double PinnedSectionCap =>
+        HasRecentPhotos && AreReportedPhotosExpanded && HasReportedPhotos
+            ? ThumbnailHeight
+            : MaxPinnedRollHeight;
+
+    /// <summary>
+    /// How tall a section of the roll is with a given number of photos in it.
+    /// </summary>
+    private static double RollHeightFor(int photos)
     {
-        get
-        {
-            int rows = (ReportedPhotos.Count + RollColumns - 1) / RollColumns;
-            double height = (rows * ThumbnailHeight) + (Math.Max(rows - 1, 0) * ThumbnailSpacing);
-            return Math.Min(height, MaxReportedRollHeight);
-        }
+        int rows = (photos + RollColumns - 1) / RollColumns;
+        return (rows * ThumbnailHeight) + (Math.Max(rows - 1, 0) * ThumbnailSpacing);
     }
 
     [ObservableProperty]
@@ -405,8 +517,17 @@ public sealed partial class CameraViewModel : ObservableObject
 
     public int MaxPhotosPerReport => uploadService.Limits.MaxPhotosPerReport;
 
+    /// <summary>
+    /// What counts as just taken, and what counts as the same thing being photographed.
+    /// </summary>
+    /// <remarks>
+    /// Built from the site's own photo limit rather than a number of its own, so a report is never
+    /// pre-filled with more photos than it is allowed to carry.
+    /// </remarks>
+    private RecentPhotoRules RecentRules => RecentPhotoRules.ForReport(MaxPhotosPerReport);
+
     public IReadOnlyList<PhotoItemViewModel> SelectedPhotos =>
-        PendingPhotos.Concat(ReportedPhotos).Where(photo => photo.IsSelected).ToList();
+        AllPhotos.Where(photo => photo.IsSelected).ToList();
 
     /// <summary>
     /// Whether the report button should be offered.
@@ -440,6 +561,17 @@ public sealed partial class CameraViewModel : ObservableObject
     /// do it four at a time.
     /// </remarks>
     public bool CanDelete => IsRollVisible && SelectedPhotos.Count > 0;
+
+    /// <summary>
+    /// Offers the photos of whatever the user has just photographed as soon as the roll is opened.
+    /// </summary>
+    partial void OnIsRollVisibleChanged(bool value)
+    {
+        if (value)
+        {
+            ApplyAutoSelection();
+        }
+    }
 
     [RelayCommand]
     public async Task LoadAsync()
@@ -496,16 +628,23 @@ public sealed partial class CameraViewModel : ObservableObject
 
             // A reload can complete while the photo is being saved, in which case it already picked
             // the new asset up and inserting again would put two tiles on screen for one photo.
-            if (PendingPhotos.Concat(ReportedPhotos).Any(existing =>
+            if (AllPhotos.Any(existing =>
                     string.Equals(existing.Id, photo.Id, StringComparison.Ordinal)))
             {
                 return null;
             }
 
             PhotoItemViewModel item = new PhotoItemViewModel(photo);
-            PendingPhotos.Insert(0, item);
+
+            // Straight into the just taken section: this is the photo the user is here for.
+            RecentPhotos.Insert(0, item);
             await LoadThumbnailAsync(item);
             LatestThumbnail = item.Thumbnail;
+
+            // Saving a photo takes long enough for the user to have opened the roll while it was
+            // still going, in which case the suggestion was made without this photo in it.
+            ApplyAutoSelection();
+
             return item;
         }
         catch (Exception ex)
@@ -550,12 +689,27 @@ public sealed partial class CameraViewModel : ObservableObject
     /// The server refuses reports with more than four photos. Selecting a fifth is still allowed,
     /// because the selection also drives deleting and being made to clear a roll four photos at a
     /// time would be miserable, but the report button goes away and the reason is spelled out.
+    ///
+    /// Taking a photo out of the selection is also remembered, so the automatic selection does not
+    /// put it straight back the next time the roll is opened.
     /// </remarks>
     public bool ToggleSelection(PhotoItemViewModel photo)
     {
         ArgumentNullException.ThrowIfNull(photo);
 
         photo.IsSelected = !photo.IsSelected;
+
+        // From here the selection is the user's, not a suggestion.
+        selectionAdjustedByUser = true;
+
+        if (photo.IsSelected)
+        {
+            deselectedPhotoIds.Remove(photo.Id);
+        }
+        else
+        {
+            deselectedPhotoIds.Add(photo.Id);
+        }
 
         IReadOnlyList<PhotoItemViewModel> selected = SelectedPhotos;
 
@@ -569,6 +723,111 @@ public sealed partial class CameraViewModel : ObservableObject
         OnPropertyChanged(nameof(CanDelete));
         return true;
     }
+
+    /// <summary>
+    /// Ticks the photos of whatever the user has just photographed.
+    /// </summary>
+    /// <remarks>
+    /// The point of the app is the distance between seeing something and reporting it, and having
+    /// to find your own photo in a grid of your own photos is most of what is left of that
+    /// distance.
+    ///
+    /// It only ever suggests. An existing selection is left alone, because the user choosing photos
+    /// is a better answer than anything worked out from timestamps, and a photo the user has taken
+    /// out of a suggestion is never offered again.
+    /// </remarks>
+    private void ApplyAutoSelection()
+    {
+        if (!IsRollVisible)
+        {
+            return;
+        }
+
+        // The user's own choice always wins, however it turned out.
+        if (selectionAdjustedByUser)
+        {
+            return;
+        }
+
+        RecentPhotoRules rules = RecentRules;
+        DateTimeOffset now = DateTimeOffset.Now;
+
+        // A report can only carry so many photos, so a burst of five leaves one behind when the
+        // other four are sent. Photos of something already reported are dropped before the cluster
+        // is worked out rather than after, so a leftover can neither start a suggestion of its own
+        // nor be swept into the suggestion for the next thing photographed from the same spot.
+        List<ReportPhoto> alreadySent = AllPhotos
+            .Where(item => item.Submitted || item.IsQueued)
+            .Select(item => item.Photo)
+            .Where(photo => RecentPhotoSelector.IsRecent(photo, now, rules.RecencyWindow))
+            .ToList();
+
+        // A reported photo is finished with, and a queued one is already spoken for by a report on
+        // its way out, so neither is something to offer.
+        List<PhotoItemViewModel> candidates = RecentPhotos
+            .Concat(PendingPhotos)
+            .Where(item => !item.Submitted && !item.IsQueued)
+            .Where(item => !HasAlreadyBeenReported(item.Photo, alreadySent, rules))
+            .ToList();
+
+        IReadOnlyList<ReportPhoto> cluster = RecentPhotoSelector.SelectCluster(
+            candidates.Select(item => item.Photo).ToList(),
+            now,
+            rules);
+
+        // The newest photo having been turned down means the user has already seen this suggestion
+        // and said no to it, and the rest of the cluster is only there because of that photo.
+        if (cluster.Count == 0 || deselectedPhotoIds.Contains(cluster[0].Id))
+        {
+            return;
+        }
+
+        // Whatever the last suggestion was, it was about an older photo than this one.
+        foreach (PhotoItemViewModel item in AllPhotos.Where(item => autoSelectedPhotoIds.Contains(item.Id)))
+        {
+            item.IsSelected = false;
+        }
+
+        autoSelectedPhotoIds.Clear();
+
+        HashSet<string> ids = cluster
+            .Select(photo => photo.Id)
+            .Where(id => !deselectedPhotoIds.Contains(id))
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (PhotoItemViewModel item in candidates.Where(item => ids.Contains(item.Id)))
+        {
+            item.IsSelected = true;
+            autoSelectedPhotoIds.Add(item.Id);
+        }
+
+        OnPropertyChanged(nameof(CanReport));
+        OnPropertyChanged(nameof(CanDelete));
+    }
+
+    /// <summary>
+    /// Whether a photo is of something the user has already sent a report about.
+    /// </summary>
+    /// <remarks>
+    /// Asking whether it belongs with something already on its way is the same question the
+    /// selection itself is built on.
+    ///
+    /// Only photos taken before the report was made count. Something photographed afterwards is a
+    /// new thing seen, even from the same spot a minute later, and a busy block is exactly where
+    /// this feature earns its keep.
+    /// </remarks>
+    private static bool HasAlreadyBeenReported(ReportPhoto photo,
+        IReadOnlyList<ReportPhoto> alreadySent,
+        RecentPhotoRules rules)
+    {
+        return alreadySent.Any(sent => WasTakenNoLaterThan(photo, sent) &&
+            RecentPhotoSelector.BelongsWith(photo, sent, rules));
+    }
+
+    private static bool WasTakenNoLaterThan(ReportPhoto photo, ReportPhoto other) =>
+        photo.CreatedAt is DateTimeOffset takenAt &&
+        other.CreatedAt is DateTimeOffset otherTakenAt &&
+        takenAt <= otherTakenAt;
 
     /// <summary>
     /// Describes what deleting the selection would do, when the user needs telling.
@@ -635,6 +894,7 @@ public sealed partial class CameraViewModel : ObservableObject
             // would show as items disappearing at random.
             foreach (PhotoItemViewModel item in selected.Where(item => removedIds.Contains(item.Id)))
             {
+                RecentPhotos.Remove(item);
                 PendingPhotos.Remove(item);
                 ReportedPhotos.Remove(item);
             }
@@ -671,7 +931,9 @@ public sealed partial class CameraViewModel : ObservableObject
     /// <remarks>
     /// The selection is deliberately dropped. This runs whenever the tab is returned to, including
     /// straight after a report was sent, and keeping the old selection would leave the just
-    /// submitted photos ticked with the report button live, one tap away from a duplicate.
+    /// submitted photos ticked with the report button live, one tap away from a duplicate. What the
+    /// user has just photographed is offered again at the end, once the queue has been read and it
+    /// is known which photos are already spoken for.
     /// </remarks>
     public async Task ReloadPhotosAsync()
     {
@@ -680,18 +942,28 @@ public sealed partial class CameraViewModel : ObservableObject
         // Existing items are reused so their loaded thumbnails survive the refresh. A duplicate id
         // should not be possible, but ToDictionary would throw for the rest of the session if one
         // ever appeared, leaving the roll stuck on stale tiles.
-        Dictionary<string, PhotoItemViewModel> existing = PendingPhotos
-            .Concat(ReportedPhotos)
+        Dictionary<string, PhotoItemViewModel> existing = AllPhotos
             .GroupBy(item => item.Id, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
 
+        RecentPhotos.Clear();
         PendingPhotos.Clear();
         ReportedPhotos.Clear();
+
+        // The selection goes with the roll it was made against, so what is remembered about it has
+        // to go too, or a suggestion could never be made again.
+        autoSelectedPhotoIds.Clear();
+        selectionAdjustedByUser = false;
 
         // Notified straight away so the report button hides for the duration of the reload rather
         // than sitting there enabled against a selection that no longer exists.
         OnPropertyChanged(nameof(CanReport));
         OnPropertyChanged(nameof(CanDelete));
+
+        // One reading of the clock for the whole roll, so two photos a second apart cannot end up
+        // in different sections.
+        DateTimeOffset now = DateTimeOffset.Now;
+        TimeSpan recencyWindow = RecentRules.RecencyWindow;
 
         foreach (ReportPhoto photo in photos)
         {
@@ -710,6 +982,10 @@ public sealed partial class CameraViewModel : ObservableObject
             {
                 ReportedPhotos.Add(item);
             }
+            else if (RecentPhotoSelector.IsRecent(photo, now, recencyWindow))
+            {
+                RecentPhotos.Add(item);
+            }
             else
             {
                 PendingPhotos.Add(item);
@@ -724,7 +1000,7 @@ public sealed partial class CameraViewModel : ObservableObject
 
         // Snapshot before awaiting: a capture finishing mid reload would otherwise mutate one of the
         // bound collections while this is still walking it.
-        List<PhotoItemViewModel> loaded = PendingPhotos.Concat(ReportedPhotos).ToList();
+        List<PhotoItemViewModel> loaded = AllPhotos.ToList();
         foreach (PhotoItemViewModel item in loaded)
         {
             await LoadThumbnailAsync(item);
@@ -733,6 +1009,8 @@ public sealed partial class CameraViewModel : ObservableObject
         RefreshLatestThumbnail();
 
         ApplyQueueState();
+
+        ApplyAutoSelection();
 
         OnPropertyChanged(nameof(CanReport));
         OnPropertyChanged(nameof(CanDelete));
@@ -764,7 +1042,7 @@ public sealed partial class CameraViewModel : ObservableObject
             }
         }
 
-        foreach (PhotoItemViewModel item in PendingPhotos.Concat(ReportedPhotos))
+        foreach (PhotoItemViewModel item in AllPhotos)
         {
             item.QueueState = byPhoto.TryGetValue(item.Id, out UploadQueueState state) ? state : null;
         }
@@ -807,14 +1085,14 @@ public sealed partial class CameraViewModel : ObservableObject
     /// Points the peek button at the newest photo the app knows about.
     /// </summary>
     /// <remarks>
-    /// The roll is split in two and each half is newest first, so the newest photo overall can be
-    /// at the top of either one.
+    /// The roll is split into sections and each one is newest first, so the newest photo overall
+    /// can be at the top of any of them.
     /// </remarks>
     private void RefreshLatestThumbnail()
     {
         PhotoItemViewModel? newest = null;
 
-        foreach (PhotoItemViewModel item in PendingPhotos.Concat(ReportedPhotos))
+        foreach (PhotoItemViewModel item in AllPhotos)
         {
             if (newest is null ||
                 (item.Photo.CreatedAt ?? DateTimeOffset.MinValue) > (newest.Photo.CreatedAt ?? DateTimeOffset.MinValue))

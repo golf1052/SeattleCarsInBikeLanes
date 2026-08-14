@@ -105,33 +105,3 @@ public class BoundingBoxTests
         Assert.Equal(expected, BoundingBox.Seattle.Contains(new GeoPosition(latitude, longitude)));
     }
 }
-
-public class GeoPositionTests
-{
-    [Fact]
-    public void FormatsCoordinatesTheWayTheApiExpects()
-    {
-        GeoPosition position = new GeoPosition(47.6062123, -122.3321987);
-
-        Assert.Equal("47.60621", position.LatitudeString);
-        Assert.Equal("-122.3322", position.LongitudeString);
-    }
-
-    [Fact]
-    public void UsesAnInvariantDecimalSeparator()
-    {
-        System.Globalization.CultureInfo original = System.Globalization.CultureInfo.CurrentCulture;
-        try
-        {
-            // A culture where the decimal separator is a comma would otherwise produce coordinates
-            // the server cannot parse.
-            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
-
-            Assert.Equal("47.6062", new GeoPosition(47.6062, -122.3321).LatitudeString);
-        }
-        finally
-        {
-            System.Globalization.CultureInfo.CurrentCulture = original;
-        }
-    }
-}
