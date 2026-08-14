@@ -20,12 +20,46 @@ public partial class CameraPage : ContentPage
     /// </remarks>
     private const double MinimumPinchScale = 0.01;
 
+    /// <summary>
+    /// How long a stop waits before making sure it took.
+    /// </summary>
+    /// <remarks>
+    /// The toolkit starts the preview from an async void the moment its handler connects, so a stop
+    /// issued while one of those is still on its way would be quietly undone by it. Asking a second
+    /// time costs nothing: both platforms ignore a stop when there is nothing running.
+    /// </remarks>
+    private static readonly TimeSpan PreviewStopSettleDelay = TimeSpan.FromMilliseconds(500);
+
     private readonly CameraViewModel viewModel;
     private readonly ICameraProvider cameraProvider;
     private readonly ICameraDeviceService cameraDevices;
     private readonly ILogger<CameraPage> logger;
 
     private CameraView? camera;
+
+    /// <summary>
+    /// Whether the camera is currently capturing.
+    /// </summary>
+    /// <remarks>
+    /// The page is a singleton in a tab, so nothing tears it or its preview down when the user
+    /// moves to another tab. Left alone the camera would keep running behind the map and the
+    /// settings, which the operating system quite rightly tells the user about.
+    /// </remarks>
+    private bool isPreviewRunning;
+
+    /// <summary>
+    /// Whether the page is the one on screen.
+    /// </summary>
+    private bool isPageVisible;
+
+    /// <summary>
+    /// The photo being taken, while one is.
+    /// </summary>
+    /// <remarks>
+    /// Stopping the preview out from under a capture loses the photo, and a user who taps the
+    /// shutter and immediately switches tabs has every reason to expect it was taken.
+    /// </remarks>
+    private Task? captureInFlight;
 
     /// <summary>
     /// The cameras the switch button moves between, rear first.
@@ -74,6 +108,42 @@ public partial class CameraPage : ContentPage
         BindingContext = viewModel;
     }
 
+    protected override async void OnAppearing()
+    {
+        base.OnAppearing();
+
+        isPageVisible = true;
+
+        try
+        {
+            // Ahead of anything else the page wants to do. Loading the roll asks for photo library
+            // permission, reads the library and calls the site for the current upload limits, and
+            // the shutter is the reason the user opened the app.
+            await StartPreviewAsync();
+        }
+        catch (Exception ex)
+        {
+            // OnAppearing is async void, so anything escaping here would take the app down.
+            logger.LogError(ex, "Failed to start the camera preview.");
+        }
+    }
+
+    protected override async void OnDisappearing()
+    {
+        base.OnDisappearing();
+
+        isPageVisible = false;
+
+        try
+        {
+            await StopPreviewAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to stop the camera preview.");
+        }
+    }
+
     protected override async void OnNavigatedTo(NavigatedToEventArgs args)
     {
         base.OnNavigatedTo(args);
@@ -81,17 +151,133 @@ public partial class CameraPage : ContentPage
         try
         {
             await viewModel.LoadAsync();
-            await SetUpCamerasAsync();
-
-            // Every other camera app opens at 1x, and a zoom left over from a shot taken minutes
-            // ago is a crop the user did not ask for and might not notice until afterwards.
-            viewModel.ResetZoom();
         }
         catch (Exception ex)
         {
             // OnNavigatedTo is async void, so anything escaping here would take the app down.
-            logger.LogError(ex, "Failed to prepare the camera page.");
+            logger.LogError(ex, "Failed to load the photo roll.");
         }
+    }
+
+    /// <summary>
+    /// Brings the preview up, building it first if this is the first time the page has been shown.
+    /// </summary>
+    /// <remarks>
+    /// Only the capture session is stopped and started. The camera view, its handler and the
+    /// session itself are left in place for the life of the page, so coming back to the tab is a
+    /// matter of the session running again rather than of finding the cameras and standing the
+    /// whole thing back up.
+    /// </remarks>
+    private async Task StartPreviewAsync()
+    {
+        if (camera is null)
+        {
+            // The toolkit starts the preview itself when the view's handler connects.
+            await SetUpCamerasAsync();
+
+            // Finding the cameras takes long enough for the user to have moved on, and the preview
+            // the handler starts for itself would then be running behind another tab.
+            if (!isPageVisible)
+            {
+                await StopPreviewAsync();
+            }
+
+            return;
+        }
+
+        if (isPreviewRunning)
+        {
+            return;
+        }
+
+        // Both of these go through the view's handler, which throws when there is not one.
+        if (camera.Handler is null)
+        {
+            return;
+        }
+
+        await camera.StartCameraPreview(CancellationToken.None);
+        isPreviewRunning = true;
+
+        if (!isPageVisible)
+        {
+            await StopPreviewAsync();
+            return;
+        }
+
+        ResumePreviewState();
+    }
+
+    /// <summary>
+    /// Takes the camera back off the moment the page is no longer the one being looked at.
+    /// </summary>
+    private async Task StopPreviewAsync()
+    {
+        if (camera is null)
+        {
+            return;
+        }
+
+        // A photo already on its way would be lost with the session that is taking it.
+        Task? capture = captureInFlight;
+        if (capture is not null)
+        {
+            try
+            {
+                await capture;
+            }
+            catch (Exception ex)
+            {
+                // Reported to the user by whoever started it.
+                logger.LogDebug(ex, "A capture failed while the camera page was going away.");
+            }
+        }
+
+        // Taking a photo is slow enough for the user to have come back by now.
+        if (isPageVisible)
+        {
+            return;
+        }
+
+        HideFocusReticle();
+
+        if (camera.Handler is not null)
+        {
+            camera.StopCameraPreview();
+        }
+
+        isPreviewRunning = false;
+
+        await Task.Delay(PreviewStopSettleDelay);
+
+        if (!isPageVisible && !isPreviewRunning && camera.Handler is not null)
+        {
+            camera.StopCameraPreview();
+        }
+    }
+
+    /// <summary>
+    /// Puts the camera back the way a camera app opens.
+    /// </summary>
+    /// <remarks>
+    /// A stopped preview leaves the focus mode and the point it was metering on set on the device,
+    /// so without this a tap to focus from before the user wandered off to the map would still be
+    /// in force when they came back, aimed at whatever corner of the frame they tapped then.
+    /// </remarks>
+    private void ResumePreviewState()
+    {
+        hasManualFocusPoint = false;
+        HideFocusReticle();
+
+        if (camera?.SelectedCamera is not null)
+        {
+            cameraDevices.ResumeContinuousFocus(camera.SelectedCamera.DeviceId);
+        }
+
+        // Every other camera app opens at 1x, and a zoom left over from a shot taken minutes ago is
+        // a crop the user did not ask for and might not notice until afterwards. The toolkit resets
+        // the camera itself each time a preview loads; this is what keeps the label in step.
+        viewModel.ResetZoom();
     }
 
     /// <summary>
@@ -140,6 +326,10 @@ public partial class CameraPage : ContentPage
             camera.SelectedCamera = selectableCameras.FirstOrDefault();
 
             CameraHost.Add(camera);
+
+            // The handler starts the preview as it connects, so the page is capturing from here on
+            // whether it asked to be or not.
+            isPreviewRunning = true;
         }
 
         if (camera.SelectedCamera is null)
@@ -386,7 +576,10 @@ public partial class CameraPage : ContentPage
 
     private async void CaptureClicked(object? sender, EventArgs e)
     {
-        if (camera is null)
+        // The button goes away with the preview, but a tap that landed just before the roll opened
+        // can still arrive here, and it would photograph whatever the phone is pointing at while
+        // the user is looking at their photos.
+        if (camera is null || !viewModel.IsPreviewInteractive)
         {
             return;
         }
@@ -402,7 +595,22 @@ public partial class CameraPage : ContentPage
                 cameraDevices.ResumeContinuousFocus(camera.SelectedCamera.DeviceId);
             }
 
-            await camera.CaptureImage(CancellationToken.None);
+            // Held on to so that leaving the page waits for the photo rather than stopping the
+            // session out from under it.
+            Task<Stream> capture = camera.CaptureImage(CancellationToken.None);
+            captureInFlight = capture;
+
+            try
+            {
+                await capture;
+            }
+            finally
+            {
+                if (ReferenceEquals(captureInFlight, capture))
+                {
+                    captureInFlight = null;
+                }
+            }
         }
         catch (Exception ex)
         {

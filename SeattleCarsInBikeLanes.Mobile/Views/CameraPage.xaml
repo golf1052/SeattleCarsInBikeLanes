@@ -278,7 +278,13 @@
             </Grid>
         </VerticalStackLayout>
 
-        <Grid Grid.Row="2" ColumnDefinitions="*, Auto, *" Padding="16,8,16,16" ColumnSpacing="12">
+        <!-- The minimum height is the shutter's, so the row does not shrink onto the shorter
+             buttons either side of it when the roll takes the shutter away. -->
+        <Grid Grid.Row="2"
+              ColumnDefinitions="*, Auto, *"
+              Padding="16,8,16,16"
+              ColumnSpacing="12"
+              MinimumHeightRequest="72">
 
             <!-- Doubles as the roll toggle and as a peek at the most recent shot. -->
             <ImageButton Grid.Column="0"
@@ -291,6 +297,10 @@
                          HorizontalOptions="Start"
                          Command="{Binding ToggleRollCommand}" />
 
+            <!-- Leaves with the preview. The roll covers the preview rather than replacing it, so
+                 a shutter left behind would still be live and would photograph whatever the phone
+                 happened to be pointing at while the user was looking at their photos. Hiding it
+                 takes it out of hit testing as well as out of sight. -->
             <Button Grid.Column="1"
                     x:Name="CaptureButton"
                     WidthRequest="72"
@@ -300,6 +310,7 @@
                     BorderColor="#88FFFFFF"
                     BorderWidth="4"
                     Clicked="CaptureClicked"
+                    IsVisible="{Binding IsPreviewInteractive}"
                     SemanticProperties.Description="Take a photo" />
 
             <HorizontalStackLayout Grid.Column="2" HorizontalOptions="End" Spacing="8">
@@ -315,12 +326,14 @@
                     </Button.ImageSource>
                 </Button>
 
+                <!-- Goes with the shutter: there is nothing to switch when the preview is covered. -->
                 <Button x:Name="SwitchCameraButton"
                         BackgroundColor="#33FFFFFF"
                         WidthRequest="52"
                         HeightRequest="52"
                         CornerRadius="8"
                         Clicked="SwitchCameraClicked"
+                        IsVisible="{Binding IsPreviewInteractive}"
                         SemanticProperties.Description="Switch camera">
                     <Button.ImageSource>
                         <!-- camera flip icon -->
