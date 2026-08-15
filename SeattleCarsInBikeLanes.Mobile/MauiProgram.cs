@@ -28,6 +28,9 @@ public static class MauiProgram
 				options.Dsn = "https://bc6091523e2aef695d08f3f657a3ca50@o4508715009572864.ingest.us.sentry.io/4508715013177344";
 #if DEBUG
 				options.Debug = true;
+				options.Environment = "development";
+#else
+				options.Environment = "production";
 #endif
 				options.TracesSampleRate = 1.0;
 			})
@@ -75,6 +78,10 @@ public static class MauiProgram
 	private static void RegisterServices(IServiceCollection services)
 	{
 		services.AddSingleton(Geolocation.Default);
+		services.AddSingleton<CameraAppLifecycle>();
+		services.AddSingleton<ICameraAppLifecycle>(serviceProvider =>
+			serviceProvider.GetRequiredService<CameraAppLifecycle>());
+		services.AddSingleton<ICameraReadinessMetrics, CameraReadinessMetrics>();
 
 		// One cookie container, shared, so the session copied out of the web view is visible to
 		// every request the app makes.
@@ -113,7 +120,15 @@ public static class MauiProgram
 		services.AddSingleton<IWebViewCookieBridge, Platforms.iOS.WebViewCookieBridge>();
 		services.AddSingleton<IImageResizer, Platforms.iOS.ImageResizer>();
 		services.AddSingleton<ICameraDeviceService, Platforms.iOS.CameraDeviceService>();
+		services.AddSingleton<ICameraPreviewReadiness, Platforms.iOS.CameraPreviewReadiness>();
 		services.AddSingleton<IBackgroundWorkScope, Platforms.iOS.BackgroundWorkScope>();
+#elif ANDROID
+		services.AddSingleton<IPhotoLibraryService, UnsupportedPhotoLibraryService>();
+		services.AddSingleton<IWebViewCookieBridge, NullWebViewCookieBridge>();
+		services.AddSingleton<IImageResizer, PassthroughImageResizer>();
+		services.AddSingleton<ICameraDeviceService, CameraDeviceService>();
+		services.AddSingleton<ICameraPreviewReadiness, Platforms.Android.CameraPreviewReadiness>();
+		services.AddSingleton<IBackgroundWorkScope, NullBackgroundWorkScope>();
 #else
 		// The app is iOS first. These keep the other targets building, and make the gaps fail
 		// visibly instead of looking like an empty photo library and a sign in that never works.
@@ -121,6 +136,7 @@ public static class MauiProgram
 		services.AddSingleton<IWebViewCookieBridge, NullWebViewCookieBridge>();
 		services.AddSingleton<IImageResizer, PassthroughImageResizer>();
 		services.AddSingleton<ICameraDeviceService, CameraDeviceService>();
+		services.AddSingleton<ICameraPreviewReadiness, UnsupportedCameraPreviewReadiness>();
 		services.AddSingleton<IBackgroundWorkScope, NullBackgroundWorkScope>();
 #endif
 	}

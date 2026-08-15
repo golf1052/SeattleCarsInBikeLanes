@@ -432,6 +432,14 @@ public sealed partial class CameraViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Whether the preview has rendered a frame and can accept camera input.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPreviewInteractive))]
+    [NotifyPropertyChangedFor(nameof(CanZoom))]
+    public partial bool IsCameraReady { get; set; }
+
+    /// <summary>
     /// What the camera currently being previewed can be zoomed to.
     /// </summary>
     /// <remarks>
@@ -459,7 +467,7 @@ public sealed partial class CameraViewModel : ObservableObject
     /// this is what the layer over the preview follows rather than the narrower
     /// <see cref="CanZoom"/>.
     /// </remarks>
-    public bool IsPreviewInteractive => HasCamera && !IsRollVisible;
+    public bool IsPreviewInteractive => HasCamera && IsCameraReady && !IsRollVisible;
 
     /// <summary>
     /// Whether the zoom controls are worth showing.

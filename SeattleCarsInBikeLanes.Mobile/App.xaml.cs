@@ -6,28 +6,57 @@ public partial class App : Application
 {
 	private readonly IUploadQueue uploadQueue;
 	private readonly IAuthService authService;
+	private readonly CameraAppLifecycle cameraLifecycle;
+	private readonly ICameraReadinessMetrics cameraReadiness;
 	private readonly ILogger<App> logger;
 
-	public App(IUploadQueue uploadQueue, IAuthService authService, ILogger<App> logger)
+	public App(IUploadQueue uploadQueue,
+		IAuthService authService,
+		CameraAppLifecycle cameraLifecycle,
+		ICameraReadinessMetrics cameraReadiness,
+		ILogger<App> logger)
 	{
 		InitializeComponent();
 
 		this.uploadQueue = uploadQueue;
 		this.authService = authService;
+		this.cameraLifecycle = cameraLifecycle;
+		this.cameraReadiness = cameraReadiness;
 		this.logger = logger;
 	}
 
 	protected override Window CreateWindow(IActivationState? activationState)
 	{
-		Window window = new Window(new AppShell());
+		AppShell shell = new AppShell();
+		Window window = new Window(shell);
+		bool cameraWasActiveWhenStopped = false;
 
 		// Started from here rather than from a page, because the whole point of the queue is that a
 		// report keeps going after the page that created it is gone.
 		window.Created += (_, _) => Start();
 
-		// Coming back to the app is a good moment to try again: it usually means the phone is out
-		// of a pocket, awake, and back on a network.
-		window.Resumed += (_, _) => uploadQueue.Kick();
+		window.Stopped += (_, _) =>
+		{
+			cameraWasActiveWhenStopped = shell.CurrentPage is Views.CameraPage;
+			if (cameraWasActiveWhenStopped)
+			{
+				cameraLifecycle.NotifyStopped();
+			}
+		};
+
+		// Coming back to the app is a good moment to try the queue again too: it usually means the
+		// phone is out of a pocket, awake, and back on a network.
+		window.Resumed += (_, _) =>
+		{
+			if (cameraWasActiveWhenStopped)
+			{
+				cameraReadiness.Begin(Core.Performance.CameraReadinessTransition.AppResume);
+				cameraLifecycle.NotifyResumed();
+				cameraWasActiveWhenStopped = false;
+			}
+
+			uploadQueue.Kick();
+		};
 
 		return window;
 	}

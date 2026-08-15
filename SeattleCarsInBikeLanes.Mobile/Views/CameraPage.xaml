@@ -289,7 +289,7 @@
                    Padding="10"
                    IsVisible="{Binding HasLimitedPhotoAccess}" />
 
-            <Label Text="No camera is available on this device. You can still import photos from your library."
+            <Label Text="No camera is available, or camera access was not granted. You can still import photos from your library."
                    TextColor="White"
                    BackgroundColor="#CC7A5A1F"
                    Padding="10"

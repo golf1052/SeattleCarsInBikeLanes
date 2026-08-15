@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using CommunityToolkit.Maui.Core;
 using CommunityToolkit.Maui.Views;
+using SeattleCarsInBikeLanes.Mobile.Core.Performance;
 using SeattleCarsInBikeLanes.Mobile.Services;
 using SeattleCarsInBikeLanes.Mobile.ViewModels;
 
@@ -30,9 +31,14 @@ public partial class CameraPage : ContentPage
     /// </remarks>
     private static readonly TimeSpan PreviewStopSettleDelay = TimeSpan.FromMilliseconds(500);
 
+    private static readonly TimeSpan PreviewReadyTimeout = TimeSpan.FromSeconds(15);
+
     private readonly CameraViewModel viewModel;
     private readonly ICameraProvider cameraProvider;
     private readonly ICameraDeviceService cameraDevices;
+    private readonly ICameraPreviewReadiness previewReadiness;
+    private readonly ICameraReadinessMetrics cameraReadiness;
+    private readonly ICameraAppLifecycle cameraLifecycle;
     private readonly ILogger<CameraPage> logger;
 
     private CameraView? camera;
@@ -51,6 +57,15 @@ public partial class CameraPage : ContentPage
     /// Whether the page is the one on screen.
     /// </summary>
     private bool isPageVisible;
+
+    private bool isWindowActive = true;
+
+    private CancellationTokenSource? previewReadyCancellation;
+
+    private readonly SemaphoreSlim previewLifecycleMutex = new SemaphoreSlim(1, 1);
+
+    private readonly TaskCompletionSource initialCameraSettled =
+        new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>
     /// The photo being taken, while one is.
@@ -96,6 +111,9 @@ public partial class CameraPage : ContentPage
     public CameraPage(CameraViewModel viewModel,
         ICameraProvider cameraProvider,
         ICameraDeviceService cameraDevices,
+        ICameraPreviewReadiness previewReadiness,
+        ICameraReadinessMetrics cameraReadiness,
+        ICameraAppLifecycle cameraLifecycle,
         ILogger<CameraPage> logger)
     {
         InitializeComponent();
@@ -103,9 +121,15 @@ public partial class CameraPage : ContentPage
         this.viewModel = viewModel;
         this.cameraProvider = cameraProvider;
         this.cameraDevices = cameraDevices;
+        this.previewReadiness = previewReadiness;
+        this.cameraReadiness = cameraReadiness;
+        this.cameraLifecycle = cameraLifecycle;
         this.logger = logger;
 
         BindingContext = viewModel;
+
+        cameraLifecycle.Stopped += CameraAppStopped;
+        cameraLifecycle.Resumed += CameraAppResumed;
     }
 
     protected override async void OnAppearing()
@@ -113,6 +137,7 @@ public partial class CameraPage : ContentPage
         base.OnAppearing();
 
         isPageVisible = true;
+        cameraReadiness.Begin(CameraReadinessTransition.TabReturn);
 
         try
         {
@@ -121,9 +146,14 @@ public partial class CameraPage : ContentPage
             // the shutter is the reason the user opened the app.
             await StartPreviewAsync();
         }
+        catch (OperationCanceledException) when (!IsPreviewExpected)
+        {
+            // Navigation or suspension cancelled a preview that is no longer needed.
+        }
         catch (Exception ex)
         {
             // OnAppearing is async void, so anything escaping here would take the app down.
+            cameraReadiness.Finish("error");
             logger.LogError(ex, "Failed to start the camera preview.");
         }
     }
@@ -133,6 +163,8 @@ public partial class CameraPage : ContentPage
         base.OnDisappearing();
 
         isPageVisible = false;
+        cameraReadiness.Finish("cancelled");
+        CancelPreviewReadyWait();
 
         try
         {
@@ -150,6 +182,8 @@ public partial class CameraPage : ContentPage
 
         try
         {
+            // Avoid presenting the photo-library prompt over the camera prompt or first-frame wait.
+            await initialCameraSettled.Task;
             await viewModel.LoadAsync();
         }
         catch (Exception ex)
@@ -170,16 +204,43 @@ public partial class CameraPage : ContentPage
     /// </remarks>
     private async Task StartPreviewAsync()
     {
+        await previewLifecycleMutex.WaitAsync();
+        try
+        {
+            await StartPreviewCoreAsync();
+        }
+        finally
+        {
+            previewLifecycleMutex.Release();
+        }
+    }
+
+    private async Task StartPreviewCoreAsync()
+    {
+        if (!IsPreviewExpected)
+        {
+            return;
+        }
+
+        viewModel.IsCameraReady = false;
+
         if (camera is null)
         {
             // The toolkit starts the preview itself when the view's handler connects.
-            await SetUpCamerasAsync();
+            try
+            {
+                await SetUpCamerasAsync();
+            }
+            finally
+            {
+                initialCameraSettled.TrySetResult();
+            }
 
             // Finding the cameras takes long enough for the user to have moved on, and the preview
             // the handler starts for itself would then be running behind another tab.
-            if (!isPageVisible)
+            if (!IsPreviewExpected)
             {
-                await StopPreviewAsync();
+                await StopPreviewCoreAsync();
             }
 
             return;
@@ -187,25 +248,43 @@ public partial class CameraPage : ContentPage
 
         if (isPreviewRunning)
         {
+            viewModel.IsCameraReady = true;
+            cameraReadiness.Complete();
             return;
         }
 
         // Both of these go through the view's handler, which throws when there is not one.
         if (camera.Handler is null)
         {
+            cameraReadiness.Finish("error");
             return;
         }
 
-        await camera.StartCameraPreview(CancellationToken.None);
-        isPreviewRunning = true;
-
-        if (!isPageVisible)
+        CancellationTokenSource cancellation = BeginPreviewReadyWait();
+        Task firstFrame = previewReadiness.WaitForFirstFrameAsync(camera, cancellation.Token);
+        bool frameReady = false;
+        try
         {
-            await StopPreviewAsync();
+            await camera.StartCameraPreview(cancellation.Token);
+            await firstFrame;
+            frameReady = true;
+        }
+        finally
+        {
+            EndPreviewReadyWait(cancellation, cancel: !frameReady);
+        }
+
+        if (!IsPreviewExpected)
+        {
+            cameraReadiness.Finish("cancelled");
+            await StopPreviewCoreAsync();
             return;
         }
 
+        isPreviewRunning = true;
+        viewModel.IsCameraReady = true;
         ResumePreviewState();
+        cameraReadiness.Complete();
     }
 
     /// <summary>
@@ -213,6 +292,22 @@ public partial class CameraPage : ContentPage
     /// </summary>
     private async Task StopPreviewAsync()
     {
+        await previewLifecycleMutex.WaitAsync();
+        try
+        {
+            await StopPreviewCoreAsync();
+        }
+        finally
+        {
+            previewLifecycleMutex.Release();
+        }
+    }
+
+    private async Task StopPreviewCoreAsync()
+    {
+        CancelPreviewReadyWait();
+        viewModel.IsCameraReady = false;
+
         if (camera is null)
         {
             return;
@@ -234,7 +329,7 @@ public partial class CameraPage : ContentPage
         }
 
         // Taking a photo is slow enough for the user to have come back by now.
-        if (isPageVisible)
+        if (IsPreviewExpected)
         {
             return;
         }
@@ -250,7 +345,7 @@ public partial class CameraPage : ContentPage
 
         await Task.Delay(PreviewStopSettleDelay);
 
-        if (!isPageVisible && !isPreviewRunning && camera.Handler is not null)
+        if (!IsPreviewExpected && !isPreviewRunning && camera.Handler is not null)
         {
             camera.StopCameraPreview();
         }
@@ -291,21 +386,34 @@ public partial class CameraPage : ContentPage
     /// </remarks>
     private async Task SetUpCamerasAsync()
     {
-        await cameraProvider.RefreshAvailableCameras(CancellationToken.None);
+        if (!await cameraReadiness.EnsureCameraPermissionAsync())
+        {
+            SwitchCameraButton.IsEnabled = false;
+            viewModel.HasCamera = false;
+            return;
+        }
+
+        if (!IsPreviewExpected)
+        {
+            cameraReadiness.Finish("cancelled");
+            return;
+        }
+
+        CancellationTokenSource cancellation = BeginPreviewReadyWait();
+        await cameraProvider.RefreshAvailableCameras(cancellation.Token);
 
         IReadOnlyList<CameraInfo>? cameras = cameraProvider.AvailableCameras;
         if (cameras is not { Count: > 0 })
         {
-            CaptureButton.IsEnabled = false;
             SwitchCameraButton.IsEnabled = false;
             viewModel.HasCamera = false;
+            cameraReadiness.Finish("no_camera");
             return;
         }
 
         selectableCameras = BuildSelectableCameras(cameras);
 
         viewModel.HasCamera = true;
-        CaptureButton.IsEnabled = true;
         SwitchCameraButton.IsEnabled = selectableCameras.Count > 1;
 
         if (camera is null)
@@ -325,19 +433,113 @@ public partial class CameraPage : ContentPage
             // preview connects, and on an iPhone that list starts with a lens nobody asked for.
             camera.SelectedCamera = selectableCameras.FirstOrDefault();
 
-            CameraHost.Add(camera);
+            Task firstFrame = previewReadiness.WaitForFirstFrameAsync(camera, cancellation.Token);
+            bool frameReady = false;
+            try
+            {
+                CameraHost.Add(camera);
+                await firstFrame;
+                frameReady = true;
+            }
+            finally
+            {
+                EndPreviewReadyWait(cancellation, cancel: !frameReady);
+            }
 
-            // The handler starts the preview as it connects, so the page is capturing from here on
-            // whether it asked to be or not.
+            if (!IsPreviewExpected)
+            {
+                cameraReadiness.Finish("cancelled");
+                await StopPreviewCoreAsync();
+                return;
+            }
+
             isPreviewRunning = true;
+            viewModel.IsCameraReady = true;
+            ResumePreviewState();
+            cameraReadiness.Complete();
         }
 
         if (camera.SelectedCamera is null)
         {
+            cameraReadiness.Finish("error");
             return;
         }
 
         UpdateSelectedCamera(camera.SelectedCamera);
+    }
+
+    private bool IsPreviewExpected => isPageVisible && isWindowActive;
+
+    private CancellationTokenSource BeginPreviewReadyWait()
+    {
+        CancelPreviewReadyWait();
+        previewReadyCancellation = new CancellationTokenSource(PreviewReadyTimeout);
+        return previewReadyCancellation;
+    }
+
+    private void CancelPreviewReadyWait()
+    {
+        CancellationTokenSource? cancellation = previewReadyCancellation;
+        previewReadyCancellation = null;
+
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        cancellation.Cancel();
+        cancellation.Dispose();
+    }
+
+    private void EndPreviewReadyWait(CancellationTokenSource cancellation, bool cancel)
+    {
+        if (!ReferenceEquals(previewReadyCancellation, cancellation))
+        {
+            return;
+        }
+
+        previewReadyCancellation = null;
+        if (cancel)
+        {
+            cancellation.Cancel();
+        }
+
+        cancellation.Dispose();
+    }
+
+    private async void CameraAppStopped(object? sender, EventArgs e)
+    {
+        isWindowActive = false;
+        cameraReadiness.Finish("cancelled");
+        CancelPreviewReadyWait();
+
+        try
+        {
+            await StopPreviewAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to stop the camera preview while the app was stopping.");
+        }
+    }
+
+    private async void CameraAppResumed(object? sender, EventArgs e)
+    {
+        isWindowActive = true;
+
+        try
+        {
+            await StartPreviewAsync();
+        }
+        catch (OperationCanceledException) when (!IsPreviewExpected)
+        {
+            // The page moved away again while the app was resuming.
+        }
+        catch (Exception ex)
+        {
+            cameraReadiness.Finish("error");
+            logger.LogError(ex, "Failed to restart the camera preview after the app resumed.");
+        }
     }
 
     /// <summary>

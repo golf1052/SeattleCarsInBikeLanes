@@ -1,4 +1,5 @@
 ﻿using Foundation;
+using SeattleCarsInBikeLanes.Mobile.Services;
 using UIKit;
 
 namespace SeattleCarsInBikeLanes.Mobile;
@@ -18,6 +19,7 @@ public class AppDelegate : MauiUIApplicationDelegate
 	/// </remarks>
 	public override bool FinishedLaunching(UIApplication application, NSDictionary? launchOptions)
 	{
+		CameraReadinessMetrics.BeginColdStart();
 		bool result = base.FinishedLaunching(application, launchOptions);
 
 		Platforms.iOS.BackgroundUploadTask.Register(() => IPlatformApplication.Current?.Services);

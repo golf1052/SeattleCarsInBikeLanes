@@ -10,6 +10,7 @@ namespace SeattleCarsInBikeLanes.Mobile.Services;
 public static class AppPreferences
 {
     private const string AttributeByDefaultKey = "AttributeByDefault";
+    private const string CameraPermissionRequestedKey = "CameraPermissionRequested";
 
     /// <summary>
     /// Whether reports are credited to the signed in user unless they say otherwise.
@@ -22,5 +23,14 @@ public static class AppPreferences
     {
         get => Preferences.Default.Get(AttributeByDefaultKey, true);
         set => Preferences.Default.Set(AttributeByDefaultKey, value);
+    }
+
+    /// <summary>
+    /// Whether the app has already presented its one automatic camera permission request.
+    /// </summary>
+    public static bool CameraPermissionRequested
+    {
+        get => Preferences.Default.Get(CameraPermissionRequestedKey, false);
+        set => Preferences.Default.Set(CameraPermissionRequestedKey, value);
     }
 }
