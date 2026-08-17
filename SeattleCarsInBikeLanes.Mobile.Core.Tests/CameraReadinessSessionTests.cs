@@ -72,6 +72,38 @@ public sealed class CameraReadinessSessionTests
     }
 
     [Fact]
+    public void GrantedStatusCheckDoesNotOverwritePromptResult()
+    {
+        CameraReadinessSession session = new CameraReadinessSession(
+            CameraReadinessTransition.ColdStart,
+            new ManualTimeProvider());
+
+        Assert.True(session.TryBeginPermissionPrompt());
+        Assert.True(session.TryEndPermissionPrompt(granted: true, out _));
+        session.MarkPermissionAlreadyGranted();
+
+        Assert.Equal(CameraPermissionState.PromptGranted, session.PermissionState);
+    }
+
+    [Fact]
+    public void ExcludesOtherLaunchPermissionPromptsFromReadinessDuration()
+    {
+        ManualTimeProvider time = new ManualTimeProvider();
+        CameraReadinessSession session = new CameraReadinessSession(
+            CameraReadinessTransition.ColdStart,
+            time);
+
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(session.TryBeginExcludedDelay());
+        time.Advance(TimeSpan.FromSeconds(4));
+        Assert.True(session.TryEndExcludedDelay());
+        time.Advance(TimeSpan.FromSeconds(2));
+
+        Assert.True(session.TryComplete(out CameraReadinessMeasurement measurement));
+        Assert.Equal(TimeSpan.FromSeconds(3), measurement.Duration);
+    }
+
+    [Fact]
     public void AppResumeReplacesOverlappingTabReturn()
     {
         ManualTimeProvider time = new ManualTimeProvider();

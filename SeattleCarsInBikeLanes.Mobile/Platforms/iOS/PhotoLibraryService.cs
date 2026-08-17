@@ -51,22 +51,33 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
 
     public bool ConfirmsCapturedPhotoDeletion => true;
 
+    public Task<PhotoLibraryAccess> CheckAccessAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(MapAccess(
+            PHPhotoLibrary.GetAuthorizationStatus(PHAccessLevel.ReadWrite)));
+    }
+
     public Task<PhotoLibraryAccess> RequestAccessAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         TaskCompletionSource<PhotoLibraryAccess> completion = new TaskCompletionSource<PhotoLibraryAccess>();
 
         PHPhotoLibrary.RequestAuthorization(PHAccessLevel.ReadWrite, status =>
         {
-            completion.TrySetResult(status switch
-            {
-                PHAuthorizationStatus.Authorized => PhotoLibraryAccess.Granted,
-                PHAuthorizationStatus.Limited => PhotoLibraryAccess.Limited,
-                _ => PhotoLibraryAccess.Denied
-            });
+            completion.TrySetResult(MapAccess(status));
         });
 
         return completion.Task;
     }
+
+    private static PhotoLibraryAccess MapAccess(PHAuthorizationStatus status) => status switch
+    {
+        PHAuthorizationStatus.NotDetermined => PhotoLibraryAccess.NotDetermined,
+        PHAuthorizationStatus.Authorized => PhotoLibraryAccess.Granted,
+        PHAuthorizationStatus.Limited => PhotoLibraryAccess.Limited,
+        _ => PhotoLibraryAccess.Denied
+    };
 
     public Task<string?> SaveCapturedPhotoAsync(byte[] jpeg, CancellationToken cancellationToken = default)
     {

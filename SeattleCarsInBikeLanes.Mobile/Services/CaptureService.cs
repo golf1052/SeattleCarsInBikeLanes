@@ -78,6 +78,13 @@ public sealed class CaptureService : ICaptureService
     {
         try
         {
+            PermissionStatus permission =
+                await Permissions.CheckStatusAsync<Permissions.LocationWhenInUse>();
+            if (permission != PermissionStatus.Granted)
+            {
+                return null;
+            }
+
             GeolocationRequest request = new GeolocationRequest(GeolocationAccuracy.Best, LocationTimeout);
             Location? location = await geolocation.GetLocationAsync(request, cancellationToken);
 

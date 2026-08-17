@@ -31,6 +31,7 @@ public sealed class CameraReadinessSession
 
     private TimeSpan excludedDuration;
     private long? permissionPromptStartedAt;
+    private long? excludedDelayStartedAt;
     private bool finished;
 
     public CameraReadinessSession(CameraReadinessTransition transition, TimeProvider timeProvider)
@@ -61,7 +62,7 @@ public sealed class CameraReadinessSession
     {
         lock (gate)
         {
-            if (!finished)
+            if (!finished && PermissionState == CameraPermissionState.Unknown)
             {
                 PermissionState = CameraPermissionState.AlreadyGranted;
             }
@@ -104,11 +105,42 @@ public sealed class CameraReadinessSession
         }
     }
 
+    public bool TryBeginExcludedDelay()
+    {
+        lock (gate)
+        {
+            if (finished || permissionPromptStartedAt.HasValue || excludedDelayStartedAt.HasValue)
+            {
+                return false;
+            }
+
+            excludedDelayStartedAt = timeProvider.GetTimestamp();
+            return true;
+        }
+    }
+
+    public bool TryEndExcludedDelay()
+    {
+        lock (gate)
+        {
+            if (finished || !excludedDelayStartedAt.HasValue)
+            {
+                return false;
+            }
+
+            excludedDuration += timeProvider.GetElapsedTime(
+                excludedDelayStartedAt.Value,
+                timeProvider.GetTimestamp());
+            excludedDelayStartedAt = null;
+            return true;
+        }
+    }
+
     public bool TryComplete(out CameraReadinessMeasurement measurement)
     {
         lock (gate)
         {
-            if (finished || permissionPromptStartedAt.HasValue)
+            if (finished || permissionPromptStartedAt.HasValue || excludedDelayStartedAt.HasValue)
             {
                 measurement = default;
                 return false;
@@ -138,6 +170,7 @@ public sealed class CameraReadinessSession
 
             finished = true;
             permissionPromptStartedAt = null;
+            excludedDelayStartedAt = null;
             return true;
         }
     }

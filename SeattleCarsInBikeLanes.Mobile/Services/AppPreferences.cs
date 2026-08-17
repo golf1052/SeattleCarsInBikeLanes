@@ -11,6 +11,8 @@ public static class AppPreferences
 {
     private const string AttributeByDefaultKey = "AttributeByDefault";
     private const string CameraPermissionRequestedKey = "CameraPermissionRequested";
+    private const string PhotoLibraryPermissionRequestedKey = "PhotoLibraryPermissionRequested";
+    private const string LocationPermissionRequestedKey = "LocationPermissionRequested";
 
     /// <summary>
     /// Whether reports are credited to the signed in user unless they say otherwise.
@@ -32,5 +34,23 @@ public static class AppPreferences
     {
         get => Preferences.Default.Get(CameraPermissionRequestedKey, false);
         set => Preferences.Default.Set(CameraPermissionRequestedKey, value);
+    }
+
+    /// <summary>
+    /// Whether the app has already presented its one automatic photo-library permission request.
+    /// </summary>
+    public static bool PhotoLibraryPermissionRequested
+    {
+        get => Preferences.Default.Get(PhotoLibraryPermissionRequestedKey, false);
+        set => Preferences.Default.Set(PhotoLibraryPermissionRequestedKey, value);
+    }
+
+    /// <summary>
+    /// Whether the app has already presented its one automatic location permission request.
+    /// </summary>
+    public static bool LocationPermissionRequested
+    {
+        get => Preferences.Default.Get(LocationPermissionRequestedKey, false);
+        set => Preferences.Default.Set(LocationPermissionRequestedKey, value);
     }
 }

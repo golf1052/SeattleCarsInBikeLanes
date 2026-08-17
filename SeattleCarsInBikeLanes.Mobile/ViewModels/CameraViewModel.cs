@@ -595,10 +595,10 @@ public sealed partial class CameraViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            PhotoLibraryAccess access = await photoLibrary.RequestAccessAsync();
+            PhotoLibraryAccess access = await photoLibrary.CheckAccessAsync();
             HasLimitedPhotoAccess = access == PhotoLibraryAccess.Limited;
 
-            if (access == PhotoLibraryAccess.Denied)
+            if (access is PhotoLibraryAccess.Denied or PhotoLibraryAccess.NotDetermined)
             {
                 StatusMessage = "Cars in Bike Lanes needs access to your photos to keep the reports you take.";
                 return;

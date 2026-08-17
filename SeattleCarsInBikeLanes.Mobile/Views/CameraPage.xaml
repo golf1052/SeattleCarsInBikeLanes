@@ -58,21 +58,34 @@
         </DataTemplate>
     </ContentPage.Resources>
 
-    <Grid RowDefinitions="*, Auto, Auto">
+    <Grid x:Name="CameraLayout"
+          RowDefinitions="*, Auto, Auto"
+          ColumnDefinitions="*"
+          SafeAreaEdges="Container">
 
-        <!-- The camera view is added here once a camera is known to exist. Putting it in the XAML
-             unconditionally means its handler connects on load, and the toolkit throws from an
-             async void when the device has no camera, which takes the whole app down on launch. -->
-        <Grid x:Name="CameraHost" Grid.Row="0" />
-
-        <!-- Touch on the preview lives on its own layer rather than on the camera view itself,
-             because the preview is a native view and a MAUI gesture landing on it is not something
-             to rely on. The background has to be an explicit transparent rather than left unset or
-             iOS will not hit test it at all. Declared before the roll so the roll covers it. -->
-        <Grid x:Name="PreviewOverlay"
+        <Grid x:Name="CameraBody"
               Grid.Row="0"
-              BackgroundColor="Transparent"
-              IsVisible="{Binding IsPreviewInteractive}">
+              HorizontalOptions="Fill"
+              VerticalOptions="Fill">
+            <!-- The camera view is added here once a camera is known to exist. Putting it in the XAML
+                 unconditionally means its handler connects on load, and the toolkit throws from an
+                 async void when the device has no camera, which takes the whole app down on launch. -->
+            <Grid x:Name="CameraHost"
+                  Grid.Row="0"
+                  HorizontalOptions="Fill"
+                  VerticalOptions="Fill" />
+
+            <!-- Touch on the preview lives on its own layer rather than on the camera view itself,
+                 because the preview is a native view and a MAUI gesture landing on it is not
+                 something to rely on. The background has to be an explicit transparent rather than
+                 left unset or iOS will not hit test it at all. Declared before the roll so the roll
+                 covers it. -->
+            <Grid x:Name="PreviewOverlay"
+                  Grid.Row="0"
+                  BackgroundColor="Transparent"
+                  HorizontalOptions="Fill"
+                  VerticalOptions="Fill"
+                  IsVisible="{Binding IsPreviewInteractive}">
 
             <Grid.GestureRecognizers>
                 <PinchGestureRecognizer PinchUpdated="CameraPinchUpdated" />
@@ -93,47 +106,26 @@
                     InputTransparent="True"
                     IsVisible="False" />
 
-            <Border x:Name="ZoomPill"
-                    HorizontalOptions="Center"
-                    VerticalOptions="End"
-                    Margin="0,0,0,16"
-                    Padding="14,6"
-                    MinimumWidthRequest="52"
-                    MinimumHeightRequest="36"
-                    BackgroundColor="#66000000"
-                    Stroke="#44FFFFFF"
-                    StrokeThickness="1"
-                    StrokeShape="RoundRectangle 18"
-                    IsVisible="{Binding CanZoom}"
-                    SemanticProperties.Description="Zoom level, tap to change">
+            </Grid>
 
-                <Label Text="{Binding ZoomLabel}"
-                       TextColor="White"
-                       FontSize="14"
-                       FontAttributes="Bold"
-                       HorizontalTextAlignment="Center"
-                       VerticalTextAlignment="Center" />
+            <!-- A successful capture is available before its metadata, library save, and thumbnail
+                 are. Flash the live preview at that boundary so the user gets immediate confirmation
+                 without putting another wait in the capture path. -->
+            <Grid x:Name="ShutterFlashOverlay"
+                  Grid.Row="0"
+                  BackgroundColor="White"
+                  Opacity="0"
+                  HorizontalOptions="Fill"
+                  VerticalOptions="Fill"
+                  InputTransparent="True" />
 
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Command="{Binding CycleZoomCommand}" />
-                </Border.GestureRecognizers>
-            </Border>
-        </Grid>
-
-        <!-- A successful capture is available before its metadata, library save, and thumbnail are.
-             Flash the live preview at that boundary so the user gets immediate confirmation without
-             putting another wait in the capture path. -->
-        <Grid x:Name="ShutterFlashOverlay"
-              Grid.Row="0"
-              BackgroundColor="White"
-              Opacity="0"
-              InputTransparent="True" />
-
-        <!-- Sits over the preview so the camera never has to be torn down and restarted. -->
-        <Grid Grid.Row="0"
-              BackgroundColor="Black"
-              RowDefinitions="Auto, Auto, Auto, *, Auto, Auto"
-              IsVisible="{Binding IsRollVisible}">
+            <!-- Sits over the preview so the camera never has to be torn down and restarted. -->
+            <Grid Grid.Row="0"
+                  BackgroundColor="Black"
+                  RowDefinitions="Auto, Auto, Auto, *, Auto, Auto"
+                  HorizontalOptions="Fill"
+                  VerticalOptions="Fill"
+                  IsVisible="{Binding IsRollVisible}">
 
             <!-- Pinned above the roll rather than left in it. The photo the user has just taken is
                  the one they came here to report, and it looks like every other photo they have
@@ -230,9 +222,13 @@
                     <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="4" VerticalItemSpacing="4" />
                 </CollectionView.ItemsLayout>
             </CollectionView>
+            </Grid>
         </Grid>
 
-        <VerticalStackLayout Grid.Row="1" Padding="12" Spacing="8">
+        <VerticalStackLayout x:Name="CameraStatusPanel"
+                             Grid.Row="1"
+                             Padding="12"
+                             Spacing="8">
 
             <!-- Stands in for the confirmation the report sheet used to show. It says what is true
                  now rather than what was true when the user tapped submit, and it clears itself
@@ -327,14 +323,16 @@
 
         <!-- The minimum height is the shutter's, so the row does not shrink onto the shorter
              buttons either side of it when the roll takes the shutter away. -->
-        <Grid Grid.Row="2"
+        <Grid x:Name="CameraControlRail"
+              Grid.Row="2"
               ColumnDefinitions="*, Auto, *"
               Padding="16,8,16,16"
               ColumnSpacing="12"
               MinimumHeightRequest="72">
 
             <!-- Doubles as the roll toggle and as a peek at the most recent shot. -->
-            <ImageButton Grid.Column="0"
+            <ImageButton x:Name="LatestThumbnailButton"
+                         Grid.Column="0"
                          Source="{Binding LatestThumbnail}"
                          Aspect="AspectFill"
                          WidthRequest="52"
@@ -344,23 +342,32 @@
                          HorizontalOptions="Start"
                          Command="{Binding ToggleRollCommand}" />
 
-            <!-- Leaves with the preview. The roll covers the preview rather than replacing it, so
-                 a shutter left behind would still be live and would photograph whatever the phone
-                 happened to be pointing at while the user was looking at their photos. Hiding it
-                 takes it out of hit testing as well as out of sight. -->
-            <Button Grid.Column="1"
-                    x:Name="CaptureButton"
-                    WidthRequest="72"
-                    HeightRequest="72"
-                    CornerRadius="36"
-                    BackgroundColor="White"
-                    BorderColor="#88FFFFFF"
-                    BorderWidth="4"
-                    Clicked="CaptureClicked"
-                    IsVisible="{Binding IsPreviewInteractive}"
-                    SemanticProperties.Description="Take a photo" />
+            <!-- Gives the layout code a stable shutter-sized anchor in either rail orientation. -->
+            <Grid x:Name="CaptureControls"
+                  Grid.Column="1"
+                  WidthRequest="72"
+                  HeightRequest="72">
 
-            <HorizontalStackLayout Grid.Column="2" HorizontalOptions="End" Spacing="8">
+                <!-- Leaves with the preview. The roll covers the preview rather than replacing it,
+                     so a shutter left behind would still be live and could take an unseen photo. -->
+                <Button x:Name="CaptureButton"
+                        WidthRequest="72"
+                        HeightRequest="72"
+                        CornerRadius="36"
+                        BackgroundColor="White"
+                        BorderColor="#88FFFFFF"
+                        BorderWidth="4"
+                        Clicked="CaptureClicked"
+                        IsVisible="{Binding IsPreviewInteractive}"
+                        SemanticProperties.Description="Take a photo" />
+            </Grid>
+
+            <StackLayout x:Name="CameraActionButtons"
+                         Grid.Column="2"
+                         Orientation="Horizontal"
+                         HorizontalOptions="End"
+                         VerticalOptions="Center"
+                         Spacing="8">
                 <Button Command="{Binding ImportCommand}"
                         BackgroundColor="#33FFFFFF"
                         WidthRequest="52"
@@ -387,10 +394,39 @@
                         <FontImageSource FontFamily="FluentIcons" Glyph="&#xF13F;" Color="White" Size="20" />
                     </Button.ImageSource>
                 </Button>
-            </HorizontalStackLayout>
+            </StackLayout>
         </Grid>
 
-        <ActivityIndicator Grid.RowSpan="3"
+        <!-- Positioned relative to the shutter by the orientation layout. Keeping it at the page
+             level lets the translated portion remain hit-testable outside the control rail. -->
+        <Border x:Name="ZoomPill"
+                ZIndex="1"
+                HorizontalOptions="Center"
+                VerticalOptions="Start"
+                Padding="14,6"
+                MinimumWidthRequest="52"
+                MinimumHeightRequest="36"
+                BackgroundColor="#66000000"
+                Stroke="#44FFFFFF"
+                StrokeThickness="1"
+                StrokeShape="RoundRectangle 18"
+                IsVisible="{Binding CanZoom}"
+                SemanticProperties.Description="Zoom level, tap to change">
+
+            <Label Text="{Binding ZoomLabel}"
+                   TextColor="White"
+                   FontSize="14"
+                   FontAttributes="Bold"
+                   HorizontalTextAlignment="Center"
+                   VerticalTextAlignment="Center" />
+
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding CycleZoomCommand}" />
+            </Border.GestureRecognizers>
+        </Border>
+
+        <ActivityIndicator x:Name="CameraBusyIndicator"
+                           Grid.RowSpan="3"
                            IsRunning="{Binding IsBusy}"
                            IsVisible="{Binding IsBusy}"
                            Color="White"

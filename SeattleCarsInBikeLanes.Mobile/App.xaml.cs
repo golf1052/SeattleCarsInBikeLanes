@@ -1,4 +1,5 @@
 using SeattleCarsInBikeLanes.Mobile.Services;
+using SeattleCarsInBikeLanes.Mobile.Core.Permissions;
 
 namespace SeattleCarsInBikeLanes.Mobile;
 
@@ -8,12 +9,14 @@ public partial class App : Application
 	private readonly IAuthService authService;
 	private readonly CameraAppLifecycle cameraLifecycle;
 	private readonly ICameraReadinessMetrics cameraReadiness;
+	private readonly LaunchPermissionCoordinator launchPermissions;
 	private readonly ILogger<App> logger;
 
 	public App(IUploadQueue uploadQueue,
 		IAuthService authService,
 		CameraAppLifecycle cameraLifecycle,
 		ICameraReadinessMetrics cameraReadiness,
+		LaunchPermissionCoordinator launchPermissions,
 		ILogger<App> logger)
 	{
 		InitializeComponent();
@@ -22,6 +25,7 @@ public partial class App : Application
 		this.authService = authService;
 		this.cameraLifecycle = cameraLifecycle;
 		this.cameraReadiness = cameraReadiness;
+		this.launchPermissions = launchPermissions;
 		this.logger = logger;
 	}
 
@@ -63,6 +67,8 @@ public partial class App : Application
 
 	private async void Start()
 	{
+		Task<LaunchPermissionSnapshot> permissionStartup = launchPermissions.InitializeAsync();
+
 		try
 		{
 			// The queue sends reports with nobody looking, and one the user asked to be credited
@@ -76,6 +82,29 @@ public partial class App : Application
 		{
 			// async void, so anything escaping here takes the app down on launch.
 			logger.LogError(ex, "Failed to start the upload queue.");
+		}
+
+		try
+		{
+			LaunchPermissionSnapshot permissions = await permissionStartup;
+			LogPermissionError(permissions.Camera);
+			LogPermissionError(permissions.PhotoLibrary);
+			LogPermissionError(permissions.Location);
+		}
+		catch (Exception ex)
+		{
+			// Keep unexpected coordinator failures independent from the rest of app startup.
+			logger.LogError(ex, "Failed to initialize launch permissions.");
+		}
+	}
+
+	private void LogPermissionError(LaunchPermissionResult result)
+	{
+		if (result.Error is not null)
+		{
+			logger.LogError(result.Error,
+				"Failed to initialize the {Permission} permission.",
+				result.Permission);
 		}
 	}
 }

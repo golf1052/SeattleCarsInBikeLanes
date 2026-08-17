@@ -9,7 +9,11 @@ public interface ICameraReadinessMetrics
 
     bool Begin(CameraReadinessTransition transition);
 
-    Task<bool> EnsureCameraPermissionAsync();
+    Task<bool> CheckCameraPermissionAsync();
+
+    Task<bool> RequestCameraPermissionAsync();
+
+    IDisposable? ExcludeLaunchPermissionPrompt();
 
     void Complete();
 
@@ -44,7 +48,7 @@ public sealed class CameraReadinessMetrics : ICameraReadinessMetrics
 
     public bool Begin(CameraReadinessTransition transition) => Coordinator.Begin(transition);
 
-    public async Task<bool> EnsureCameraPermissionAsync()
+    public async Task<bool> CheckCameraPermissionAsync()
     {
         PermissionStatus current = await Permissions.CheckStatusAsync<Permissions.Camera>();
         if (current == PermissionStatus.Granted)
@@ -53,18 +57,15 @@ public sealed class CameraReadinessMetrics : ICameraReadinessMetrics
             return true;
         }
 
-        if (current is PermissionStatus.Disabled or PermissionStatus.Restricted ||
-            AppPreferences.CameraPermissionRequested ||
-            (DeviceInfo.Current.Platform == DevicePlatform.iOS && current == PermissionStatus.Denied))
-        {
-            Finish("permission_denied");
-            return false;
-        }
+        Finish("permission_denied");
+        return false;
+    }
 
+    public async Task<bool> RequestCameraPermissionAsync()
+    {
         CameraReadinessSession? session = Coordinator.GetActiveSession();
         bool measuringPrompt = session?.TryBeginPermissionPrompt() == true;
         PermissionStatus requested = await Permissions.RequestAsync<Permissions.Camera>();
-        AppPreferences.CameraPermissionRequested = true;
         bool granted = requested == PermissionStatus.Granted;
 
         if (measuringPrompt &&
@@ -83,6 +84,14 @@ public sealed class CameraReadinessMetrics : ICameraReadinessMetrics
         }
 
         return granted;
+    }
+
+    public IDisposable? ExcludeLaunchPermissionPrompt()
+    {
+        CameraReadinessSession? session = Coordinator.GetActiveSession();
+        return session?.TryBeginExcludedDelay() == true
+            ? new ExcludedReadinessDelay(session)
+            : null;
     }
 
     public void Complete()
@@ -114,5 +123,20 @@ public sealed class CameraReadinessMetrics : ICameraReadinessMetrics
             result,
             permissionState,
             platform));
+    }
+
+    private sealed class ExcludedReadinessDelay : IDisposable
+    {
+        private CameraReadinessSession? session;
+
+        public ExcludedReadinessDelay(CameraReadinessSession session)
+        {
+            this.session = session;
+        }
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref session, null)?.TryEndExcludedDelay();
+        }
     }
 }

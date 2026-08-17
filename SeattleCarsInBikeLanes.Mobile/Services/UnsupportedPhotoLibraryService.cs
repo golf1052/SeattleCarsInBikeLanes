@@ -16,6 +16,9 @@ public sealed class UnsupportedPhotoLibraryService : IPhotoLibraryService
 
     public bool ConfirmsCapturedPhotoDeletion => false;
 
+    public Task<PhotoLibraryAccess> CheckAccessAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(PhotoLibraryAccess.Denied);
+
     public Task<PhotoLibraryAccess> RequestAccessAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(PhotoLibraryAccess.Denied);
 

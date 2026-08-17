@@ -30,6 +30,8 @@ public sealed record PhotoAsset(string Id, DateTimeOffset? CreatedAt, GeoPositio
 /// </summary>
 public enum PhotoLibraryAccess
 {
+    NotDetermined,
+
     Granted,
 
     /// <summary>
@@ -60,6 +62,8 @@ public interface IPhotoLibraryService
     /// Whether deleting captured photos presents a platform-owned confirmation.
     /// </summary>
     bool ConfirmsCapturedPhotoDeletion { get; }
+
+    Task<PhotoLibraryAccess> CheckAccessAsync(CancellationToken cancellationToken = default);
 
     Task<PhotoLibraryAccess> RequestAccessAsync(CancellationToken cancellationToken = default);
 

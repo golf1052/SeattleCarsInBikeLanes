@@ -2,7 +2,9 @@ using System.ComponentModel;
 using CommunityToolkit.Maui.Core;
 using CommunityToolkit.Maui.Views;
 using Microsoft.Maui.Devices;
+using SeattleCarsInBikeLanes.Mobile.Core.Camera;
 using SeattleCarsInBikeLanes.Mobile.Core.Performance;
+using SeattleCarsInBikeLanes.Mobile.Core.Permissions;
 using SeattleCarsInBikeLanes.Mobile.Services;
 using SeattleCarsInBikeLanes.Mobile.ViewModels;
 
@@ -39,7 +41,9 @@ public partial class CameraPage : ContentPage
     private readonly ICameraDeviceService cameraDevices;
     private readonly ICameraPreviewReadiness previewReadiness;
     private readonly ICameraReadinessMetrics cameraReadiness;
+    private readonly LaunchPermissionCoordinator launchPermissions;
     private readonly ICameraAppLifecycle cameraLifecycle;
+    private readonly ICameraOrientationSource cameraOrientation;
     private readonly ILogger<CameraPage> logger;
 
     private CameraView? camera;
@@ -114,12 +118,21 @@ public partial class CameraPage : ContentPage
 
     private double pinchScale = 1;
 
+    private CameraControlLayout currentControlLayout =
+        CameraControlLayoutResolver.Resolve(null);
+
+    private bool hasAppliedControlLayout;
+
+    private bool isObservingOrientation;
+
     public CameraPage(CameraViewModel viewModel,
         ICameraProvider cameraProvider,
         ICameraDeviceService cameraDevices,
         ICameraPreviewReadiness previewReadiness,
         ICameraReadinessMetrics cameraReadiness,
+        LaunchPermissionCoordinator launchPermissions,
         ICameraAppLifecycle cameraLifecycle,
+        ICameraOrientationSource cameraOrientation,
         ILogger<CameraPage> logger)
     {
         InitializeComponent();
@@ -129,7 +142,9 @@ public partial class CameraPage : ContentPage
         this.cameraDevices = cameraDevices;
         this.previewReadiness = previewReadiness;
         this.cameraReadiness = cameraReadiness;
+        this.launchPermissions = launchPermissions;
         this.cameraLifecycle = cameraLifecycle;
+        this.cameraOrientation = cameraOrientation;
         this.logger = logger;
 
         BindingContext = viewModel;
@@ -143,13 +158,13 @@ public partial class CameraPage : ContentPage
         base.OnAppearing();
 
         isPageVisible = true;
+        StartObservingOrientation();
         cameraReadiness.Begin(CameraReadinessTransition.TabReturn);
 
         try
         {
-            // Ahead of anything else the page wants to do. Loading the roll asks for photo library
-            // permission, reads the library and calls the site for the current upload limits, and
-            // the shutter is the reason the user opened the app.
+            // Ahead of roll loading and the site's upload-limit request: the shutter is the reason
+            // the user opened the app.
             await StartPreviewAsync();
         }
         catch (OperationCanceledException) when (!IsPreviewExpected)
@@ -169,6 +184,7 @@ public partial class CameraPage : ContentPage
         base.OnDisappearing();
 
         isPageVisible = false;
+        StopObservingOrientation();
         cameraReadiness.Finish("cancelled");
         CancelPreviewReadyWait();
 
@@ -180,6 +196,184 @@ public partial class CameraPage : ContentPage
         {
             logger.LogError(ex, "Failed to stop the camera preview.");
         }
+    }
+
+    private void StartObservingOrientation()
+    {
+        if (isObservingOrientation)
+        {
+            return;
+        }
+
+        cameraOrientation.OrientationChanged += CameraOrientationChanged;
+        isObservingOrientation = true;
+        ApplyCameraControlLayout(cameraOrientation.Current);
+    }
+
+    private void StopObservingOrientation()
+    {
+        if (!isObservingOrientation)
+        {
+            return;
+        }
+
+        cameraOrientation.OrientationChanged -= CameraOrientationChanged;
+        isObservingOrientation = false;
+    }
+
+    private void CameraOrientationChanged(object? sender, EventArgs e) =>
+        ApplyCameraControlLayout(cameraOrientation.Current);
+
+    private void ApplyCameraControlLayout(CameraControlOrientation? orientation)
+    {
+        CameraControlLayout layout =
+            CameraControlLayoutResolver.Resolve(orientation, currentControlLayout);
+
+        if (hasAppliedControlLayout && layout == currentControlLayout)
+        {
+            return;
+        }
+
+        currentControlLayout = layout;
+        hasAppliedControlLayout = true;
+
+        if (layout.Edge == CameraControlEdge.Bottom)
+        {
+            ApplyPortraitControlLayout();
+            return;
+        }
+
+        ApplyLandscapeControlLayout(layout.Edge);
+    }
+
+    private void ApplyPortraitControlLayout()
+    {
+        CameraLayout.RowDefinitions.Clear();
+        CameraLayout.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+        CameraLayout.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        CameraLayout.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        CameraLayout.ColumnDefinitions.Clear();
+        CameraLayout.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+
+        Grid.SetRow(CameraBody, 0);
+        Grid.SetColumn(CameraBody, 0);
+        Grid.SetRowSpan(CameraBody, 1);
+
+        Grid.SetRow(CameraStatusPanel, 1);
+        Grid.SetColumn(CameraStatusPanel, 0);
+
+        Grid.SetRow(CameraControlRail, 2);
+        Grid.SetColumn(CameraControlRail, 0);
+        Grid.SetRowSpan(CameraControlRail, 1);
+
+        Grid.SetRow(CameraBusyIndicator, 0);
+        Grid.SetColumn(CameraBusyIndicator, 0);
+        Grid.SetRowSpan(CameraBusyIndicator, 3);
+        Grid.SetColumnSpan(CameraBusyIndicator, 1);
+
+        CameraControlRail.RowDefinitions.Clear();
+        CameraControlRail.ColumnDefinitions.Clear();
+        CameraControlRail.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+        CameraControlRail.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+        CameraControlRail.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+        CameraControlRail.Padding = new Thickness(16, 8, 16, 16);
+        CameraControlRail.RowSpacing = 0;
+        CameraControlRail.ColumnSpacing = 12;
+        CameraControlRail.MinimumWidthRequest = -1;
+        CameraControlRail.MinimumHeightRequest = 72;
+
+        PlaceRailControl(LatestThumbnailButton, row: 0, column: 0);
+        LatestThumbnailButton.HorizontalOptions = LayoutOptions.Start;
+        LatestThumbnailButton.VerticalOptions = LayoutOptions.Center;
+
+        PlaceRailControl(CaptureControls, row: 0, column: 1);
+        CaptureControls.HorizontalOptions = LayoutOptions.Center;
+        CaptureControls.VerticalOptions = LayoutOptions.Center;
+        PlaceRailControl(ZoomPill, row: 2, column: 0);
+        ZoomPill.HorizontalOptions = LayoutOptions.Center;
+        ZoomPill.VerticalOptions = LayoutOptions.Start;
+        ZoomPill.TranslationX = 0;
+        ZoomPill.TranslationY = -44;
+
+        PlaceRailControl(CameraActionButtons, row: 0, column: 2);
+        CameraActionButtons.Orientation = StackOrientation.Horizontal;
+        CameraActionButtons.HorizontalOptions = LayoutOptions.End;
+        CameraActionButtons.VerticalOptions = LayoutOptions.Center;
+    }
+
+    private void ApplyLandscapeControlLayout(CameraControlEdge edge)
+    {
+        bool railOnLeft = edge == CameraControlEdge.Left;
+        int railColumn = railOnLeft ? 0 : 1;
+        int bodyColumn = railOnLeft ? 1 : 0;
+
+        CameraLayout.RowDefinitions.Clear();
+        CameraLayout.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+        CameraLayout.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        CameraLayout.ColumnDefinitions.Clear();
+        CameraLayout.ColumnDefinitions.Add(new ColumnDefinition(
+            railOnLeft ? GridLength.Auto : GridLength.Star));
+        CameraLayout.ColumnDefinitions.Add(new ColumnDefinition(
+            railOnLeft ? GridLength.Star : GridLength.Auto));
+
+        Grid.SetRow(CameraBody, 0);
+        Grid.SetColumn(CameraBody, bodyColumn);
+        Grid.SetRowSpan(CameraBody, 1);
+
+        Grid.SetRow(CameraStatusPanel, 1);
+        Grid.SetColumn(CameraStatusPanel, bodyColumn);
+
+        Grid.SetRow(CameraControlRail, 0);
+        Grid.SetColumn(CameraControlRail, railColumn);
+        Grid.SetRowSpan(CameraControlRail, 2);
+
+        Grid.SetRow(CameraBusyIndicator, 0);
+        Grid.SetColumn(CameraBusyIndicator, 0);
+        Grid.SetRowSpan(CameraBusyIndicator, 2);
+        Grid.SetColumnSpan(CameraBusyIndicator, 2);
+
+        CameraControlRail.RowDefinitions.Clear();
+        CameraControlRail.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+        CameraControlRail.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        CameraControlRail.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+        CameraControlRail.ColumnDefinitions.Clear();
+        CameraControlRail.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+        CameraControlRail.Padding = railOnLeft
+            ? new Thickness(16, 16, 8, 16)
+            : new Thickness(8, 16, 16, 16);
+        CameraControlRail.RowSpacing = 12;
+        CameraControlRail.ColumnSpacing = 0;
+        CameraControlRail.MinimumWidthRequest = 72;
+        CameraControlRail.MinimumHeightRequest = -1;
+
+        PlaceRailControl(LatestThumbnailButton, row: 0, column: 0);
+        LatestThumbnailButton.HorizontalOptions = LayoutOptions.Center;
+        LatestThumbnailButton.VerticalOptions = LayoutOptions.Start;
+
+        PlaceRailControl(CaptureControls, row: 1, column: 0);
+        CaptureControls.HorizontalOptions = LayoutOptions.Center;
+        CaptureControls.VerticalOptions = LayoutOptions.Center;
+        Grid.SetRow(ZoomPill, 0);
+        Grid.SetColumn(ZoomPill, railColumn);
+        Grid.SetRowSpan(ZoomPill, 2);
+        Grid.SetColumnSpan(ZoomPill, 1);
+        ZoomPill.HorizontalOptions = LayoutOptions.Center;
+        ZoomPill.VerticalOptions = LayoutOptions.Center;
+        ZoomPill.TranslationX = railOnLeft ? 70 : -70;
+        ZoomPill.TranslationY = 0;
+
+        PlaceRailControl(CameraActionButtons, row: 2, column: 0);
+        CameraActionButtons.Orientation = StackOrientation.Vertical;
+        CameraActionButtons.HorizontalOptions = LayoutOptions.Center;
+        CameraActionButtons.VerticalOptions = LayoutOptions.End;
+    }
+
+    private static void PlaceRailControl(View control, int row, int column)
+    {
+        Grid.SetRow(control, row);
+        Grid.SetColumn(control, column);
+        Grid.SetRowSpan(control, 1);
+        Grid.SetColumnSpan(control, 1);
     }
 
     protected override async void OnNavigatedTo(NavigatedToEventArgs args)
@@ -392,7 +586,9 @@ public partial class CameraPage : ContentPage
     /// </remarks>
     private async Task SetUpCamerasAsync()
     {
-        if (!await cameraReadiness.EnsureCameraPermissionAsync())
+        await launchPermissions.InitializeAsync();
+
+        if (!await cameraReadiness.CheckCameraPermissionAsync())
         {
             SwitchCameraButton.IsEnabled = false;
             viewModel.HasCamera = false;
@@ -653,11 +849,12 @@ public partial class CameraPage : ContentPage
                 return;
             }
 
-            // A tap on the zoom pill reaches this handler as well, because iOS offers the touch to
-            // the recognisers on every view above the one that was hit. Without this, changing the
-            // zoom would also focus the camera on the bottom of the frame.
-            Point? overlayPoint = e.GetPosition(PreviewOverlay);
-            if (ZoomPill.IsVisible && overlayPoint is not null && ZoomPill.Bounds.Contains(overlayPoint.Value))
+            // iOS may also offer the tap to the preview recognizer below this translated control.
+            // Check in the pill's own coordinates because it no longer shares the preview's parent.
+            Point? zoomPoint = e.GetPosition(ZoomPill);
+            if (ZoomPill.IsVisible &&
+                zoomPoint is not null &&
+                new Rect(0, 0, ZoomPill.Width, ZoomPill.Height).Contains(zoomPoint.Value))
             {
                 return;
             }

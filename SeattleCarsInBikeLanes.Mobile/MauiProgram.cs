@@ -1,7 +1,9 @@
 using System.Net;
 using CommunityToolkit.Maui;
+using CommunityToolkit.Maui.Core.Handlers;
 using Microsoft.Maui.Handlers;
 using SeattleCarsInBikeLanes.Mobile.Core.Metadata;
+using SeattleCarsInBikeLanes.Mobile.Core.Permissions;
 using SeattleCarsInBikeLanes.Mobile.Services;
 using SeattleCarsInBikeLanes.Mobile.ViewModels;
 using SeattleCarsInBikeLanes.Mobile.Views;
@@ -16,6 +18,7 @@ public static class MauiProgram
 		// means everything that reads or writes the flag agrees on the namespace.
 		CarsInBikeLanesXmp.Register();
 
+		UseAspectFillCameraPreview();
 		UseMainFrameNavigationOnly();
 
 		var builder = MauiApp.CreateBuilder();
@@ -52,6 +55,19 @@ public static class MauiProgram
 		return builder.Build();
 	}
 
+	private static void UseAspectFillCameraPreview()
+	{
+#if ANDROID
+		CameraViewHandler.PropertyMapper.AppendToMapping("AspectFillCameraPreview", (handler, _) =>
+		{
+			if (AndroidX.Camera.View.PreviewView.ScaleType.FillCenter is { } fillCenter)
+			{
+				handler.PlatformView.SetScaleType(fillCenter);
+			}
+		});
+#endif
+	}
+
 	/// <summary>
 	/// Reports only the visible page's navigations, not those of the frames inside it.
 	/// </summary>
@@ -83,6 +99,8 @@ public static class MauiProgram
 			serviceProvider.GetRequiredService<CameraAppLifecycle>());
 		services.AddSingleton<IMobileMetricsEmitter, SentryMobileMetricsEmitter>();
 		services.AddSingleton<ICameraReadinessMetrics, CameraReadinessMetrics>();
+		services.AddSingleton<ILaunchPermissionGateway, MauiLaunchPermissionGateway>();
+		services.AddSingleton<LaunchPermissionCoordinator>();
 
 		// One cookie container, shared, so the session copied out of the web view is visible to
 		// every request the app makes.
@@ -122,6 +140,7 @@ public static class MauiProgram
 		services.AddSingleton<IImageResizer, Platforms.iOS.ImageResizer>();
 		services.AddSingleton<ICameraDeviceService, Platforms.iOS.CameraDeviceService>();
 		services.AddSingleton<ICameraPreviewReadiness, Platforms.iOS.CameraPreviewReadiness>();
+		services.AddSingleton<ICameraOrientationSource, Platforms.iOS.CameraOrientationSource>();
 		services.AddSingleton<IBackgroundWorkScope, Platforms.iOS.BackgroundWorkScope>();
 #elif ANDROID
 		services.AddSingleton<IPhotoLibraryService,
@@ -130,6 +149,7 @@ public static class MauiProgram
 		services.AddSingleton<IImageResizer, Platforms.Android.ImageResizer>();
 		services.AddSingleton<ICameraDeviceService, CameraDeviceService>();
 		services.AddSingleton<ICameraPreviewReadiness, Platforms.Android.CameraPreviewReadiness>();
+		services.AddSingleton<ICameraOrientationSource, Platforms.Android.CameraOrientationSource>();
 		services.AddSingleton<IBackgroundWorkScope, NullBackgroundWorkScope>();
 		services.AddSingleton<IBackgroundUploadScheduler, Platforms.Android.WorkManagerUploadScheduler>();
 #else
@@ -140,6 +160,7 @@ public static class MauiProgram
 		services.AddSingleton<IImageResizer, PassthroughImageResizer>();
 		services.AddSingleton<ICameraDeviceService, CameraDeviceService>();
 		services.AddSingleton<ICameraPreviewReadiness, UnsupportedCameraPreviewReadiness>();
+		services.AddSingleton<ICameraOrientationSource, CameraOrientationSource>();
 		services.AddSingleton<IBackgroundWorkScope, NullBackgroundWorkScope>();
 #endif
 	}
