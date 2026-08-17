@@ -48,11 +48,13 @@ jobs:
         run: dotnet test SeattleCarsInBikeLanes.Mobile.Core.Tests/SeattleCarsInBikeLanes.Mobile.Core.Tests.csproj
 
       - name: Build Android
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: >
           dotnet build SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.csproj
           -f net10.0-android
           --no-restore
-          -p:GOOGLE_MAPS_API_KEY=ci-placeholder
+          -p:GOOGLE_MAPS_API_KEY="$GOOGLE_MAPS_API_KEY"
           -p:JpegXmpWritePluginMDEProject="${{ github.workspace }}/dependencies/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE.csproj"
 
       - name: Build iOS simulator
