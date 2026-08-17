@@ -18,5 +18,7 @@ public class MainApplication : MauiApplication
 	{
 		CameraReadinessMetrics.BeginColdStart();
 		base.OnCreate();
+		Platforms.Android.AndroidUploadQueueRuntime.Initialize(
+			() => IPlatformApplication.Current?.Services);
 	}
 }

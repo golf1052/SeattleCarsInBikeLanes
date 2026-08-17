@@ -426,3 +426,6 @@ fastlane/README.md
 # Local environment files
 .env
 .env.*
+
+# Local mobile build properties
+SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.local.props

@@ -56,6 +56,11 @@ public interface IPhotoLibraryService
     /// </summary>
     bool SupportsWritingUploadState { get; }
 
+    /// <summary>
+    /// Whether deleting captured photos presents a platform-owned confirmation.
+    /// </summary>
+    bool ConfirmsCapturedPhotoDeletion { get; }
+
     Task<PhotoLibraryAccess> RequestAccessAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -96,6 +101,11 @@ public interface IPhotoLibraryService
     /// </summary>
     /// <returns>The identifiers of the chosen assets.</returns>
     Task<IReadOnlyList<string>> PickPhotosAsync(int limit, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Releases persistent access to imported photos the app no longer tracks.
+    /// </summary>
+    Task ReleasePhotoAccessAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes assets from the photo library.

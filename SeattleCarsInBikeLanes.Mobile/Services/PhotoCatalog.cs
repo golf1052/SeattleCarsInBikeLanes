@@ -263,6 +263,11 @@ public sealed class PhotoCatalog : IPhotoCatalog
 
         List<string> ids = photos.Select(photo => photo.Id).ToList();
         await importedPhotos.RemoveAsync(ids);
+        await photoLibrary.ReleasePhotoAccessAsync(
+            photos.Where(photo => photo.Origin == PhotoOrigin.Imported)
+                .Select(photo => photo.Id)
+                .ToList(),
+            cancellationToken);
 
         foreach (string id in ids)
         {

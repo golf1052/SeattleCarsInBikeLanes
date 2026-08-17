@@ -14,6 +14,8 @@ public sealed class UnsupportedPhotoLibraryService : IPhotoLibraryService
 {
     public bool SupportsWritingUploadState => false;
 
+    public bool ConfirmsCapturedPhotoDeletion => false;
+
     public Task<PhotoLibraryAccess> RequestAccessAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(PhotoLibraryAccess.Denied);
 
@@ -44,6 +46,10 @@ public sealed class UnsupportedPhotoLibraryService : IPhotoLibraryService
 
     public Task<IReadOnlyList<string>> PickPhotosAsync(int limit, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+
+    public Task ReleasePhotoAccessAsync(IReadOnlyList<string> ids,
+        CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 
     public Task<bool> DeletePhotosAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken = default) =>
         Task.FromResult(false);

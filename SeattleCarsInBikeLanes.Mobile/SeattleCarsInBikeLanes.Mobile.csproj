@@ -1,5 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+	<Import Project="SeattleCarsInBikeLanes.Mobile.local.props"
+			Condition="Exists('SeattleCarsInBikeLanes.Mobile.local.props')" />
+
 	<PropertyGroup>
 		<TargetFrameworks>net10.0-android;net10.0-ios</TargetFrameworks>
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
@@ -37,10 +40,14 @@
 		     requires 14.0, and Photos content editing behaves consistently from 16.0 onwards. -->
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">16.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
-		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">29.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'tizen'">6.5</SupportedOSPlatformVersion>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<AndroidManifestPlaceholders>googleMapsApiKey=$(GOOGLE_MAPS_API_KEY)</AndroidManifestPlaceholders>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -78,6 +85,9 @@
 		     patch release, so pulling it forward keeps the managed API identical. -->
 		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3.android" Version="2.1.12" />
 		<PackageReference Include="XmpCore" Version="6.1.10.1" />
+		<PackageReference Include="Xamarin.AndroidX.Work.Runtime"
+				Version="2.10.3"
+				Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -100,6 +110,11 @@
 
 	<Target Name="ValidateJpegXmpWritePluginMDEReference" BeforeTargets="CoreCompile" Condition="'$(JpegXmpWritePluginMDEProject)' == ''">
 		<Error Text="Could not locate JpegXmpWritePluginMDE.csproj. Clone it to '$(UserProfile)$(HOME)/Documents/GitHub/JpegXmpWritePluginMDE' or build with -p:JpegXmpWritePluginMDEProject=&lt;full path&gt;." />
+	</Target>
+
+	<Target Name="ValidateGoogleMapsApiKey" BeforeTargets="CoreCompile"
+			Condition="'$(TargetPlatformIdentifier)' == 'android' And '$(GOOGLE_MAPS_API_KEY)' == ''">
+		<Error Text="GOOGLE_MAPS_API_KEY is required to build the Android app. Set it in the build environment to a Google Maps SDK for Android key restricted to this app." />
 	</Target>
 
 	<!-- OneDrive tags files with com.apple.FinderInfo extended attributes, and .NET's file copy on

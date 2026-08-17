@@ -1,0 +1,65 @@
+name: Build mobile apps
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/mobile.yml"
+      - "SeattleCarsInBikeLanes.Mobile/**"
+      - "SeattleCarsInBikeLanes.Mobile.Core/**"
+      - "SeattleCarsInBikeLanes.Mobile.Core.Tests/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/mobile.yml"
+      - "SeattleCarsInBikeLanes.Mobile/**"
+      - "SeattleCarsInBikeLanes.Mobile.Core/**"
+      - "SeattleCarsInBikeLanes.Mobile.Core.Tests/**"
+  workflow_dispatch:
+
+jobs:
+  mobile:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out JPEG XMP writer
+        uses: actions/checkout@v4
+        with:
+          repository: golf1052/JpegXmpWritePluginMDE
+          ref: d48665cfc3c4ab1b54347d453ad5bf761a61be14
+          path: dependencies/JpegXmpWritePluginMDE
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install MAUI workloads
+        run: dotnet workload install maui
+
+      - name: Restore
+        run: >
+          dotnet restore SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.csproj
+          -p:JpegXmpWritePluginMDEProject="${{ github.workspace }}/dependencies/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE.csproj"
+
+      - name: Run mobile core tests
+        run: dotnet test SeattleCarsInBikeLanes.Mobile.Core.Tests/SeattleCarsInBikeLanes.Mobile.Core.Tests.csproj
+
+      - name: Build Android
+        run: >
+          dotnet build SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.csproj
+          -f net10.0-android
+          --no-restore
+          -p:GOOGLE_MAPS_API_KEY=ci-placeholder
+          -p:JpegXmpWritePluginMDEProject="${{ github.workspace }}/dependencies/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE.csproj"
+
+      - name: Build iOS simulator
+        run: >
+          dotnet build SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.csproj
+          -f net10.0-ios
+          --no-restore
+          -p:RuntimeIdentifier=iossimulator-arm64
+          -p:CodesignKey=
+          -p:JpegXmpWritePluginMDEProject="${{ github.workspace }}/dependencies/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE.csproj"

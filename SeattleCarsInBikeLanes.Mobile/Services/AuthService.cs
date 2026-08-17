@@ -59,8 +59,10 @@ public sealed class AuthService : IAuthService
     private readonly CookieContainer cookieContainer;
     private readonly IWebViewCookieBridge cookieBridge;
     private readonly ILogger<AuthService> logger;
+    private readonly SemaphoreSlim initializeMutex = new SemaphoreSlim(1, 1);
 
     private string? blueskyToken;
+    private bool initialized;
 
     public AuthService(HttpClient httpClient,
         CookieContainer cookieContainer,
@@ -87,9 +89,23 @@ public sealed class AuthService : IAuthService
     /// </remarks>
     public async Task InitializeAsync()
     {
-        blueskyToken = await TryGetAsync(BlueskyTokenKey);
-        CurrentIdentity = await BuildIdentityAsync(await TryGetAsync(BlueskyHandleKey));
-        RaiseIdentityChanged();
+        await initializeMutex.WaitAsync();
+        try
+        {
+            if (initialized)
+            {
+                return;
+            }
+
+            blueskyToken = await TryGetAsync(BlueskyTokenKey);
+            CurrentIdentity = await BuildIdentityAsync(await TryGetAsync(BlueskyHandleKey));
+            initialized = true;
+            RaiseIdentityChanged();
+        }
+        finally
+        {
+            initializeMutex.Release();
+        }
     }
 
     public async Task<AttributionIdentity?> RefreshAsync(CancellationToken cancellationToken = default)

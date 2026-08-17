@@ -568,7 +568,10 @@ public sealed partial class CameraViewModel : ObservableObject
     /// Unlike reporting there is no cap, so a user clearing out a pile of old shots is not made to
     /// do it four at a time.
     /// </remarks>
-    public bool CanDelete => IsRollVisible && SelectedPhotos.Count > 0;
+    public bool CanDelete =>
+        IsRollVisible &&
+        SelectedPhotos.Count > 0 &&
+        !SelectedPhotos.Any(photo => photo.IsQueued);
 
     /// <summary>
     /// Offers the photos of whatever the user has just photographed as soon as the roll is opened.
@@ -841,35 +844,20 @@ public sealed partial class CameraViewModel : ObservableObject
     /// Describes what deleting the selection would do, when the user needs telling.
     /// </summary>
     /// <remarks>
-    /// The platform already asks before it destroys photos the app took, so a second confirmation
-    /// for those is just an extra tap. Imported photos get no such prompt, and what happens to them
-    /// is different enough that it has to be said out loud.
+    /// iOS already asks before it destroys photos the app took, so a second confirmation there is
+    /// just an extra tap. Android lets the app delete its own MediaStore entries directly, so the
+    /// shared confirmation has to cover captured photos there as well.
     /// </remarks>
     /// <returns>The message to confirm, or null when the platform's own prompt is enough.</returns>
     public string? BuildDeleteConfirmation()
     {
         IReadOnlyList<PhotoItemViewModel> selected = SelectedPhotos;
         int imported = selected.Count(photo => photo.IsImported);
-        if (imported == 0)
-        {
-            return null;
-        }
-
         int captured = selected.Count - imported;
-        string importedPart = imported == 1
-            ? "1 imported photo will be removed from Cars in Bike Lanes but kept in your library."
-            : $"{imported} imported photos will be removed from Cars in Bike Lanes but kept in your library.";
-
-        if (captured == 0)
-        {
-            return importedPart;
-        }
-
-        string capturedPart = captured == 1
-            ? "1 photo taken in the app will be deleted from your library."
-            : $"{captured} photos taken in the app will be deleted from your library.";
-
-        return $"{capturedPart} {importedPart}";
+        return PhotoDeletionConfirmation.Build(
+            captured,
+            imported,
+            photoLibrary.ConfirmsCapturedPhotoDeletion);
     }
 
     /// <summary>

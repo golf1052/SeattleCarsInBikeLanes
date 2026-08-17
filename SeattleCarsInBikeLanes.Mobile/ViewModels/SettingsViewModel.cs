@@ -13,16 +13,22 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IAuthService authService;
     private readonly IDeviceIdentityService deviceIdentity;
     private readonly IImportedPhotoStore importedPhotos;
+    private readonly IPhotoLibraryService photoLibrary;
+    private readonly IUploadQueue uploadQueue;
     private readonly ILogger<SettingsViewModel> logger;
 
     public SettingsViewModel(IAuthService authService,
         IDeviceIdentityService deviceIdentity,
         IImportedPhotoStore importedPhotos,
-        ILogger<SettingsViewModel> logger)
+    IPhotoLibraryService photoLibrary,
+    IUploadQueue uploadQueue,
+    ILogger<SettingsViewModel> logger)
     {
         this.authService = authService;
         this.deviceIdentity = deviceIdentity;
         this.importedPhotos = importedPhotos;
+        this.photoLibrary = photoLibrary;
+        this.uploadQueue = uploadQueue;
         this.logger = logger;
 
         authService.IdentityChanged += (_, _) => ApplyIdentity();
@@ -91,10 +97,23 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task ClearImportedPhotosAsync()
     {
-        // Only the app's list of imported photos is cleared. Deleting the user's actual photos is
-        // not something a settings toggle should ever do.
-        await importedPhotos.ClearAsync();
-        StatusMessage = "Imported photos removed from the app.";
+        IReadOnlyList<ImportedPhoto> imported = await importedPhotos.GetAllAsync();
+        HashSet<string> queued = uploadQueue.Reports
+            .SelectMany(report => report.Photos)
+            .Select(photo => photo.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        List<string> removable = imported
+            .Select(photo => photo.LocalIdentifier)
+            .Where(id => !queued.Contains(id))
+            .ToList();
+
+        await importedPhotos.RemoveAsync(removable);
+        await photoLibrary.ReleasePhotoAccessAsync(removable);
+
+        int retained = imported.Count - removable.Count;
+        StatusMessage = retained == 0
+            ? "Imported photos removed from the app."
+            : $"{removable.Count} imported photos removed; {retained} kept until queued reports finish.";
     }
 
     [RelayCommand]

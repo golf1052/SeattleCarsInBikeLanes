@@ -81,6 +81,7 @@ public static class MauiProgram
 		services.AddSingleton<CameraAppLifecycle>();
 		services.AddSingleton<ICameraAppLifecycle>(serviceProvider =>
 			serviceProvider.GetRequiredService<CameraAppLifecycle>());
+		services.AddSingleton<IMobileMetricsEmitter, SentryMobileMetricsEmitter>();
 		services.AddSingleton<ICameraReadinessMetrics, CameraReadinessMetrics>();
 
 		// One cookie container, shared, so the session copied out of the web view is visible to
@@ -123,12 +124,14 @@ public static class MauiProgram
 		services.AddSingleton<ICameraPreviewReadiness, Platforms.iOS.CameraPreviewReadiness>();
 		services.AddSingleton<IBackgroundWorkScope, Platforms.iOS.BackgroundWorkScope>();
 #elif ANDROID
-		services.AddSingleton<IPhotoLibraryService, UnsupportedPhotoLibraryService>();
-		services.AddSingleton<IWebViewCookieBridge, NullWebViewCookieBridge>();
-		services.AddSingleton<IImageResizer, PassthroughImageResizer>();
+		services.AddSingleton<IPhotoLibraryService,
+			global::SeattleCarsInBikeLanes.Platforms.Android.PhotoLibraryService>();
+		services.AddSingleton<IWebViewCookieBridge, Platforms.Android.WebViewCookieBridge>();
+		services.AddSingleton<IImageResizer, Platforms.Android.ImageResizer>();
 		services.AddSingleton<ICameraDeviceService, CameraDeviceService>();
 		services.AddSingleton<ICameraPreviewReadiness, Platforms.Android.CameraPreviewReadiness>();
 		services.AddSingleton<IBackgroundWorkScope, NullBackgroundWorkScope>();
+		services.AddSingleton<IBackgroundUploadScheduler, Platforms.Android.WorkManagerUploadScheduler>();
 #else
 		// The app is iOS first. These keep the other targets building, and make the gaps fail
 		// visibly instead of looking like an empty photo library and a sign in that never works.

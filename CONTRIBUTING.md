@@ -121,3 +121,15 @@ let privateKey = sessionRequest.result.value.dpopKey.keyPair.privateKey;
 ## Identifier
 
 golf1052.SeattleCarsInBikeLanes.Mobile
+
+## Mobile platform parity
+
+Mobile features must be delivered for iOS and Android together. A mobile change is complete only when:
+
+- equivalent user outcomes work on both platforms, using platform-native APIs where their UX differs;
+- both `net10.0-ios` and `net10.0-android` compile;
+- shared behavior has automated coverage and each platform-specific path has been exercised on a simulator or device;
+- equivalent Sentry telemetry uses the same metric names, units, and bounded attributes on both platforms, with `platform` identifying `ios` or `android`; and
+- any intentional platform exception is documented in the mobile README and in the pull request.
+
+Do not register a placeholder or no-op implementation for one mobile platform as a way to ship the other. If an operating-system limitation prevents exact behavior, implement the closest safe equivalent and document the difference.

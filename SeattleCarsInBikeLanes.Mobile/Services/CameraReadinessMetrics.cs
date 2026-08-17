@@ -21,14 +21,16 @@ public interface ICameraReadinessMetrics
 /// </summary>
 public sealed class CameraReadinessMetrics : ICameraReadinessMetrics
 {
-    private const string ReadinessDurationMetric = "mobile.camera.ready.duration";
-    private const string PermissionDurationMetric = "mobile.camera.permission_prompt.duration";
-    private const string ReadinessOutcomeMetric = "mobile.camera.ready.outcome";
-
     private static readonly CameraReadinessCoordinator Coordinator =
         new CameraReadinessCoordinator(TimeProvider.System);
 
+    private readonly IMobileMetricsEmitter emitter;
     private readonly string platform = DeviceInfo.Current.Platform.ToString().ToLowerInvariant();
+
+    public CameraReadinessMetrics(IMobileMetricsEmitter emitter)
+    {
+        this.emitter = emitter;
+    }
 
     public CameraReadinessTransition? ActiveTransition => Coordinator.ActiveTransition;
 
@@ -68,13 +70,11 @@ public sealed class CameraReadinessMetrics : ICameraReadinessMetrics
         if (measuringPrompt &&
             session!.TryEndPermissionPrompt(granted, out TimeSpan promptDuration))
         {
-            SentrySdk.Metrics.EmitDistribution(PermissionDurationMetric,
-                promptDuration.TotalMilliseconds,
-                MeasurementUnit.Duration.Millisecond,
-                Attributes(
-                    session.Transition,
-                    granted ? "granted" : "denied",
-                    granted ? CameraPermissionState.PromptGranted : CameraPermissionState.PromptDenied));
+            emitter.Emit(CameraReadinessTelemetry.PermissionPrompt(
+                session.Transition,
+                granted,
+                promptDuration,
+                platform));
         }
 
         if (!granted)
@@ -92,14 +92,10 @@ public sealed class CameraReadinessMetrics : ICameraReadinessMetrics
             return;
         }
 
-        KeyValuePair<string, object>[] attributes =
-            Attributes(measurement.Transition, "success", measurement.PermissionState);
-
-        SentrySdk.Metrics.EmitDistribution(ReadinessDurationMetric,
-            measurement.Duration.TotalMilliseconds,
-            MeasurementUnit.Duration.Millisecond,
-            attributes);
-        SentrySdk.Metrics.EmitCounter(ReadinessOutcomeMetric, 1, attributes);
+        foreach (MobileMetricEvent metric in CameraReadinessTelemetry.Ready(measurement, platform))
+        {
+            emitter.Emit(metric);
+        }
     }
 
     public void Finish(string result)
@@ -113,36 +109,10 @@ public sealed class CameraReadinessMetrics : ICameraReadinessMetrics
             return;
         }
 
-        SentrySdk.Metrics.EmitCounter(ReadinessOutcomeMetric,
-            1,
-            Attributes(transition, result, permissionState));
+        emitter.Emit(CameraReadinessTelemetry.Outcome(
+            transition,
+            result,
+            permissionState,
+            platform));
     }
-
-    private KeyValuePair<string, object>[] Attributes(
-        CameraReadinessTransition transition,
-        string result,
-        CameraPermissionState permissionState) =>
-    [
-        new KeyValuePair<string, object>("transition", TransitionName(transition)),
-        new KeyValuePair<string, object>("platform", platform),
-        new KeyValuePair<string, object>("permission_state", PermissionName(permissionState)),
-        new KeyValuePair<string, object>("result", result)
-    ];
-
-    private static string TransitionName(CameraReadinessTransition transition) => transition switch
-    {
-        CameraReadinessTransition.ColdStart => "cold_start",
-        CameraReadinessTransition.TabReturn => "tab_return",
-        CameraReadinessTransition.AppResume => "app_resume",
-        _ => throw new ArgumentOutOfRangeException(nameof(transition), transition, null)
-    };
-
-    private static string PermissionName(CameraPermissionState permissionState) => permissionState switch
-    {
-        CameraPermissionState.Unknown => "unknown",
-        CameraPermissionState.AlreadyGranted => "already_granted",
-        CameraPermissionState.PromptGranted => "prompt_granted",
-        CameraPermissionState.PromptDenied => "prompt_denied",
-        _ => throw new ArgumentOutOfRangeException(nameof(permissionState), permissionState, null)
-    };
 }

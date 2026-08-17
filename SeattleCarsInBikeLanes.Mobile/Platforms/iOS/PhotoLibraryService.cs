@@ -49,6 +49,8 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
 
     public bool SupportsWritingUploadState => true;
 
+    public bool ConfirmsCapturedPhotoDeletion => true;
+
     public Task<PhotoLibraryAccess> RequestAccessAsync(CancellationToken cancellationToken = default)
     {
         TaskCompletionSource<PhotoLibraryAccess> completion = new TaskCompletionSource<PhotoLibraryAccess>();
@@ -445,6 +447,10 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         presenter.PresentViewController(picker, animated: true, completionHandler: null);
         return completion.Task;
     }
+
+    public Task ReleasePhotoAccessAsync(IReadOnlyList<string> ids,
+        CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 
     /// <summary>
     /// Deletes assets, letting PhotoKit put up its own confirmation.
