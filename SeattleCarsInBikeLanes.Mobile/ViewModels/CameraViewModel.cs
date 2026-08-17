@@ -628,42 +628,57 @@ public sealed partial class CameraViewModel : ObservableObject
 
         try
         {
-            byte[] jpeg = await captureService.PrepareCapturedPhotoAsync(media);
+            // Captured streams are large memory buffers, and stamping EXIF/XMP is synchronous CPU
+            // work after the reads complete. Keep that work away from the shutter animation.
+            ReportPhoto? photo = await Task.Run(async () =>
+            {
+                byte[] jpeg = await captureService.PrepareCapturedPhotoAsync(media);
+                return await photoCatalog.AddCapturedPhotoAsync(jpeg);
+            });
 
-            ReportPhoto? photo = await photoCatalog.AddCapturedPhotoAsync(jpeg);
             if (photo is null)
             {
-                StatusMessage = "Couldn't save that photo.";
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                    StatusMessage = "Couldn't save that photo.");
                 return null;
             }
 
-            // A reload can complete while the photo is being saved, in which case it already picked
-            // the new asset up and inserting again would put two tiles on screen for one photo.
-            if (AllPhotos.Any(existing =>
-                    string.Equals(existing.Id, photo.Id, StringComparison.Ordinal)))
-            {
-                return null;
-            }
-
-            PhotoItemViewModel item = new PhotoItemViewModel(photo);
-
-            // Straight into the just taken section: this is the photo the user is here for.
-            RecentPhotos.Insert(0, item);
-            await LoadThumbnailAsync(item);
-            LatestThumbnail = item.Thumbnail;
-
-            // Saving a photo takes long enough for the user to have opened the roll while it was
-            // still going, in which case the suggestion was made without this photo in it.
-            ApplyAutoSelection();
-
-            return item;
+            return await MainThread.InvokeOnMainThreadAsync(() => AddCapturedPhotoToRollAsync(photo));
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to store a captured photo.");
-            StatusMessage = "Couldn't save that photo.";
+            await MainThread.InvokeOnMainThreadAsync(() =>
+                StatusMessage = "Couldn't save that photo.");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Adds a saved capture to the bound roll on the UI thread.
+    /// </summary>
+    private async Task<PhotoItemViewModel?> AddCapturedPhotoToRollAsync(ReportPhoto photo)
+    {
+        // A reload can complete while the photo is being saved, in which case it already picked
+        // the new asset up and inserting again would put two tiles on screen for one photo.
+        if (AllPhotos.Any(existing =>
+                string.Equals(existing.Id, photo.Id, StringComparison.Ordinal)))
+        {
+            return null;
+        }
+
+        PhotoItemViewModel item = new PhotoItemViewModel(photo);
+
+        // Straight into the just taken section: this is the photo the user is here for.
+        RecentPhotos.Insert(0, item);
+        await LoadThumbnailAsync(item);
+        LatestThumbnail = item.Thumbnail;
+
+        // Saving a photo takes long enough for the user to have opened the roll while it was
+        // still going, in which case the suggestion was made without this photo in it.
+        ApplyAutoSelection();
+
+        return item;
     }
 
     [RelayCommand]

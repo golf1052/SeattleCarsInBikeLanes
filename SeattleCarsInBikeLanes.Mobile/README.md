@@ -48,7 +48,7 @@ Run this matrix on a physical Android 10+ device before merging mobile changes:
 | Area | Expected result |
 | --- | --- |
 | First launch | Camera permission is requested once; denying it shows an actionable message rather than crashing |
-| Capture | A non-black photo is saved under `Pictures/Cars in Bike Lanes`, appears in the app roll, and remains after process restart |
+| Capture | Each successful shot immediately flashes the preview and produces one haptic click before its thumbnail appears; a non-black photo is saved under `Pictures/Cars in Bike Lanes`, appears in the app roll, and remains after process restart |
 | Metadata | A captured photo retains orientation, capture time, GPS when available, and the Cars in Bike Lanes XMP packet |
 | Import | Up to four images can be selected with the system picker and remain readable after restarting the app |
 | Thumbnails | Captured and imported images render in the roll and report preview |

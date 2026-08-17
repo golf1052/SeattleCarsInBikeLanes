@@ -120,6 +120,15 @@
             </Border>
         </Grid>
 
+        <!-- A successful capture is available before its metadata, library save, and thumbnail are.
+             Flash the live preview at that boundary so the user gets immediate confirmation without
+             putting another wait in the capture path. -->
+        <Grid x:Name="ShutterFlashOverlay"
+              Grid.Row="0"
+              BackgroundColor="White"
+              Opacity="0"
+              InputTransparent="True" />
+
         <!-- Sits over the preview so the camera never has to be torn down and restarted. -->
         <Grid Grid.Row="0"
               BackgroundColor="Black"

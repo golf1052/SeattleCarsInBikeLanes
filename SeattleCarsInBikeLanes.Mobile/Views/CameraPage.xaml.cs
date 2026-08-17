@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using CommunityToolkit.Maui.Core;
 using CommunityToolkit.Maui.Views;
+using Microsoft.Maui.Devices;
 using SeattleCarsInBikeLanes.Mobile.Core.Performance;
 using SeattleCarsInBikeLanes.Mobile.Services;
 using SeattleCarsInBikeLanes.Mobile.ViewModels;
@@ -100,6 +101,11 @@ public partial class CameraPage : ContentPage
     /// tap's fade hide the reticle out from under it.
     /// </remarks>
     private int focusReticleGeneration;
+
+    /// <summary>
+    /// Which capture the current shutter animation belongs to.
+    /// </summary>
+    private int shutterFeedbackGeneration;
 
     /// <summary>
     /// The zoom the current pinch started from, and how far the fingers have moved since.
@@ -766,13 +772,48 @@ public partial class CameraPage : ContentPage
     {
         try
         {
-            await viewModel.AddCapturedPhotoAsync(e.Media);
+            // CameraX raises this event on its capture executor. Only the visual feedback belongs
+            // on the UI thread; EXIF/XMP preparation would otherwise block the first animation
+            // frames and make the fade visibly pause.
+            Task feedback = MainThread.InvokeOnMainThreadAsync(ShowShutterFeedbackAsync);
+            Task<PhotoItemViewModel?> save = viewModel.AddCapturedPhotoAsync(e.Media);
+            await Task.WhenAll(feedback, save);
         }
         catch (Exception ex)
         {
             // The old implementation threw straight out of this handler when there was no location
             // fix, which crashed the app rather than losing a location.
             logger.LogError(ex, "Failed to handle a captured photo.");
+        }
+    }
+
+    /// <summary>
+    /// Gives immediate visual and tactile confirmation that the camera produced an image.
+    /// </summary>
+    private async Task ShowShutterFeedbackAsync()
+    {
+        int generation = ++shutterFeedbackGeneration;
+
+        ShutterFlashOverlay.CancelAnimations();
+        ShutterFlashOverlay.Opacity = 0.85;
+
+        try
+        {
+            if (HapticFeedback.Default.IsSupported)
+            {
+                HapticFeedback.Default.Perform(HapticFeedbackType.Click);
+            }
+
+            await ShutterFlashOverlay.FadeToAsync(0, 160, Easing.CubicOut);
+        }
+        finally
+        {
+            // A failed haptic or animation must never leave the camera covered. An older cancelled
+            // animation must also not clear a newer capture's flash.
+            if (generation == shutterFeedbackGeneration)
+            {
+                ShutterFlashOverlay.Opacity = 0;
+            }
         }
     }
 
