@@ -33,6 +33,13 @@ namespace SeattleCarsInBikeLanes.Controllers
         public const string DeviceIdHeader = "X-Device-Id";
 
         /// <summary>
+        /// The stable queued report identifier used to make finalization idempotent.
+        /// </summary>
+        public const string ReportIdHeader = "X-Report-Id";
+
+        public const string ReportInFlightHeader = "X-Report-In-Flight";
+
+        /// <summary>
         /// The most photos a single report can have.
         /// </summary>
         public const int MaxPhotosPerReport = 4;
@@ -48,6 +55,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly MastodonClientProvider mastodonClientProvider;
         private readonly SlackbotProvider slackbotProvider;
         private readonly DeviceBlocklistProvider deviceBlocklistProvider;
+        private readonly SubmissionClaimProvider submissionClaimProvider;
         private readonly HelperMethods helperMethods;
 
         public UploadController(ILogger<UploadController> logger,
@@ -58,6 +66,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             MastodonClientProvider mastodonClientProvider,
             SlackbotProvider slackbotProvider,
             DeviceBlocklistProvider deviceBlocklistProvider,
+            SubmissionClaimProvider submissionClaimProvider,
             HelperMethods helperMethods)
         {
             this.logger = logger;
@@ -68,6 +77,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             this.mastodonClientProvider = mastodonClientProvider;
             this.slackbotProvider = slackbotProvider;
             this.deviceBlocklistProvider = deviceBlocklistProvider;
+            this.submissionClaimProvider = submissionClaimProvider;
             this.helperMethods = helperMethods;
         }
 
@@ -80,6 +90,15 @@ namespace SeattleCarsInBikeLanes.Controllers
             {
                 string? deviceId = Request.Headers[DeviceIdHeader].FirstOrDefault();
                 return string.IsNullOrWhiteSpace(deviceId) ? null : deviceId.Trim();
+            }
+        }
+
+        private string? ReportId
+        {
+            get
+            {
+                string? reportId = Request.Headers[ReportIdHeader].FirstOrDefault()?.Trim();
+                return SubmissionClaimProvider.IsValidReportId(reportId) ? reportId : null;
             }
         }
 
@@ -365,10 +384,38 @@ namespace SeattleCarsInBikeLanes.Controllers
                 return BadRequest(error);
             }
 
+            if (metadata.NumberOfCars == null || metadata.NumberOfCars < 1)
+            {
+                string error = "Number of cars must be at least 1.";
+                logger.LogError(error);
+                return BadRequest(error);
+            }
+
+            string? reportId = ReportId;
+            if (reportId is not null)
+            {
+                SubmissionClaimResult claim =
+                    await submissionClaimProvider.TryClaimAsync(reportId, DeviceId);
+                if (claim == SubmissionClaimResult.AlreadyCompleted)
+                {
+                    return NoContent();
+                }
+
+                if (claim == SubmissionClaimResult.InFlight)
+                {
+                    Response.Headers[ReportInFlightHeader] = "true";
+                    Response.Headers.RetryAfter =
+                        ((int)SubmissionClaimProvider.InFlightRetryAfter.TotalSeconds)
+                        .ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    return StatusCode(StatusCodes.Status429TooManyRequests,
+                        "This report is already being finalized. Try again shortly.");
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(metadata.PhotoCrossStreet))
             {
-                ReverseSearchCrossStreetAddressResultItem? crossStreetItem = null;
-                crossStreetItem = await helperMethods.ReverseSearchCrossStreet(photoLocation, mapsSearchClient);
+                ReverseSearchCrossStreetAddressResultItem? crossStreetItem =
+                    await helperMethods.ReverseSearchCrossStreet(photoLocation, mapsSearchClient);
                 if (crossStreetItem == null)
                 {
                     logger.LogWarning($"Couldn't find cross street for {metadata.PhotoLatitude}, {metadata.PhotoLongitude}");
@@ -380,13 +427,6 @@ namespace SeattleCarsInBikeLanes.Controllers
                         d.PhotoCrossStreet = crossStreetItem.Address.StreetName;
                     }
                 }
-            }
-
-            if (metadata.NumberOfCars == null || metadata.NumberOfCars < 1)
-            {
-                string error = "Number of cars must be at least 1.";
-                logger.LogError(error);
-                return BadRequest(error);
             }
 
             if (metadata.Attribute != null && metadata.Attribute.Value)
@@ -485,6 +525,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                 // Taken from the header rather than the body so a client cannot pin its uploads on
                 // somebody else's device.
                 d.DeviceId = DeviceId;
+                d.ReportId = reportId;
 
                 string randomFileName = d.PhotoId;
                 BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");
@@ -497,10 +538,23 @@ namespace SeattleCarsInBikeLanes.Controllers
                 await metadataBlobClient.DeleteAsync();
             }
 
-            // Ping me on Slack about the new submission
-            string deviceSuffix = string.IsNullOrWhiteSpace(DeviceId) ? string.Empty : $" from device {DeviceId}";
-            await slackbotProvider.SendSlackMessage($"New submission. {metadata.NumberOfCars} {helperMethods.GetCarsString(metadata.NumberOfCars.Value)} " +
-                $"@ {metadata.PhotoCrossStreet} submitted {DateTime.Now:s}{deviceSuffix}");
+            if (reportId is not null)
+            {
+                await submissionClaimProvider.CompleteAsync(reportId, DeviceId);
+            }
+
+            try
+            {
+                // Slack is a notification, not part of committing the report. A Slack outage must
+                // not make the app resend photos that are already in the moderation queue.
+                string deviceSuffix = string.IsNullOrWhiteSpace(DeviceId) ? string.Empty : $" from device {DeviceId}";
+                await slackbotProvider.SendSlackMessage($"New submission. {metadata.NumberOfCars} {helperMethods.GetCarsString(metadata.NumberOfCars.Value)} " +
+                    $"@ {metadata.PhotoCrossStreet} submitted {DateTime.Now:s}{deviceSuffix}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "The report was finalized but its Slack notification failed.");
+            }
 
             return NoContent();
         }

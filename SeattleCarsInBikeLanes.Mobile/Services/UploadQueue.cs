@@ -26,6 +26,8 @@ public sealed class QueuedReport
 
     public DateTime? NextAttemptAt { get; set; }
 
+    public bool ServerDirectedRetry { get; set; }
+
     /// <summary>
     /// How the report is described in the list of ones that could not be sent.
     /// </summary>
@@ -322,6 +324,7 @@ public sealed class UploadQueue : IUploadQueue
         report.Attempts = 0;
         report.LastError = null;
         report.NextAttemptAt = null;
+        report.ServerDirectedRetry = false;
 
         await SaveAsync(report);
         RaiseChanged();
@@ -438,7 +441,7 @@ public sealed class UploadQueue : IUploadQueue
             // the user's Mastodon access token and that is not something to write to disk.
             AttributionIdentity? identity = draft.Attribute ? authService.CurrentIdentity : null;
 
-            await uploadService.FinalizeAsync(preparation, draft, identity, cancellationToken);
+            await uploadService.FinalizeAsync(preparation, draft, identity, report.Id, cancellationToken);
 
             // Past this line the report is on the site, and nothing that goes wrong afterwards may
             // be allowed to send it again. It leaves the queue first, so a failure to stamp the
@@ -474,9 +477,18 @@ public sealed class UploadQueue : IUploadQueue
         }
         catch (UploadException ex)
         {
+            if (ex.IsReportInFlight)
+            {
+                // This 429 comes from this report's own server-side claim, which will either
+                // complete or become eligible for takeover. Do not exhaust the user's retry budget
+                // while waiting for that bounded state transition.
+                report.Attempts = Math.Max(report.Attempts - 1, 0);
+            }
+
             await FailAsync(report,
                 ex.IsBlocked ? "This device can't submit reports." : ex.Message,
-                UploadRetryPolicy.Classify(ex.StatusCode));
+                UploadRetryPolicy.Classify(ex.StatusCode),
+                ex.RetryAfter);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -507,14 +519,19 @@ public sealed class UploadQueue : IUploadQueue
         }
     }
 
-    private async Task FailAsync(QueuedReport report, string message, UploadFailureKind kind)
+    private async Task FailAsync(QueuedReport report,
+        string message,
+        UploadFailureKind kind,
+        TimeSpan? retryAfter = null)
     {
         report.LastError = message;
 
-        UploadRetryDecision decision = UploadRetryPolicy.Decide(report.Attempts, kind, DateTime.UtcNow);
+        UploadRetryDecision decision =
+            UploadRetryPolicy.Decide(report.Attempts, kind, DateTime.UtcNow, retryAfter);
 
         report.State = decision.State;
         report.NextAttemptAt = decision.NextAttemptAt;
+        report.ServerDirectedRetry = retryAfter.HasValue && retryAfter.Value > TimeSpan.Zero;
 
         if (decision.State == UploadQueueState.Failed)
         {
@@ -546,6 +563,7 @@ public sealed class UploadQueue : IUploadQueue
             next.State = UploadQueueState.Uploading;
             next.Attempts++;
             next.NextAttemptAt = null;
+            next.ServerDirectedRetry = false;
         }
 
         // Written down before the request goes out, so a process that dies mid upload leaves a
@@ -614,7 +632,9 @@ public sealed class UploadQueue : IUploadQueue
         lock (gate)
         {
             foreach (QueuedReport report in reports.Where(report =>
-                report.State == UploadQueueState.Pending && report.NextAttemptAt.HasValue))
+                report.State == UploadQueueState.Pending &&
+                report.NextAttemptAt.HasValue &&
+                !report.ServerDirectedRetry))
             {
                 report.NextAttemptAt = null;
                 cleared.Add(report);
@@ -664,7 +684,8 @@ public sealed class UploadQueue : IUploadQueue
         State = (int)report.State,
         Attempts = report.Attempts,
         LastError = report.LastError,
-        NextAttemptAt = report.NextAttemptAt
+        NextAttemptAt = report.NextAttemptAt,
+        ServerDirectedRetry = report.ServerDirectedRetry
     };
 
     private static QueuedReport? TryRead(UploadQueueRecord record)
@@ -688,7 +709,8 @@ public sealed class UploadQueue : IUploadQueue
             State = (UploadQueueState)record.State,
             Attempts = record.Attempts,
             LastError = record.LastError,
-            NextAttemptAt = record.NextAttemptAt
+            NextAttemptAt = record.NextAttemptAt,
+            ServerDirectedRetry = record.ServerDirectedRetry
         };
     }
 

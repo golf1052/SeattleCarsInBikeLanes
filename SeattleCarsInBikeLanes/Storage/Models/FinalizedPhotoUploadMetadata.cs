@@ -29,6 +29,12 @@
         /// forged to blame another device. It identifies an install, not a person.
         /// </remarks>
         public string? DeviceId { get; set; }
+
+        /// <summary>
+        /// The stable mobile queue identifier used to suppress duplicate finalization.
+        /// </summary>
+        public string? ReportId { get; set; }
+
         public string? TwitterLink { get; set; }
         public string? BlueskyAdminDid { get; set; }
         public string? BlueskyAccessJwt { get; set; }

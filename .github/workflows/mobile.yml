@@ -45,7 +45,9 @@ jobs:
           -p:JpegXmpWritePluginMDEProject="${{ github.workspace }}/dependencies/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE.csproj"
 
       - name: Run mobile core tests
-        run: dotnet test SeattleCarsInBikeLanes.Mobile.Core.Tests/SeattleCarsInBikeLanes.Mobile.Core.Tests.csproj
+        run: >
+          dotnet test SeattleCarsInBikeLanes.Mobile.Core.Tests/SeattleCarsInBikeLanes.Mobile.Core.Tests.csproj
+          --configuration Release
 
       - name: Build Android
         env:
@@ -53,6 +55,7 @@ jobs:
         run: >
           dotnet build SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.csproj
           -f net10.0-android
+          --configuration Release
           --no-restore
           -p:GOOGLE_MAPS_API_KEY="$GOOGLE_MAPS_API_KEY"
           -p:JpegXmpWritePluginMDEProject="${{ github.workspace }}/dependencies/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE.csproj"
@@ -61,6 +64,7 @@ jobs:
         run: >
           dotnet build SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.csproj
           -f net10.0-ios
+          --configuration Release
           --no-restore
           -p:RuntimeIdentifier=iossimulator-arm64
           -p:CodesignKey=

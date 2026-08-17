@@ -75,6 +75,35 @@ public class UploadRetryPolicyTests
     }
 
     [Fact]
+    public void ServerRetryDelayOverridesTheLocalBackoff()
+    {
+        DateTime now = new DateTime(2025, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+        TimeSpan retryAfter = TimeSpan.FromMinutes(2);
+
+        UploadRetryDecision decision = UploadRetryPolicy.Decide(
+            1,
+            UploadFailureKind.Transient,
+            now,
+            retryAfter);
+
+        Assert.Equal(now + retryAfter, decision.NextAttemptAt);
+    }
+
+    [Fact]
+    public void ServerRetryDelayIsClampedToTheTimerSafeMaximum()
+    {
+        DateTime now = new DateTime(2025, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+
+        UploadRetryDecision decision = UploadRetryPolicy.Decide(
+            1,
+            UploadFailureKind.Transient,
+            now,
+            TimeSpan.FromDays(365));
+
+        Assert.Equal(now + UploadRetryPolicy.MaxRetryDelay, decision.NextAttemptAt);
+    }
+
+    [Fact]
     public void GivesUpAfterTheAttemptCap()
     {
         DateTime now = new DateTime(2025, 6, 1, 12, 0, 0, DateTimeKind.Utc);
@@ -104,7 +133,7 @@ public class UploadRetryPolicyTests
             TimeSpan backoff = UploadRetryPolicy.GetBackoff(attempts);
 
             Assert.True(backoff > TimeSpan.Zero);
-            Assert.True(backoff <= TimeSpan.FromMinutes(15));
+            Assert.True(backoff <= UploadRetryPolicy.MaxRetryDelay);
         }
     }
 }

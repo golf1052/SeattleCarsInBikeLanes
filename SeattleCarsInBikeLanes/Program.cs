@@ -302,6 +302,12 @@ namespace SeattleCarsInBikeLanes
             });
             services.AddSingleton(c =>
             {
+                return new SubmissionClaimProvider(
+                    c.GetRequiredService<ILogger<SubmissionClaimProvider>>(),
+                    c.GetRequiredService<BlobContainerClient>());
+            });
+            services.AddSingleton(c =>
+            {
                 return new BlueskyClientProvider(c.GetRequiredService<ILogger<BlueskyClientProvider>>(),
                     c.GetRequiredService<SecretClient>(),
                     c.GetRequiredService<HttpClient>());
@@ -334,6 +340,11 @@ namespace SeattleCarsInBikeLanes
                     serviceProvider.GetRequiredService<ILogger<InitialUploadPruner>>(),
                     serviceProvider.GetRequiredService<BlobContainerClient>(),
                     TimeSpan.FromMinutes(10));
+                InitialUploadPruner submissionClaimPruner = new InitialUploadPruner(
+                    serviceProvider.GetRequiredService<ILogger<InitialUploadPruner>>(),
+                    serviceProvider.GetRequiredService<BlobContainerClient>(),
+                    TimeSpan.FromDays(30),
+                    SubmissionClaimProvider.BlobPrefix);
             }
 
             // Configure the HTTP request pipeline.
@@ -363,5 +374,3 @@ namespace SeattleCarsInBikeLanes
         }
     }
 }
-
-

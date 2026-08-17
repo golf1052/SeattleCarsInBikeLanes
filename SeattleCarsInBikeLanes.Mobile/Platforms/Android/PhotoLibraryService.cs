@@ -47,6 +47,9 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
 
     public bool ConfirmsCapturedPhotoDeletion => false;
 
+    public Task<PhotoLibraryAccess> CheckAccessAsync(CancellationToken cancellationToken = default) =>
+        RequestAccessAsync(cancellationToken);
+
     public Task<PhotoLibraryAccess> RequestAccessAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -165,11 +168,12 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
                     cancellationToken.ThrowIfCancellationRequested();
 
                     long mediaId = cursor.GetLong(idColumn);
-                    AndroidUri uri = ToDocumentUri(ContentUris.WithAppendedId(
-                        CapturedPhotoCollection, mediaId));
+                    AndroidUri mediaStoreUri = ContentUris.WithAppendedId(
+                        CapturedPhotoCollection, mediaId);
+                    AndroidUri documentUri = ToDocumentUri(mediaStoreUri);
                     DateTimeOffset? createdAt = ReadMediaStoreDate(cursor, takenColumn, addedColumn);
-                    GeoPosition? location = ReadExif(uri).Location;
-                    assets.Add(new PhotoAsset(uri.ToString()!, createdAt, location));
+                    GeoPosition? location = ReadExif(mediaStoreUri).Location;
+                    assets.Add(new PhotoAsset(documentUri.ToString()!, createdAt, location));
                 }
             }
             catch (OperationCanceledException)
@@ -432,8 +436,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
             foreach (string id in ids.Distinct(StringComparer.Ordinal))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!TryParseContentUri(id, out AndroidUri? uri) ||
-                    !string.Equals(uri.Authority, MediaDocumentsAuthority, StringComparison.Ordinal))
+                if (!TryParseContentUri(id, out AndroidUri? uri))
                 {
                     continue;
                 }
@@ -527,8 +530,19 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
                 : null;
             return new PhotoExifData(takenAt, location);
         }
-        catch (Exception)
+        catch (Java.Lang.SecurityException ex)
         {
+            logger.LogError(ex, "Android denied EXIF access to {Uri}.", uri);
+            return PhotoExifData.Empty;
+        }
+        catch (Exception ex) when (ex is Java.IO.IOException or IOException)
+        {
+            logger.LogDebug(ex, "Could not read EXIF from {Uri}.", uri);
+            return PhotoExifData.Empty;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not parse EXIF from {Uri}.", uri);
             return PhotoExifData.Empty;
         }
     }

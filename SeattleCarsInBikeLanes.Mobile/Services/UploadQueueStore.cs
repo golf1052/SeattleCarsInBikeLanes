@@ -39,6 +39,12 @@ public sealed class UploadQueueRecord
     /// </summary>
     [Column("next_attempt_at")]
     public DateTime? NextAttemptAt { get; set; }
+
+    /// <summary>
+    /// Whether connectivity changes must preserve the server's requested retry time.
+    /// </summary>
+    [Column("server_directed_retry")]
+    public bool ServerDirectedRetry { get; set; }
 }
 
 /// <summary>
@@ -113,7 +119,8 @@ public sealed class UploadQueueStore : IUploadQueueStore
     public async Task ResetInterruptedAsync()
     {
         SQLiteAsyncConnection db = await GetConnectionAsync();
-        await db.ExecuteAsync("UPDATE upload_queue SET state = ?, next_attempt_at = NULL WHERE state = ?",
+        await db.ExecuteAsync(
+            "UPDATE upload_queue SET state = ?, next_attempt_at = NULL, server_directed_retry = 0 WHERE state = ?",
             (int)UploadQueueState.Pending,
             (int)UploadQueueState.Uploading);
     }

@@ -9,15 +9,18 @@ namespace SeattleCarsInBikeLanes
         private readonly ILogger<InitialUploadPruner> logger;
         private readonly BlobContainerClient blobContainerClient;
         private readonly TimeSpan aliveDuration;
+        private readonly string blobPrefix;
         private Task deleteTask;
 
         public InitialUploadPruner(ILogger<InitialUploadPruner> logger,
             BlobContainerClient blobContainerClient,
-            TimeSpan aliveDuration)
+            TimeSpan aliveDuration,
+            string blobPrefix = UploadController.InitialUploadPrefix)
         {
             this.logger = logger;
             this.blobContainerClient = blobContainerClient;
             this.aliveDuration = aliveDuration;
+            this.blobPrefix = blobPrefix;
             deleteTask = CheckForStaleUploads();
             _ = CheckCheckDeleteTask();
         }
@@ -26,7 +29,11 @@ namespace SeattleCarsInBikeLanes
         {
             while (true)
             {
-                var blobs = blobContainerClient.GetBlobsAsync(BlobTraits.None, BlobStates.None, UploadController.InitialUploadPrefix, CancellationToken.None);
+                var blobs = blobContainerClient.GetBlobsAsync(
+                    BlobTraits.None,
+                    BlobStates.None,
+                    blobPrefix,
+                    CancellationToken.None);
                 DateTimeOffset now = DateTimeOffset.UtcNow;
                 await foreach (var blob in blobs)
                 {

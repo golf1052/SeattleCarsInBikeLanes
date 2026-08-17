@@ -60,12 +60,21 @@ public sealed record UploadPreparation(IReadOnlyList<InitialPhotoUpload> Photos)
 /// </remarks>
 public sealed class UploadException : Exception
 {
-    public UploadException(string message, HttpStatusCode? statusCode = null) : base(message)
+    public UploadException(string message,
+        HttpStatusCode? statusCode = null,
+        TimeSpan? retryAfter = null,
+        bool isReportInFlight = false) : base(message)
     {
         StatusCode = statusCode;
+        RetryAfter = retryAfter;
+        IsReportInFlight = isReportInFlight;
     }
 
     public HttpStatusCode? StatusCode { get; }
+
+    public TimeSpan? RetryAfter { get; }
+
+    public bool IsReportInFlight { get; }
 
     /// <summary>
     /// True when the device has been blocked from uploading.
@@ -99,12 +108,16 @@ public interface IUploadService
     Task FinalizeAsync(UploadPreparation preparation,
         ReportDraft draft,
         AttributionIdentity? identity,
+        string reportId,
         CancellationToken cancellationToken = default);
 }
 
 /// <inheritdoc />
 public sealed class UploadService : IUploadService
 {
+    private const string ReportIdHeader = "X-Report-Id";
+    private const string ReportInFlightHeader = "X-Report-In-Flight";
+
     /// <summary>
     /// The longest edge a photo is sent at.
     /// </summary>
@@ -212,10 +225,12 @@ public sealed class UploadService : IUploadService
     public async Task FinalizeAsync(UploadPreparation preparation,
         ReportDraft draft,
         AttributionIdentity? identity,
+        string reportId,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
         ArgumentNullException.ThrowIfNull(draft);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reportId);
 
         List<FinalizedPhotoUpload> body = FinalizeRequestBuilder.Build(preparation.Photos, draft, identity);
 
@@ -225,6 +240,7 @@ public sealed class UploadService : IUploadService
         };
 
         await PrepareRequestAsync(request, cancellationToken);
+        request.Headers.TryAddWithoutValidation(ReportIdHeader, reportId);
 
         using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
         await ThrowIfFailedAsync(response, cancellationToken);
@@ -250,6 +266,21 @@ public sealed class UploadService : IUploadService
             ? $"The site rejected the upload ({(int)response.StatusCode})."
             : body.Trim();
 
-        throw new UploadException(message, response.StatusCode);
+        TimeSpan? retryAfter = response.Headers.RetryAfter?.Delta;
+        if (retryAfter is null && response.Headers.RetryAfter?.Date is DateTimeOffset retryAt)
+        {
+            retryAfter = retryAt - DateTimeOffset.UtcNow;
+        }
+
+        if (retryAfter <= TimeSpan.Zero)
+        {
+            retryAfter = null;
+        }
+
+        bool isReportInFlight =
+            response.Headers.TryGetValues(ReportInFlightHeader, out IEnumerable<string>? values) &&
+            values.Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+
+        throw new UploadException(message, response.StatusCode, retryAfter, isReportInFlight);
     }
 }

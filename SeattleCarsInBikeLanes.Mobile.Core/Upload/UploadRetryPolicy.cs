@@ -36,7 +36,7 @@ public static class UploadRetryPolicy
     /// </summary>
     private static readonly TimeSpan BaseBackoff = TimeSpan.FromSeconds(30);
 
-    private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(15);
+    public static TimeSpan MaxRetryDelay { get; } = TimeSpan.FromMinutes(15);
 
     /// <summary>
     /// Works out whether a status code is worth trying again.
@@ -87,7 +87,7 @@ public static class UploadRetryPolicy
         int doublings = Math.Min(attempts - 1, 10);
         double seconds = BaseBackoff.TotalSeconds * Math.Pow(2, doublings);
 
-        return seconds >= MaxBackoff.TotalSeconds ? MaxBackoff : TimeSpan.FromSeconds(seconds);
+        return seconds >= MaxRetryDelay.TotalSeconds ? MaxRetryDelay : TimeSpan.FromSeconds(seconds);
     }
 
     /// <summary>
@@ -105,13 +105,19 @@ public static class UploadRetryPolicy
     /// <param name="attempts">How many attempts have been made, including the one that just failed.</param>
     /// <param name="failure">Whether the failure is worth trying again.</param>
     /// <param name="now">The current time.</param>
-    public static UploadRetryDecision Decide(int attempts, UploadFailureKind failure, DateTime now)
+    public static UploadRetryDecision Decide(int attempts,
+        UploadFailureKind failure,
+        DateTime now,
+        TimeSpan? retryAfter = null)
     {
         if (failure == UploadFailureKind.Permanent || attempts >= MaxAttempts)
         {
             return new UploadRetryDecision(UploadQueueState.Failed, null);
         }
 
-        return new UploadRetryDecision(UploadQueueState.Pending, now + GetBackoff(attempts));
+        TimeSpan delay = retryAfter is { } requestedDelay && requestedDelay > TimeSpan.Zero
+            ? requestedDelay > MaxRetryDelay ? MaxRetryDelay : requestedDelay
+            : GetBackoff(attempts);
+        return new UploadRetryDecision(UploadQueueState.Pending, now + delay);
     }
 }
