@@ -1,5 +1,6 @@
 using CoreLocation;
 using Foundation;
+using ImageIO;
 using Microsoft.Extensions.Logging;
 using Photos;
 using PhotosUI;
@@ -7,6 +8,7 @@ using SeattleCarsInBikeLanes.Mobile.Core.Metadata;
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
 using SeattleCarsInBikeLanes.Mobile.Services;
 using UIKit;
+using UniformTypeIdentifiers;
 
 namespace SeattleCarsInBikeLanes.Platforms.iOS;
 
@@ -41,6 +43,8 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
     private const int MaxUploadStateScanBytes = 1024 * 1024;
 
     private readonly ILogger<PhotoLibraryService> logger;
+    private readonly object pickerDelegateGate = new object();
+    private readonly HashSet<PickerDelegate> activePickerDelegates = new HashSet<PickerDelegate>();
 
     public PhotoLibraryService(ILogger<PhotoLibraryService> logger)
     {
@@ -433,30 +437,65 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         }
     }
 
-    public Task<IReadOnlyList<string>> PickPhotosAsync(int limit, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<PickedPhoto>> PickPhotosAsync(
+        int limit,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         UIViewController? presenter = GetPresentingViewController();
         if (presenter is null)
         {
-            return Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+            return Task.FromResult<IReadOnlyList<PickedPhoto>>(Array.Empty<PickedPhoto>());
         }
 
+        bool copySelections =
+            PHPhotoLibrary.GetAuthorizationStatus(PHAccessLevel.ReadWrite) !=
+            PHAuthorizationStatus.Authorized;
         PHPickerConfiguration configuration = new PHPickerConfiguration(PHPhotoLibrary.SharedPhotoLibrary)
         {
             Filter = PHPickerFilter.ImagesFilter,
             SelectionLimit = limit
         };
 
-        TaskCompletionSource<IReadOnlyList<string>> completion =
-            new TaskCompletionSource<IReadOnlyList<string>>();
+        TaskCompletionSource<IReadOnlyList<PickedPhoto>> completion =
+            new TaskCompletionSource<IReadOnlyList<PickedPhoto>>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
 
+        PickerDelegate pickerDelegate = new PickerDelegate(
+            completion,
+            copySelections,
+            cancellationToken,
+            logger,
+            ReleasePickerDelegate);
         PHPickerViewController picker = new PHPickerViewController(configuration)
         {
-            Delegate = new PickerDelegate(completion)
+            Delegate = pickerDelegate
         };
 
-        presenter.PresentViewController(picker, animated: true, completionHandler: null);
+        lock (pickerDelegateGate)
+        {
+            activePickerDelegates.Add(pickerDelegate);
+        }
+
+        try
+        {
+            presenter.PresentViewController(picker, animated: true, completionHandler: null);
+        }
+        catch
+        {
+            ReleasePickerDelegate(pickerDelegate);
+            throw;
+        }
+
         return completion.Task;
+    }
+
+    private void ReleasePickerDelegate(PickerDelegate pickerDelegate)
+    {
+        lock (pickerDelegateGate)
+        {
+            activePickerDelegates.Remove(pickerDelegate);
+        }
     }
 
     public Task ReleasePhotoAccessAsync(IReadOnlyList<string> ids,
@@ -610,25 +649,151 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
 
     private sealed class PickerDelegate : PHPickerViewControllerDelegate
     {
-        private readonly TaskCompletionSource<IReadOnlyList<string>> completion;
+        private readonly TaskCompletionSource<IReadOnlyList<PickedPhoto>> completion;
+        private readonly bool copySelections;
+        private readonly CancellationToken cancellationToken;
+        private readonly ILogger logger;
+        private readonly Action<PickerDelegate> release;
 
-        public PickerDelegate(TaskCompletionSource<IReadOnlyList<string>> completion)
+        public PickerDelegate(
+            TaskCompletionSource<IReadOnlyList<PickedPhoto>> completion,
+            bool copySelections,
+            CancellationToken cancellationToken,
+            ILogger logger,
+            Action<PickerDelegate> release)
         {
             this.completion = completion;
+            this.copySelections = copySelections;
+            this.cancellationToken = cancellationToken;
+            this.logger = logger;
+            this.release = release;
         }
 
         public override void DidFinishPicking(PHPickerViewController picker, PHPickerResult[] results)
         {
             picker.DismissViewController(animated: true, completionHandler: null);
+            _ = CompleteAsync(results);
+        }
 
-            // A result without an identifier is a photo the picker will only hand over as raw data,
-            // which the app cannot reference in place, so it is skipped.
-            List<string> identifiers = results
-                .Select(result => result.AssetIdentifier)
-                .Where(identifier => !string.IsNullOrEmpty(identifier))
-                .ToList()!;
+        private async Task CompleteAsync(PHPickerResult[] results)
+        {
+            try
+            {
+                List<PickedPhoto> selected = new List<PickedPhoto>(results.Length);
+                foreach (PHPickerResult result in results)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
 
-            completion.TrySetResult(identifiers);
+                    if (!copySelections && !string.IsNullOrWhiteSpace(result.AssetIdentifier))
+                    {
+                        selected.Add(new PickedPhoto(result.AssetIdentifier, null));
+                        continue;
+                    }
+
+                    byte[]? jpeg = await LoadJpegAsync(result.ItemProvider, cancellationToken);
+                    if (jpeg is not null)
+                    {
+                        selected.Add(new PickedPhoto(null, jpeg));
+                    }
+                }
+
+                completion.TrySetResult(selected);
+            }
+            catch (OperationCanceledException)
+            {
+                completion.TrySetCanceled(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to read photos returned by the iOS picker.");
+                completion.TrySetException(ex);
+            }
+            finally
+            {
+                release(this);
+            }
+        }
+
+        private static async Task<byte[]?> LoadJpegAsync(
+            NSItemProvider provider,
+            CancellationToken cancellationToken)
+        {
+            byte[]? jpeg = await LoadRepresentationAsync(
+                provider,
+                UTTypes.Jpeg.Identifier,
+                cancellationToken);
+            if (jpeg is not null)
+            {
+                return jpeg;
+            }
+
+            byte[]? image = await LoadRepresentationAsync(
+                provider,
+                UTTypes.Image.Identifier,
+                cancellationToken);
+            return image is null ? null : ConvertToJpeg(image);
+        }
+
+        private static Task<byte[]?> LoadRepresentationAsync(
+            NSItemProvider provider,
+            string typeIdentifier,
+            CancellationToken cancellationToken)
+        {
+            TaskCompletionSource<byte[]?> completion =
+                new TaskCompletionSource<byte[]?>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+
+            NSProgress progress = provider.LoadDataRepresentation(
+                typeIdentifier,
+                (data, error) =>
+                {
+                    if (error is not null || data is null)
+                    {
+                        completion.TrySetResult(null);
+                        return;
+                    }
+
+                    completion.TrySetResult(data.ToArray());
+                });
+
+            CancellationTokenRegistration registration = cancellationToken.Register(progress.Cancel);
+            return AwaitAndDisposeAsync(completion.Task, registration);
+        }
+
+        private static byte[]? ConvertToJpeg(byte[] image)
+        {
+            using NSData data = NSData.FromArray(image);
+            using CGImageSource? source = CGImageSource.FromData(data);
+            if (source is null || source.ImageCount == 0)
+            {
+                return null;
+            }
+
+            using NSMutableData output = new NSMutableData();
+            using CGImageDestination? destination =
+                CGImageDestination.Create(output, UTTypes.Jpeg.Identifier, imageCount: 1);
+            if (destination is null)
+            {
+                return null;
+            }
+
+            NSDictionary? properties = source.CopyProperties(new CGImageOptions(), 0);
+            destination.AddImage(source, 0, properties);
+            return destination.Close() ? output.ToArray() : null;
+        }
+
+        private static async Task<byte[]?> AwaitAndDisposeAsync(
+            Task<byte[]?> task,
+            CancellationTokenRegistration registration)
+        {
+            try
+            {
+                return await task;
+            }
+            finally
+            {
+                registration.Dispose();
+            }
         }
     }
 }

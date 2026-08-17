@@ -46,4 +46,16 @@ public sealed class PhotoDeletionConfirmationTests
                 importedCount: 2,
                 platformConfirmsCapturedDeletion: true));
     }
+
+    [Fact]
+    public void PrivateCapturedPhotoUsesAppConfirmation()
+    {
+        Assert.Equal(
+            "1 photo kept privately in the app will be deleted.",
+            PhotoDeletionConfirmation.Build(
+                capturedCount: 0,
+                importedCount: 0,
+                platformConfirmsCapturedDeletion: true,
+                privateCapturedCount: 1));
+    }
 }

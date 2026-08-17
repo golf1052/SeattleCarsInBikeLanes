@@ -10,7 +10,7 @@
                Text="Tap the map where this happened."
                Padding="16,12" />
 
-        <maps:Map x:Name="Map" Grid.Row="1" IsShowingUser="True" />
+        <maps:Map x:Name="Map" Grid.Row="1" />
 
         <Grid Grid.Row="2" ColumnDefinitions="*, *" Padding="16" ColumnSpacing="12">
             <Button Grid.Column="0" Text="Cancel" Clicked="CancelClicked" />

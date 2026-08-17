@@ -288,11 +288,11 @@
                    Padding="10"
                    IsVisible="{Binding StatusMessage, Converter={StaticResource IsNotNullConverter}}" />
 
-            <Label Text="The app can only see the photos you've shared with it, so its album is hidden. Allow access to all photos in Settings to use the camera roll here."
+            <Label Text="{Binding PhotoAccessMessage}"
                    TextColor="White"
                    BackgroundColor="#CC7A5A1F"
                    Padding="10"
-                   IsVisible="{Binding HasLimitedPhotoAccess}" />
+                   IsVisible="{Binding PhotoAccessMessage, Converter={StaticResource IsNotNullConverter}}" />
 
             <Label Text="No camera is available, or camera access was not granted. You can still import photos from your library."
                    TextColor="White"

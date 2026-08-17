@@ -42,8 +42,14 @@ public partial class ReportPage : ContentPage, IQueryAttributable
         if (query.TryGetValue(PhotosParameter, out object? value) &&
             value is IReadOnlyList<ReportPhoto> photos)
         {
+            bool changed = Photos is null ||
+                !Photos.Select(photo => photo.Id)
+                    .SequenceEqual(photos.Select(photo => photo.Id), StringComparer.Ordinal);
             Photos = photos;
-            loaded = false;
+            if (changed)
+            {
+                loaded = false;
+            }
         }
     }
 

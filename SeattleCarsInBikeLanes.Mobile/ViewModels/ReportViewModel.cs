@@ -14,7 +14,7 @@ public sealed partial class ReportViewModel : ObservableObject
 {
     private readonly IUploadService uploadService;
     private readonly IUploadQueue uploadQueue;
-    private readonly IPhotoLibraryService photoLibrary;
+    private readonly IPhotoCatalog photoCatalog;
     private readonly IAuthService authService;
     private readonly ILogger<ReportViewModel> logger;
 
@@ -22,13 +22,13 @@ public sealed partial class ReportViewModel : ObservableObject
 
     public ReportViewModel(IUploadService uploadService,
         IUploadQueue uploadQueue,
-        IPhotoLibraryService photoLibrary,
+    IPhotoCatalog photoCatalog,
         IAuthService authService,
         ILogger<ReportViewModel> logger)
     {
         this.uploadService = uploadService;
         this.uploadQueue = uploadQueue;
-        this.photoLibrary = photoLibrary;
+        this.photoCatalog = photoCatalog;
         this.authService = authService;
         this.logger = logger;
 
@@ -108,7 +108,7 @@ public sealed partial class ReportViewModel : ObservableObject
         Thumbnails.Clear();
         foreach (ReportPhoto photo in photos)
         {
-            byte[]? thumbnail = await photoLibrary.GetThumbnailAsync(photo.Id, 480);
+            byte[]? thumbnail = await photoCatalog.GetThumbnailAsync(photo.Id, 480);
             if (thumbnail is not null)
             {
                 Thumbnails.Add(ImageSource.FromStream(() => new MemoryStream(thumbnail)));

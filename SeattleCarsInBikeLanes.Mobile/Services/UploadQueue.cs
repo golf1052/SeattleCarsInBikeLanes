@@ -125,7 +125,6 @@ public sealed class UploadQueue : IUploadQueue
     private readonly IUploadQueueStore store;
     private readonly IUploadService uploadService;
     private readonly IPhotoCatalog photoCatalog;
-    private readonly IPhotoLibraryService photoLibrary;
     private readonly IAuthService authService;
     private readonly IBackgroundWorkScope backgroundWork;
     private readonly ILogger<UploadQueue> logger;
@@ -154,18 +153,16 @@ public sealed class UploadQueue : IUploadQueue
 
     private bool started;
 
-    public UploadQueue(IUploadQueueStore store,
-        IUploadService uploadService,
-        IPhotoCatalog photoCatalog,
-        IPhotoLibraryService photoLibrary,
-        IAuthService authService,
+    public UploadQueue(    IUploadQueueStore store,
+    IUploadService uploadService,
+    IPhotoCatalog photoCatalog,
+    IAuthService authService,
         IBackgroundWorkScope backgroundWork,
         ILogger<UploadQueue> logger)
     {
         this.store = store;
         this.uploadService = uploadService;
         this.photoCatalog = photoCatalog;
-        this.photoLibrary = photoLibrary;
         this.authService = authService;
         this.backgroundWork = backgroundWork;
         this.logger = logger;
@@ -414,7 +411,7 @@ public sealed class UploadQueue : IUploadQueue
             List<UploadPhoto> toUpload = new List<UploadPhoto>(report.Photos.Count);
             foreach (ReportPhoto photo in report.Photos)
             {
-                byte[]? jpeg = await photoLibrary.GetPhotoDataAsync(photo.Id, cancellationToken);
+                byte[]? jpeg = await photoCatalog.GetPhotoDataAsync(photo.Id, cancellationToken);
                 if (jpeg is null)
                 {
                     // The photo was deleted between queueing and sending. No amount of retrying
@@ -676,7 +673,8 @@ public sealed class UploadQueue : IUploadQueue
             Photos = report.Photos.Select(photo => new QueuedPhoto()
             {
                 Id = photo.Id,
-                Imported = photo.Origin == PhotoOrigin.Imported
+                Imported = photo.Origin is PhotoOrigin.Imported or PhotoOrigin.PrivateImported,
+                Private = photo.Origin is PhotoOrigin.PrivateCaptured or PhotoOrigin.PrivateImported
             }).ToList(),
             Draft = report.Draft
         }),
@@ -702,7 +700,13 @@ public sealed class UploadQueue : IUploadQueue
             Photos = payload.Photos.Select(photo => new ReportPhoto()
             {
                 Id = photo.Id,
-                Origin = photo.Imported ? PhotoOrigin.Imported : PhotoOrigin.Captured
+                Origin = (photo.Imported, photo.Private) switch
+                {
+                    (false, false) => PhotoOrigin.Captured,
+                    (true, false) => PhotoOrigin.Imported,
+                    (false, true) => PhotoOrigin.PrivateCaptured,
+                    (true, true) => PhotoOrigin.PrivateImported
+                }
             }).ToList(),
             Draft = payload.Draft,
             CreatedAt = record.CreatedAt,

@@ -20,7 +20,8 @@ public class QueuedReportSerializerTests
             Photos = new List<QueuedPhoto>()
             {
                 new QueuedPhoto() { Id = "asset-1", Imported = false },
-                new QueuedPhoto() { Id = "asset-2", Imported = true }
+                new QueuedPhoto() { Id = "asset-2", Imported = true },
+                new QueuedPhoto() { Id = "asset-3", Imported = true, Private = true }
             },
             Draft = new ReportDraft()
             {
@@ -37,13 +38,16 @@ public class QueuedReportSerializerTests
         QueuedReportPayload? read = QueuedReportSerializer.Deserialize(QueuedReportSerializer.Serialize(payload));
 
         Assert.NotNull(read);
-        Assert.Equal(2, read.Photos.Count);
+        Assert.Equal(3, read.Photos.Count);
         Assert.Equal("asset-1", read.Photos[0].Id);
         Assert.False(read.Photos[0].Imported);
 
         // Which store a photo's submitted flag goes in depends on this, and by the time a queued
         // report succeeds the roll it came from is long gone.
         Assert.True(read.Photos[1].Imported);
+        Assert.False(read.Photos[1].Private);
+        Assert.True(read.Photos[2].Imported);
+        Assert.True(read.Photos[2].Private);
 
         Assert.Equal(3, read.Draft.NumberOfCars);
         Assert.Equal(new DateTime(2025, 6, 1, 9, 30, 0), read.Draft.TakenAt);
@@ -52,6 +56,19 @@ public class QueuedReportSerializerTests
         Assert.True(read.Draft.UserSpecifiedLocation);
         Assert.True(read.Draft.Attribute);
         Assert.Equal("Pine St", read.Draft.CrossStreet);
+    }
+
+    [Fact]
+    public void ReadsRowsWrittenBeforePrivateStorageWasAdded()
+    {
+        const string json =
+            """{"photos":[{"id":"captured","imported":false},{"id":"imported","imported":true}],"draft":{}}""";
+
+        QueuedReportPayload? read = QueuedReportSerializer.Deserialize(json);
+
+        Assert.NotNull(read);
+        Assert.False(read.Photos[0].Private);
+        Assert.False(read.Photos[1].Private);
     }
 
     [Fact]

@@ -20,11 +20,21 @@ public sealed class QueuedPhoto
     /// Whether the photo came from the user's library rather than the app's camera.
     /// </summary>
     /// <remarks>
-    /// Kept because the two are marked as submitted in different places, and by the time a queued
-    /// report succeeds the roll it came from is long gone.
+    /// Kept because imported assets and app-owned photos are marked as submitted differently, and
+    /// by the time a queued report succeeds the roll it came from is long gone.
     /// </remarks>
     [JsonPropertyName("imported")]
     public bool Imported { get; set; }
+
+    /// <summary>
+    /// Whether the JPEG lives in the app's persistent private store rather than the system library.
+    /// </summary>
+    /// <remarks>
+    /// Added as a separate boolean so rows written by older versions, which only carried
+    /// <see cref="Imported"/>, continue to deserialize with the same meaning.
+    /// </remarks>
+    [JsonPropertyName("private")]
+    public bool Private { get; set; }
 }
 
 /// <summary>

@@ -23,7 +23,8 @@ public sealed partial class PhotoItemViewModel : ObservableObject
 
     public string Id => Photo.Id;
 
-    public bool IsImported => Photo.Origin == PhotoOrigin.Imported;
+    public bool IsImported =>
+        Photo.Origin is PhotoOrigin.Imported or PhotoOrigin.PrivateImported;
 
     [ObservableProperty]
     public partial ImageSource? Thumbnail { get; set; }
@@ -406,7 +407,7 @@ public sealed partial class CameraViewModel : ObservableObject
     /// appear empty. The user has to be told, or the app just looks broken.
     /// </remarks>
     [ObservableProperty]
-    public partial bool HasLimitedPhotoAccess { get; set; }
+    public partial string? PhotoAccessMessage { get; set; }
 
     /// <summary>
     /// Whether this device has a camera to preview.
@@ -595,14 +596,24 @@ public sealed partial class CameraViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            PhotoLibraryAccess access = await photoLibrary.CheckAccessAsync();
-            HasLimitedPhotoAccess = access == PhotoLibraryAccess.Limited;
-
-            if (access is PhotoLibraryAccess.Denied or PhotoLibraryAccess.NotDetermined)
+            PhotoLibraryAccess access;
+            try
             {
-                StatusMessage = "Cars in Bike Lanes needs access to your photos to keep the reports you take.";
-                return;
+                access = await photoLibrary.CheckAccessAsync();
             }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Could not check photo-library access.");
+                access = PhotoLibraryAccess.Denied;
+            }
+            PhotoAccessMessage = access switch
+            {
+                PhotoLibraryAccess.Limited =>
+                    "Photo access is limited. New camera photos will be kept only inside this app. You can still import photos with the system picker.",
+                PhotoLibraryAccess.Denied or PhotoLibraryAccess.NotDetermined =>
+                    "Photo access is off. New camera photos will be kept only inside this app. You can still import photos with the system picker.",
+                _ => null
+            };
 
             StatusMessage = null;
             await uploadService.RefreshLimitsAsync();
@@ -703,7 +714,16 @@ public sealed partial class CameraViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ToggleRoll() => IsRollVisible = !IsRollVisible;
+    private void ToggleRoll()
+    {
+        if (!HasCamera)
+        {
+            IsRollVisible = true;
+            return;
+        }
+
+        IsRollVisible = !IsRollVisible;
+    }
 
     [RelayCommand]
     private void ToggleReportedPhotos() => AreReportedPhotosExpanded = !AreReportedPhotosExpanded;
@@ -868,11 +888,14 @@ public sealed partial class CameraViewModel : ObservableObject
     {
         IReadOnlyList<PhotoItemViewModel> selected = SelectedPhotos;
         int imported = selected.Count(photo => photo.IsImported);
-        int captured = selected.Count - imported;
+        int privateCaptured = selected.Count(
+            photo => photo.Photo.Origin == PhotoOrigin.PrivateCaptured);
+        int captured = selected.Count - imported - privateCaptured;
         return PhotoDeletionConfirmation.Build(
             captured,
             imported,
-            photoLibrary.ConfirmsCapturedPhotoDeletion);
+            photoLibrary.ConfirmsCapturedPhotoDeletion,
+            privateCaptured);
     }
 
     /// <summary>
@@ -1122,7 +1145,7 @@ public sealed partial class CameraViewModel : ObservableObject
             return;
         }
 
-        byte[]? jpeg = await photoLibrary.GetThumbnailAsync(item.Id, ThumbnailPixelSize);
+        byte[]? jpeg = await photoCatalog.GetThumbnailAsync(item.Id, ThumbnailPixelSize);
         if (jpeg is not null)
         {
             item.Thumbnail = ImageSource.FromStream(() => new MemoryStream(jpeg));

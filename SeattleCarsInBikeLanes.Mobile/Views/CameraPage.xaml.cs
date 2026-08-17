@@ -424,6 +424,12 @@ public partial class CameraPage : ContentPage
 
         viewModel.IsCameraReady = false;
 
+        if (camera is not null && !await cameraReadiness.CheckCameraPermissionAsync())
+        {
+            DisableCamera();
+            return;
+        }
+
         if (camera is null)
         {
             // The toolkit starts the preview itself when the view's handler connects.
@@ -670,6 +676,33 @@ public partial class CameraPage : ContentPage
         UpdateSelectedCamera(camera.SelectedCamera);
     }
 
+    private void DisableCamera()
+    {
+        CancelPreviewReadyWait();
+        HideFocusReticle();
+        viewModel.IsCameraReady = false;
+        viewModel.HasCamera = false;
+        isPreviewRunning = false;
+        selectableCameras = [];
+        currentCameraIndex = 0;
+        SwitchCameraButton.IsEnabled = false;
+
+        if (camera is null)
+        {
+            return;
+        }
+
+        if (camera.Handler is not null)
+        {
+            camera.StopCameraPreview();
+        }
+
+        camera.MediaCaptured -= CameraMediaCaptured;
+        camera.PropertyChanged -= CameraPropertyChanged;
+        CameraHost.Remove(camera);
+        camera = null;
+    }
+
     private bool IsPreviewExpected => isPageVisible && isWindowActive;
 
     private CancellationTokenSource BeginPreviewReadyWait()
@@ -732,6 +765,7 @@ public partial class CameraPage : ContentPage
         try
         {
             await StartPreviewAsync();
+            await viewModel.LoadAsync();
         }
         catch (OperationCanceledException) when (!IsPreviewExpected)
         {

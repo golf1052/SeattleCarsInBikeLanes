@@ -5,12 +5,14 @@ public static class PhotoDeletionConfirmation
     public static string? Build(
         int capturedCount,
         int importedCount,
-        bool platformConfirmsCapturedDeletion)
+        bool platformConfirmsCapturedDeletion,
+        int privateCapturedCount = 0)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(capturedCount);
         ArgumentOutOfRangeException.ThrowIfNegative(importedCount);
+        ArgumentOutOfRangeException.ThrowIfNegative(privateCapturedCount);
 
-        if (importedCount == 0 &&
+        if (importedCount == 0 && privateCapturedCount == 0 &&
             (capturedCount == 0 || platformConfirmsCapturedDeletion))
         {
             return null;
@@ -23,15 +25,26 @@ public static class PhotoDeletionConfirmation
             _ => $"{importedCount} imported photos will be removed from Cars in Bike Lanes but kept in your library."
         };
 
-        if (capturedCount == 0)
+        string? privatePart = privateCapturedCount switch
+        {
+            0 => null,
+            1 => "1 photo kept privately in the app will be deleted.",
+            _ => $"{privateCapturedCount} photos kept privately in the app will be deleted."
+        };
+
+        if (capturedCount == 0 && privatePart is null)
         {
             return importedPart;
         }
 
-        string capturedPart = capturedCount == 1
-            ? "1 photo taken in the app will be deleted from your library."
-            : $"{capturedCount} photos taken in the app will be deleted from your library.";
+        string? capturedPart = capturedCount switch
+        {
+            0 => null,
+            1 => "1 photo taken in the app will be deleted from your library.",
+            _ => $"{capturedCount} photos taken in the app will be deleted from your library."
+        };
 
-        return importedPart is null ? capturedPart : $"{capturedPart} {importedPart}";
+        return string.Join(" ", new[] { capturedPart, privatePart, importedPart }
+            .Where(part => part is not null));
     }
 }

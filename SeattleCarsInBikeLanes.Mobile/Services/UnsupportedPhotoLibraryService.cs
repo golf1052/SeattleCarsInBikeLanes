@@ -47,8 +47,10 @@ public sealed class UnsupportedPhotoLibraryService : IPhotoLibraryService
         CancellationToken cancellationToken = default) =>
         Task.FromResult(false);
 
-    public Task<IReadOnlyList<string>> PickPhotosAsync(int limit, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+    public Task<IReadOnlyList<PickedPhoto>> PickPhotosAsync(
+        int limit,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<PickedPhoto>>(Array.Empty<PickedPhoto>());
 
     public Task ReleasePhotoAccessAsync(IReadOnlyList<string> ids,
         CancellationToken cancellationToken = default) =>

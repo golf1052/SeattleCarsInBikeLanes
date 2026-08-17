@@ -12,22 +12,19 @@ public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly IAuthService authService;
     private readonly IDeviceIdentityService deviceIdentity;
-    private readonly IImportedPhotoStore importedPhotos;
-    private readonly IPhotoLibraryService photoLibrary;
+    private readonly IPhotoCatalog photoCatalog;
     private readonly IUploadQueue uploadQueue;
     private readonly ILogger<SettingsViewModel> logger;
 
     public SettingsViewModel(IAuthService authService,
         IDeviceIdentityService deviceIdentity,
-        IImportedPhotoStore importedPhotos,
-    IPhotoLibraryService photoLibrary,
-    IUploadQueue uploadQueue,
-    ILogger<SettingsViewModel> logger)
+        IPhotoCatalog photoCatalog,
+        IUploadQueue uploadQueue,
+        ILogger<SettingsViewModel> logger)
     {
         this.authService = authService;
         this.deviceIdentity = deviceIdentity;
-        this.importedPhotos = importedPhotos;
-        this.photoLibrary = photoLibrary;
+        this.photoCatalog = photoCatalog;
         this.uploadQueue = uploadQueue;
         this.logger = logger;
 
@@ -97,23 +94,22 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task ClearImportedPhotosAsync()
     {
-        IReadOnlyList<ImportedPhoto> imported = await importedPhotos.GetAllAsync();
-        HashSet<string> queued = uploadQueue.Reports
-            .SelectMany(report => report.Photos)
-            .Select(photo => photo.Id)
-            .ToHashSet(StringComparer.Ordinal);
-        List<string> removable = imported
-            .Select(photo => photo.LocalIdentifier)
-            .Where(id => !queued.Contains(id))
-            .ToList();
-
-        await importedPhotos.RemoveAsync(removable);
-        await photoLibrary.ReleasePhotoAccessAsync(removable);
-
-        int retained = imported.Count - removable.Count;
-        StatusMessage = retained == 0
-            ? "Imported photos removed from the app."
-            : $"{removable.Count} imported photos removed; {retained} kept until queued reports finish.";
+        try
+        {
+            HashSet<string> queued = uploadQueue.Reports
+                .SelectMany(report => report.Photos)
+                .Select(photo => photo.Id)
+                .ToHashSet(StringComparer.Ordinal);
+            ForgetImportedPhotosResult result = await photoCatalog.ForgetImportedPhotosAsync(queued);
+            StatusMessage = result.Retained == 0
+                ? "Imported photos removed from the app."
+                : $"{result.Removed} imported photos removed; {result.Retained} kept until queued reports finish.";
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to clear imported photos.");
+            StatusMessage = "Couldn't remove imported photos.";
+        }
     }
 
     [RelayCommand]

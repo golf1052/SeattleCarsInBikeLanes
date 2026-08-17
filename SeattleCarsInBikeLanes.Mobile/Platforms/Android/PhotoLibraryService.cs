@@ -385,7 +385,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         }
     }
 
-    public async Task<IReadOnlyList<string>> PickPhotosAsync(int limit,
+    public async Task<IReadOnlyList<PickedPhoto>> PickPhotosAsync(int limit,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -393,7 +393,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         Task<IReadOnlyList<AndroidUri>> result = PhotoLibraryActivityCoordinator.BeginPick();
         if (result.IsCompleted)
         {
-            return Array.Empty<string>();
+            return Array.Empty<PickedPhoto>();
         }
 
         try
@@ -411,7 +411,9 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
             });
 
             IReadOnlyList<AndroidUri> uris = await result.WaitAsync(cancellationToken);
-            return uris.Select(uri => uri.ToString()!).ToList();
+            return uris
+                .Select(uri => new PickedPhoto(uri.ToString(), null))
+                .ToList();
         }
         catch (OperationCanceledException)
         {
@@ -422,7 +424,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         {
             PhotoLibraryActivityCoordinator.CompletePick(Array.Empty<AndroidUri>());
             logger.LogError(ex, "Failed to show the Android photo picker.");
-            return Array.Empty<string>();
+            return Array.Empty<PickedPhoto>();
         }
     }
 

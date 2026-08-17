@@ -4,6 +4,7 @@ using CommunityToolkit.Maui.Core.Handlers;
 using Microsoft.Maui.Handlers;
 using SeattleCarsInBikeLanes.Mobile.Core.Metadata;
 using SeattleCarsInBikeLanes.Mobile.Core.Permissions;
+using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 using SeattleCarsInBikeLanes.Mobile.Services;
 using SeattleCarsInBikeLanes.Mobile.ViewModels;
 using SeattleCarsInBikeLanes.Mobile.Views;
@@ -120,6 +121,10 @@ public static class MauiProgram
 
 		services.AddSingleton<IImportedPhotoStore>(_ => new ImportedPhotoStore(
 			Path.Combine(FileSystem.AppDataDirectory, "importedphotos.db3")));
+		services.AddSingleton<IPrivatePhotoContent, PrivatePhotoContent>();
+		services.AddSingleton<IPrivatePhotoStore>(serviceProvider => new PrivatePhotoStore(
+			Path.Combine(FileSystem.AppDataDirectory, "photos"),
+			serviceProvider.GetRequiredService<IPrivatePhotoContent>()));
 
 		services.AddSingleton<IUploadQueueStore>(_ => new UploadQueueStore(
 			Path.Combine(FileSystem.AppDataDirectory, "uploadqueue.db3")));

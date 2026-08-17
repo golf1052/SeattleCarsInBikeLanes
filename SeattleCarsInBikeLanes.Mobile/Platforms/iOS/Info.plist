@@ -49,10 +49,10 @@
 	<string>Take photos of cars parked in bike lanes so you can report them without leaving the app.</string>
 
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Photos you take are saved to your "Cars in Bike Lanes" album, and you can pick existing photos to report.</string>
+	<string>Saves photos you take to your "Cars in Bike Lanes" album. If you decline, they stay privately inside the app instead.</string>
 
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Photos you take are saved to your "Cars in Bike Lanes" album, and you can pick existing photos to report.</string>
+	<string>Shows photos saved in your "Cars in Bike Lanes" album. You can still import individual photos with the system picker if you decline.</string>
 
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Records where a photo was taken so your report shows the right location on the map.</string>

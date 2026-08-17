@@ -1,4 +1,5 @@
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
+using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 
 namespace SeattleCarsInBikeLanes.Mobile.Services;
 
@@ -8,15 +9,26 @@ namespace SeattleCarsInBikeLanes.Mobile.Services;
 public enum PhotoOrigin
 {
     /// <summary>
-    /// Taken with the app's camera. The app created the asset, so it may edit it without the
-    /// system asking the user for permission each time.
+    /// Taken with the app's camera and saved to the system photo library. The app created the
+    /// asset, so it may edit it without the system asking the user for permission each time.
     /// </summary>
     Captured,
 
     /// <summary>
     /// Taken with the system camera and imported. The app does not own the asset.
     /// </summary>
-    Imported
+    Imported,
+
+    /// <summary>
+    /// Taken with the app's camera and kept in the app's private persistent storage because the
+    /// system photo library was unavailable.
+    /// </summary>
+    PrivateCaptured,
+
+    /// <summary>
+    /// Copied from the system picker into the app's private persistent storage.
+    /// </summary>
+    PrivateImported
 }
 
 /// <summary>
@@ -24,6 +36,17 @@ public enum PhotoOrigin
 /// </summary>
 /// <param name="Id">The Photos framework local identifier.</param>
 public sealed record PhotoAsset(string Id, DateTimeOffset? CreatedAt, GeoPosition? Location);
+
+/// <summary>
+/// A result returned by the system photo picker.
+/// </summary>
+/// <param name="LibraryId">
+/// A stable identifier the platform lets the app retain, when one is available.
+/// </param>
+/// <param name="Jpeg">
+/// A private copy supplied by the picker when broad photo-library access is unavailable.
+/// </param>
+public sealed record PickedPhoto(string? LibraryId, byte[]? Jpeg);
 
 /// <summary>
 /// The level of access the user has granted to their photo library.
@@ -44,12 +67,12 @@ public enum PhotoLibraryAccess
 }
 
 /// <summary>
-/// The device's photo library, which is where this app keeps everything.
+/// The device's system photo library.
 /// </summary>
 /// <remarks>
-/// The app deliberately has no photo storage of its own. Captured photos are written into a
-/// dedicated album so they are visible and manageable in Photos, and imported photos are referenced
-/// where they already live rather than copied.
+/// Captured photos are written into a dedicated album when access is available, and imported photos
+/// are referenced where they already live rather than copied. <see cref="IPrivatePhotoStore"/>
+/// is the persistent fallback when the user does not grant broad library access.
 /// </remarks>
 public interface IPhotoLibraryService
 {
@@ -104,7 +127,7 @@ public interface IPhotoLibraryService
     /// Shows the system photo picker.
     /// </summary>
     /// <returns>The identifiers of the chosen assets.</returns>
-    Task<IReadOnlyList<string>> PickPhotosAsync(int limit, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<PickedPhoto>> PickPhotosAsync(int limit, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Releases persistent access to imported photos the app no longer tracks.

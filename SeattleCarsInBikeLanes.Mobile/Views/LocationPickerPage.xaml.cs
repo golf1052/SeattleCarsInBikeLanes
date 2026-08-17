@@ -19,11 +19,15 @@ public partial class LocationPickerPage : ContentPage
     private GeoPosition? selected;
     private bool closing;
 
-    private LocationPickerPage(GeoPosition? initial, TaskCompletionSource<GeoPosition?> completion)
+    private LocationPickerPage(
+        GeoPosition? initial,
+        bool showUserLocation,
+        TaskCompletionSource<GeoPosition?> completion)
     {
         InitializeComponent();
 
         this.completion = completion;
+        Map.IsShowingUser = showUserLocation;
 
         GeoPosition center = initial ?? BoundingBox.Seattle.Center;
         Map.MoveToRegion(MapSpan.FromCenterAndRadius(
@@ -44,8 +48,13 @@ public partial class LocationPickerPage : ContentPage
     /// <returns>The chosen position, or null if the user backed out.</returns>
     public static async Task<GeoPosition?> PickAsync(GeoPosition? initial)
     {
+        PermissionStatus locationPermission =
+            await Permissions.CheckStatusAsync<Permissions.LocationWhenInUse>();
         TaskCompletionSource<GeoPosition?> completion = new TaskCompletionSource<GeoPosition?>();
-        LocationPickerPage page = new LocationPickerPage(initial, completion);
+        LocationPickerPage page = new LocationPickerPage(
+            initial,
+            locationPermission == PermissionStatus.Granted,
+            completion);
 
         await Shell.Current.Navigation.PushModalAsync(new NavigationPage(page));
         return await completion.Task;
