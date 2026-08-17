@@ -120,7 +120,7 @@ let privateKey = sessionRequest.result.value.dpopKey.keyPair.privateKey;
 
 ## Identifier
 
-golf1052.SeattleCarsInBikeLanes.Mobile
+com.golf1052.SeattleCarsInBikeLanes.Mobile
 
 ## Mobile platform parity
 

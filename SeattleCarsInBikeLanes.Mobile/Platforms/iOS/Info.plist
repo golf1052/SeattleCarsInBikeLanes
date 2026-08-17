@@ -42,7 +42,7 @@
 	     BackgroundUploadTask.Identifier. -->
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>golf1052.SeattleCarsInBikeLanes.Mobile.uploadqueue</string>
+		<string>com.golf1052.SeattleCarsInBikeLanes.Mobile.uploadqueue</string>
 	</array>
 
 	<key>NSCameraUsageDescription</key>

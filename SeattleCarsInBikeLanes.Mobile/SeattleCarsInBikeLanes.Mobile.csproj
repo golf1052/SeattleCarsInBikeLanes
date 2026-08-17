@@ -30,7 +30,7 @@
 		<ApplicationTitle>Cars In Bike Lanes</ApplicationTitle>
 
 		<!-- App Identifier -->
-		<ApplicationId>golf1052.SeattleCarsInBikeLanes.Mobile</ApplicationId>
+		<ApplicationId>com.golf1052.SeattleCarsInBikeLanes.Mobile</ApplicationId>
 
 		<!-- Versions -->
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>

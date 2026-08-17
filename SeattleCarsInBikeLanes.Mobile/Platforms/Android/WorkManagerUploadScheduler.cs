@@ -11,7 +11,7 @@ namespace SeattleCarsInBikeLanes.Mobile.Platforms.Android;
 public sealed class WorkManagerUploadScheduler : IBackgroundUploadScheduler
 {
     internal const string UniqueWorkName =
-        "golf1052.SeattleCarsInBikeLanes.Mobile.uploadqueue";
+        "com.golf1052.SeattleCarsInBikeLanes.Mobile.uploadqueue";
 
     private const string WorkTag = UniqueWorkName + ".worker";
     private const long InitialBackoffSeconds = 30;

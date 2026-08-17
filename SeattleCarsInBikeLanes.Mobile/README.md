@@ -18,7 +18,7 @@ by Git and imported automatically by the project. Alternatively, set
 `GOOGLE_MAPS_API_KEY` in the environment that launches the build.
 
 Restrict the key in Google Cloud to the Android application
-`golf1052.SeattleCarsInBikeLanes.Mobile` and the signing certificate used for that
+`com.golf1052.SeattleCarsInBikeLanes.Mobile` and the signing certificate used for that
 build. The key is injected into the generated manifest and must not be committed.
 
 Android 10 (API 29) or newer is required. Photo capture uses scoped MediaStore
@@ -47,8 +47,12 @@ Run this matrix on a physical Android 10+ device before merging mobile changes:
 
 | Area | Expected result |
 | --- | --- |
-| First launch | Camera permission is requested once; denying it shows an actionable message rather than crashing |
+| First launch on iOS | Camera, photo-library, and when-in-use location permissions are requested sequentially before those features are used; denying any prompt does not crash or block unrelated startup work |
+| First launch on Android | Camera and location permissions are requested sequentially; no storage permission is requested because captured photos use scoped `MediaStore` storage and imports use the system picker |
+| Later launch after denial | Previously attempted permissions are status-checked but not automatically requested again; permissions granted later in system Settings are recognized |
 | Capture | Each successful shot immediately flashes the preview and produces one haptic click before its thumbnail appears; a non-black photo is saved under `Pictures/Cars in Bike Lanes`, appears in the app roll, and remains after process restart |
+| Orientation and preview | The center-cropped preview fills the usable camera body in portrait and both landscape rotations without entering the status bar or display cutout; the full control rail is horizontal at the screen bottom in portrait and vertical on the physical-bottom side in landscape, the zoom pill stays next to the shutter, all controls remain clear of system insets and upright, and rotating does not restart the preview |
+| Landscape capture | Photos taken in both landscape rotations display upright in the thumbnail and report preview and retain readable EXIF orientation |
 | Metadata | A captured photo retains orientation, capture time, GPS when available, and the Cars in Bike Lanes XMP packet |
 | Import | Up to four images can be selected with the system picker and remain readable after restarting the app |
 | Thumbnails | Captured and imported images render in the roll and report preview |
@@ -82,3 +86,8 @@ differences must be documented here and in the pull request.
 Current intentional difference: Android uses CameraX continuous autofocus
 instead of the iOS tap-to-focus override because the camera toolkit does not
 expose Android's `CameraControl`.
+
+Camera controls otherwise have orientation parity. iOS interface orientation
+and Android display rotation use different native conventions, so each platform
+normalizes those values to the phone's physical bottom edge before the shared
+camera layout places the control rail.

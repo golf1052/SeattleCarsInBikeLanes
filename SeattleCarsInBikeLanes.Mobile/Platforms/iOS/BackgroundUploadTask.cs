@@ -27,7 +27,7 @@ public static class BackgroundUploadTask
     /// Also listed under BGTaskSchedulerPermittedIdentifiers in Info.plist. iOS refuses to register
     /// a task identifier that is not declared there.
     /// </summary>
-    public const string Identifier = "golf1052.SeattleCarsInBikeLanes.Mobile.uploadqueue";
+    public const string Identifier = "com.golf1052.SeattleCarsInBikeLanes.Mobile.uploadqueue";
 
     /// <summary>
     /// How long the system is asked to wait before it considers running the task.
