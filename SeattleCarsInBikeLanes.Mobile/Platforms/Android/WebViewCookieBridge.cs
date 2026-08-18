@@ -1,6 +1,6 @@
 using System.Net;
 using Android.Webkit;
-using SeattleCarsInBikeLanes.Mobile.Core.Authentication;
+using Microsoft.Net.Http.Headers;
 using SeattleCarsInBikeLanes.Mobile.Services;
 
 namespace SeattleCarsInBikeLanes.Mobile.Platforms.Android;
@@ -23,11 +23,19 @@ public sealed class WebViewCookieBridge : IWebViewCookieBridge
             try
             {
                 string? header = CookieManager.Instance?.GetCookie(siteUri.AbsoluteUri);
-                foreach ((string name, string value) in CookieHeaderParser.Parse(header))
+                IList<CookieHeaderValue> cookies = string.IsNullOrWhiteSpace(header)
+                    ? []
+                    : CookieHeaderValue.ParseList([header]);
+
+                foreach (CookieHeaderValue cookie in cookies)
                 {
                     try
                     {
-                        container.Add(new Cookie(name, value, "/", siteUri.Host)
+                        container.Add(new Cookie(
+                            cookie.Name.ToString(),
+                            cookie.Value.ToString(),
+                            "/",
+                            siteUri.Host)
                         {
                             Secure = siteUri.Scheme.Equals(Uri.UriSchemeHttps,
                                 StringComparison.OrdinalIgnoreCase)
@@ -71,8 +79,12 @@ public sealed class WebViewCookieBridge : IWebViewCookieBridge
 
                 string url = siteUri.AbsoluteUri;
                 string? header = manager.GetCookie(url);
-                foreach (string name in CookieHeaderParser.Parse(header)
-                    .Select(cookie => cookie.Key)
+                IList<CookieHeaderValue> cookies = string.IsNullOrWhiteSpace(header)
+                    ? []
+                    : CookieHeaderValue.ParseList([header]);
+
+                foreach (string name in cookies
+                    .Select(cookie => cookie.Name.ToString())
                     .Distinct(StringComparer.Ordinal))
                 {
                     string expired =
