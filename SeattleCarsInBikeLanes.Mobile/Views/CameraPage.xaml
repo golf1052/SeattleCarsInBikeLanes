@@ -60,13 +60,177 @@
 
     <Grid x:Name="CameraLayout"
           RowDefinitions="*, Auto, Auto"
-          ColumnDefinitions="*"
+          ColumnDefinitions="Auto, *, Auto"
           SafeAreaEdges="Container">
 
+        <VisualStateManager.VisualStateGroups>
+           <VisualStateGroup x:Name="CameraControlLayoutStates">
+               <VisualState x:Name="Portrait">
+                   <VisualState.Setters>
+                       <Setter TargetName="CameraBody" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBody" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Row" Value="2" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Padding" Value="16,8,16,16" />
+                       <Setter TargetName="CameraControlRail" Property="RowSpacing" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="ColumnSpacing" Value="12" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumWidthRequest" Value="-1" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumHeightRequest" Value="72" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Column" Value="0" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="HorizontalOptions" Value="Start" />
+                       <Setter TargetName="LatestThumbnailButton" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="CaptureControls" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Row" Value="2" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="ZoomPill" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="ZoomPill" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="ZoomPill" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="VerticalOptions" Value="Start" />
+                       <Setter TargetName="ZoomPill" Property="TranslationX" Value="0" />
+                       <Setter TargetName="ZoomPill" Property="TranslationY" Value="-44" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Column" Value="2" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="StackLayout.Orientation" Value="Horizontal" />
+                       <Setter TargetName="CameraActionButtons" Property="HorizontalOptions" Value="End" />
+                       <Setter TargetName="CameraActionButtons" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.ColumnSpan" Value="1" />
+                   </VisualState.Setters>
+               </VisualState>
+
+               <VisualState x:Name="LandscapeRailLeft">
+                   <VisualState.Setters>
+                       <Setter TargetName="CameraBody" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBody" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Column" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Padding" Value="16,16,8,16" />
+                       <Setter TargetName="CameraControlRail" Property="RowSpacing" Value="12" />
+                       <Setter TargetName="CameraControlRail" Property="ColumnSpacing" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumWidthRequest" Value="72" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumHeightRequest" Value="-1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="LatestThumbnailButton" Property="VerticalOptions" Value="Start" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="CaptureControls" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Column" Value="0" />
+                       <Setter TargetName="ZoomPill" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="ZoomPill" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="ZoomPill" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="TranslationX" Value="70" />
+                       <Setter TargetName="ZoomPill" Property="TranslationY" Value="0" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Row" Value="2" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="StackLayout.Orientation" Value="Vertical" />
+                       <Setter TargetName="CameraActionButtons" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="CameraActionButtons" Property="VerticalOptions" Value="End" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Column" Value="0" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.ColumnSpan" Value="3" />
+                   </VisualState.Setters>
+               </VisualState>
+
+               <VisualState x:Name="LandscapeRailRight">
+                   <VisualState.Setters>
+                       <Setter TargetName="CameraBody" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBody" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Column" Value="2" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Padding" Value="8,16,16,16" />
+                       <Setter TargetName="CameraControlRail" Property="RowSpacing" Value="12" />
+                       <Setter TargetName="CameraControlRail" Property="ColumnSpacing" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumWidthRequest" Value="72" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumHeightRequest" Value="-1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="LatestThumbnailButton" Property="VerticalOptions" Value="Start" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="CaptureControls" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Column" Value="2" />
+                       <Setter TargetName="ZoomPill" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="ZoomPill" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="ZoomPill" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="TranslationX" Value="-70" />
+                       <Setter TargetName="ZoomPill" Property="TranslationY" Value="0" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Row" Value="2" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="StackLayout.Orientation" Value="Vertical" />
+                       <Setter TargetName="CameraActionButtons" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="CameraActionButtons" Property="VerticalOptions" Value="End" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Column" Value="0" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.ColumnSpan" Value="3" />
+                   </VisualState.Setters>
+               </VisualState>
+           </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
         <Grid x:Name="CameraBody"
-              Grid.Row="0"
-              HorizontalOptions="Fill"
-              VerticalOptions="Fill">
+             Grid.Row="0"
+             Grid.Column="1"
+             HorizontalOptions="Fill"
+             VerticalOptions="Fill">
             <!-- The camera view is added here once a camera is known to exist. Putting it in the XAML
                  unconditionally means its handler connects on load, and the toolkit throws from an
                  async void when the device has no camera, which takes the whole app down on launch. -->
@@ -227,6 +391,7 @@
 
         <VerticalStackLayout x:Name="CameraStatusPanel"
                              Grid.Row="1"
+                             Grid.Column="1"
                              Padding="12"
                              Spacing="8">
 
@@ -325,6 +490,8 @@
              buttons either side of it when the roll takes the shutter away. -->
         <Grid x:Name="CameraControlRail"
               Grid.Row="2"
+              Grid.Column="1"
+              RowDefinitions="*, Auto, *"
               ColumnDefinitions="*, Auto, *"
               Padding="16,8,16,16"
               ColumnSpacing="12"
@@ -332,6 +499,7 @@
 
             <!-- Doubles as the roll toggle and as a peek at the most recent shot. -->
             <ImageButton x:Name="LatestThumbnailButton"
+                         Grid.Row="1"
                          Grid.Column="0"
                          Source="{Binding LatestThumbnail}"
                          Aspect="AspectFill"
@@ -344,6 +512,7 @@
 
             <!-- Gives the layout code a stable shutter-sized anchor in either rail orientation. -->
             <Grid x:Name="CaptureControls"
+                  Grid.Row="1"
                   Grid.Column="1"
                   WidthRequest="72"
                   HeightRequest="72">
@@ -363,6 +532,7 @@
             </Grid>
 
             <StackLayout x:Name="CameraActionButtons"
+                         Grid.Row="1"
                          Grid.Column="2"
                          Orientation="Horizontal"
                          HorizontalOptions="End"
@@ -400,6 +570,8 @@
         <!-- Positioned relative to the shutter by the orientation layout. Keeping it at the page
              level lets the translated portion remain hit-testable outside the control rail. -->
         <Border x:Name="ZoomPill"
+                Grid.Row="2"
+                Grid.Column="1"
                 ZIndex="1"
                 HorizontalOptions="Center"
                 VerticalOptions="Start"
@@ -426,6 +598,7 @@
         </Border>
 
         <ActivityIndicator x:Name="CameraBusyIndicator"
+                           Grid.Column="1"
                            Grid.RowSpan="3"
                            IsRunning="{Binding IsBusy}"
                            IsVisible="{Binding IsBusy}"

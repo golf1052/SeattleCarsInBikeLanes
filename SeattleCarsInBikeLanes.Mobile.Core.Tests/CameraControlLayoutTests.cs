@@ -5,45 +5,55 @@ namespace SeattleCarsInBikeLanes.Mobile.Core.Tests;
 public sealed class CameraControlLayoutTests
 {
     [Fact]
-    public void PortraitUsesHorizontalBottomRail()
+    public void PortraitUsesPortraitState()
     {
-        CameraControlLayout layout = CameraControlLayoutResolver.Resolve(
+        CameraControlLayoutState state = CameraControlLayoutResolver.Resolve(
             CameraControlOrientation.Portrait);
 
-        Assert.Equal(CameraControlEdge.Bottom, layout.Edge);
-        Assert.Equal(CameraControlAxis.Horizontal, layout.Axis);
+        Assert.Equal(CameraControlLayoutState.Portrait, state);
     }
 
     [Theory]
-    [InlineData(CameraControlOrientation.LandscapePhysicalBottomLeft, CameraControlEdge.Left)]
-    [InlineData(CameraControlOrientation.LandscapePhysicalBottomRight, CameraControlEdge.Right)]
-    public void LandscapeUsesVerticalRailOnPhysicalBottom(
+    [InlineData(CameraControlOrientation.LandscapePhysicalBottomLeft,
+        CameraControlLayoutState.LandscapeRailLeft)]
+    [InlineData(CameraControlOrientation.LandscapePhysicalBottomRight,
+        CameraControlLayoutState.LandscapeRailRight)]
+    public void LandscapeUsesRailOnPhysicalBottom(
         CameraControlOrientation orientation,
-        CameraControlEdge expectedEdge)
+        CameraControlLayoutState expectedState)
     {
-        CameraControlLayout layout = CameraControlLayoutResolver.Resolve(orientation);
+        CameraControlLayoutState state = CameraControlLayoutResolver.Resolve(orientation);
 
-        Assert.Equal(expectedEdge, layout.Edge);
-        Assert.Equal(CameraControlAxis.Vertical, layout.Axis);
+        Assert.Equal(expectedState, state);
     }
 
     [Fact]
-    public void UnknownOrientationKeepsPreviousLayout()
+    public void UnknownOrientationKeepsPreviousState()
     {
-        CameraControlLayout previous =
-            new(CameraControlEdge.Right, CameraControlAxis.Vertical);
+        const CameraControlLayoutState previous = CameraControlLayoutState.LandscapeRailRight;
 
-        CameraControlLayout layout = CameraControlLayoutResolver.Resolve(null, previous);
+        CameraControlLayoutState state = CameraControlLayoutResolver.Resolve(null, previous);
 
-        Assert.Equal(previous, layout);
+        Assert.Equal(previous, state);
     }
 
     [Fact]
     public void UnknownOrientationStartsInPortrait()
     {
-        CameraControlLayout layout = CameraControlLayoutResolver.Resolve(null);
+        CameraControlLayoutState state = CameraControlLayoutResolver.Resolve(null);
 
-        Assert.Equal(CameraControlEdge.Bottom, layout.Edge);
-        Assert.Equal(CameraControlAxis.Horizontal, layout.Axis);
+        Assert.Equal(CameraControlLayoutState.Portrait, state);
+    }
+
+    [Fact]
+    public void InvalidOrientationKeepsPreviousState()
+    {
+        const CameraControlLayoutState previous = CameraControlLayoutState.LandscapeRailLeft;
+
+        CameraControlLayoutState state = CameraControlLayoutResolver.Resolve(
+            (CameraControlOrientation)int.MaxValue,
+            previous);
+
+        Assert.Equal(previous, state);
     }
 }

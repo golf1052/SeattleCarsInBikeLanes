@@ -7,36 +7,25 @@ public enum CameraControlOrientation
     LandscapePhysicalBottomRight
 }
 
-public enum CameraControlEdge
+public enum CameraControlLayoutState
 {
-    Bottom,
-    Left,
-    Right
+    Portrait,
+    LandscapeRailLeft,
+    LandscapeRailRight
 }
-
-public enum CameraControlAxis
-{
-    Horizontal,
-    Vertical
-}
-
-public readonly record struct CameraControlLayout(CameraControlEdge Edge, CameraControlAxis Axis);
 
 public static class CameraControlLayoutResolver
 {
-    private static readonly CameraControlLayout PortraitLayout =
-        new(CameraControlEdge.Bottom, CameraControlAxis.Horizontal);
-
-    public static CameraControlLayout Resolve(CameraControlOrientation? orientation,
-        CameraControlLayout? previousLayout = null) =>
+    public static CameraControlLayoutState Resolve(CameraControlOrientation? orientation,
+        CameraControlLayoutState? previousState = null) =>
         orientation switch
         {
-            CameraControlOrientation.Portrait => PortraitLayout,
+            CameraControlOrientation.Portrait => CameraControlLayoutState.Portrait,
             CameraControlOrientation.LandscapePhysicalBottomLeft =>
-                new CameraControlLayout(CameraControlEdge.Left, CameraControlAxis.Vertical),
+                CameraControlLayoutState.LandscapeRailLeft,
             CameraControlOrientation.LandscapePhysicalBottomRight =>
-                new CameraControlLayout(CameraControlEdge.Right, CameraControlAxis.Vertical),
-            null => previousLayout ?? PortraitLayout,
-            _ => previousLayout ?? PortraitLayout
+                CameraControlLayoutState.LandscapeRailRight,
+            null => previousState ?? CameraControlLayoutState.Portrait,
+            _ => previousState ?? CameraControlLayoutState.Portrait
         };
 }
