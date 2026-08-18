@@ -19,18 +19,40 @@ public sealed class CookieHeaderParserTests
     }
 
     [Fact]
-    public void DoesNotSplitQuotedSemicolon()
+    public void PreservesAllValidCookiesIncludingChunkedAuthenticationCookies()
     {
         IReadOnlyList<KeyValuePair<string, string>> cookies =
-            CookieHeaderParser.Parse("one=\"a;b\"; two=2");
+            CookieHeaderParser.Parse(
+                "theme=dark; bsky_sessionC1=first; bsky_sessionC2=second");
 
-        Assert.Equal("\"a;b\"", cookies[0].Value);
-        Assert.Equal("two", cookies[1].Key);
+        Assert.Equal(
+            [
+                new KeyValuePair<string, string>("theme", "dark"),
+                new KeyValuePair<string, string>("bsky_sessionC1", "first"),
+                new KeyValuePair<string, string>("bsky_sessionC2", "second")
+            ],
+            cookies);
+    }
+
+    [Fact]
+    public void SkipsMalformedCookieAndPreservesValidCookies()
+    {
+        IReadOnlyList<KeyValuePair<string, string>> cookies =
+            CookieHeaderParser.Parse(
+                """first=1; ipt={"v":{"L":3},"pt":{"d":3},ct":{},"_t":44,"_v":"2"}; last=2""");
+
+        Assert.Equal(
+            [
+                new KeyValuePair<string, string>("first", "1"),
+                new KeyValuePair<string, string>("last", "2")
+            ],
+            cookies);
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
+    [InlineData(" ")]
     [InlineData(" ; malformed")]
     public void IgnoresMissingOrMalformedPairs(string? header)
     {
