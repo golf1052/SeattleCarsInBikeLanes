@@ -1,7 +1,10 @@
 namespace SeattleCarsInBikeLanes.Mobile.Core.Metadata;
 
 /// <summary>
-/// Replaces a JPEG's application metadata with metadata from an original image.
+/// On Android, when resizing a JPEG with the built-in BitmapFactory, image metadata is lost in the saved image.
+/// This class copies the application metadata segments from the original image to the resized image, preserving the metadata.
+/// 
+/// This is not needed on iOS, as the built-in image resizing preserves metadata.
 /// </summary>
 public static class JpegMetadataPreserver
 {
