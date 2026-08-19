@@ -13,4 +13,8 @@
     <PackageReference Include="XmpCore" Version="6.1.10.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SeattleCarsInBikeLanes.Core\SeattleCarsInBikeLanes.Core.csproj" />
+  </ItemGroup>
+
 </Project>

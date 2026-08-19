@@ -4,22 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
 
-  <!-- Deliberately references Mobile.Core rather than the web project. Shared wire contracts arrive
-       transitively through Core, while these tests remain free of Magick.NET and the three sibling
-       repositories the site depends on. -->
   <ItemGroup>
-    <ProjectReference Include="..\SeattleCarsInBikeLanes.Mobile.Core\SeattleCarsInBikeLanes.Mobile.Core.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="TestFiles\blank.jpg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <ProjectReference Include="..\SeattleCarsInBikeLanes.Core\SeattleCarsInBikeLanes.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

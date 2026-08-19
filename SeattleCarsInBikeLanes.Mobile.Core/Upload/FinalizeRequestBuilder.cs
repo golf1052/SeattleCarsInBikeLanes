@@ -1,3 +1,4 @@
+using SeattleCarsInBikeLanes.Core.Contracts;
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Upload;

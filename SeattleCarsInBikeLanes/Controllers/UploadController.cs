@@ -14,6 +14,7 @@ using LinqToTwitter.OAuth;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Cosmos.Spatial;
+using SeattleCarsInBikeLanes.Core.Contracts;
 using SeattleCarsInBikeLanes.Models;
 using SeattleCarsInBikeLanes.Providers;
 using SeattleCarsInBikeLanes.Storage.Models;
@@ -109,13 +110,13 @@ namespace SeattleCarsInBikeLanes.Controllers
         public IActionResult GetLimits()
         {
             // Min is the south west corner and Max the north east, matching how the box is built.
-            return Ok(new
+            return Ok(new UploadLimits()
             {
-                maxPhotosPerReport = MaxPhotosPerReport,
-                southLatitude = SeattleBoundingBox.Min.Latitude,
-                westLongitude = SeattleBoundingBox.Min.Longitude,
-                northLatitude = SeattleBoundingBox.Max.Latitude,
-                eastLongitude = SeattleBoundingBox.Max.Longitude
+                MaxPhotosPerReport = MaxPhotosPerReport,
+                SouthLatitude = SeattleBoundingBox.Min.Latitude,
+                WestLongitude = SeattleBoundingBox.Min.Longitude,
+                NorthLatitude = SeattleBoundingBox.Max.Latitude,
+                EastLongitude = SeattleBoundingBox.Max.Longitude
             });
         }
 
@@ -144,8 +145,8 @@ namespace SeattleCarsInBikeLanes.Controllers
 
             string submissionId = helperMethods.GetRandomFileName();
 
-            List<Task<InitialPhotoUploadWithSasUriMetadata>> metadataTasks = new List<Task<InitialPhotoUploadWithSasUriMetadata>>();
-            List<InitialPhotoUploadWithSasUriMetadata> metadata = new List<InitialPhotoUploadWithSasUriMetadata>();
+            List<Task<InitialPhotoUpload>> metadataTasks = new List<Task<InitialPhotoUpload>>();
+            List<InitialPhotoUpload> metadata = new List<InitialPhotoUpload>();
             Dictionary<int, string> exceptions = new Dictionary<int, string>();
             for (int i = 0; i < files.Count; i++)
             {
@@ -201,7 +202,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             return Ok(metadata);
         }
 
-        private async Task<InitialPhotoUploadWithSasUriMetadata> ProcessInitialUpload(IFormFile file, string submissionId, int index)
+        private async Task<InitialPhotoUpload> ProcessInitialUpload(IFormFile file, string submissionId, int index)
         {
             string tempFile = Path.GetTempFileName();
             try
@@ -329,7 +330,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                 fileStream3.Dispose();
 
                 Uri sasUri = await photoBlobClient.GenerateUserDelegationReadOnlySasUri(DateTimeOffset.UtcNow.AddMinutes(10));
-                return InitialPhotoUploadWithSasUriMetadata.FromMetadata(sasUri.ToString(), metadata);
+                return metadata.ToContract(sasUri.ToString());
             }
             catch (BikeLaneException ex)
             {
@@ -348,7 +349,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         }
 
         [HttpPost("Finalize")]
-        public async Task<IActionResult> FinalizeUpload([FromBody] List<FinalizedPhotoUploadMetadata> data)
+        public async Task<IActionResult> FinalizeUpload([FromBody] List<FinalizedPhotoUpload> uploads)
         {
             if (await deviceBlocklistProvider.IsBlocked(DeviceId))
             {
@@ -356,13 +357,15 @@ namespace SeattleCarsInBikeLanes.Controllers
                 return StatusCode(StatusCodes.Status403Forbidden, "This device can't submit reports.");
             }
 
-            if (data.Count == 0)
+            if (uploads.Count == 0)
             {
                 string error = "Expected at least 1 metadata object";
                 logger.LogError(error);
                 return BadRequest(error);
             }
 
+            List<FinalizedPhotoUploadMetadata> data =
+                uploads.Select(FinalizedPhotoUploadMetadata.FromContract).ToList();
             FinalizedPhotoUploadMetadata metadata = data[0];
             if (!metadata.PhotoDateTime.HasValue)
             {
@@ -719,70 +722,5 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
         }
 
-        public class InitialPhotoUploadWithSasUriMetadata : InitialPhotoUploadMetadata
-        {
-            public string Uri { get; set; }
-            
-            public InitialPhotoUploadWithSasUriMetadata(string uri,
-                string photoId,
-                string submissionId,
-                int photoNumber,
-                DateTime photoDateTime,
-                string photoLatitude,
-                string photoLongitude,
-                string photoCrossStreet,
-                List<ImageTag> tags) :
-                base(photoId,
-                    submissionId,
-                    photoNumber,
-                    photoDateTime,
-                    photoLatitude,
-                    photoLongitude,
-                    photoCrossStreet,
-                    tags)
-            {
-                Uri = uri;
-            }
-
-            public InitialPhotoUploadWithSasUriMetadata(string uri,
-                string photoId,
-                string submissionId,
-                int photoNumber,
-                List<ImageTag> tags) :
-                base(photoId,
-                    submissionId,
-                    photoNumber,
-                    tags)
-            {
-                Uri = uri;
-            }
-
-            public static InitialPhotoUploadWithSasUriMetadata FromMetadata(string uri, InitialPhotoUploadMetadata metadata)
-            {
-                if (metadata.PhotoDateTime.HasValue &&
-                    !string.IsNullOrWhiteSpace(metadata.PhotoLatitude) &&
-                    !string.IsNullOrWhiteSpace(metadata.PhotoLongitude) &&
-                    !string.IsNullOrWhiteSpace(metadata.PhotoCrossStreet))
-                {
-                    return new InitialPhotoUploadWithSasUriMetadata(uri,
-                        metadata.PhotoId,
-                        metadata.SubmissionId,
-                        metadata.PhotoNumber,
-                        metadata.PhotoDateTime.Value,
-                        metadata.PhotoLatitude,
-                        metadata.PhotoLongitude,
-                        metadata.PhotoCrossStreet,
-                        metadata.Tags);
-                }
-                else
-                {
-                    return new InitialPhotoUploadWithSasUriMetadata(uri,
-                        metadata.PhotoId,
-                        metadata.SubmissionId,
-                        metadata.PhotoNumber,
-                        metadata.Tags);
-                }
-            }
-        }
     }
 }

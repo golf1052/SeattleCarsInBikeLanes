@@ -30,6 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\SeattleCarsInBikeLanes.Core\SeattleCarsInBikeLanes.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

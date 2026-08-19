@@ -1,15 +1,10 @@
 using System.Text.Json.Serialization;
 
-namespace SeattleCarsInBikeLanes.Mobile.Core.Upload;
+namespace SeattleCarsInBikeLanes.Core.Contracts;
 
 /// <summary>
 /// What <c>POST /api/Upload/Initial</c> returns for each photo.
 /// </summary>
-/// <remarks>
-/// The server extracts the date, coordinates and cross street itself, so whatever comes back here
-/// wins over what the app guessed. Any of it may be missing, which is the server's way of saying
-/// the photo had no usable EXIF and the user has to supply the answer.
-/// </remarks>
 public sealed class InitialPhotoUpload
 {
     [JsonPropertyName("uri")]
@@ -50,13 +45,11 @@ public sealed class ImageTag
 }
 
 /// <summary>
-/// The per photo body of <c>POST /api/Upload/Finalize</c>.
+/// The per-photo body of <c>POST /api/Upload/Finalize</c>.
 /// </summary>
 /// <remarks>
-/// This mirrors the server's <c>FinalizedPhotoUploadMetadata</c>, but only the fields a mobile
-/// client legitimately sets. Fields the server fills in, clears, or derives from the authenticated
-/// principal are deliberately absent: Bluesky identity in particular is read from the session and
-/// anything sent here for it is ignored.
+/// Contains only fields a client can legitimately set. Device, report, and authenticated Bluesky
+/// identity fields are derived by the server and are deliberately absent.
 /// </remarks>
 public sealed class FinalizedPhotoUpload
 {
@@ -105,6 +98,15 @@ public sealed class FinalizedPhotoUpload
     [JsonPropertyName("blueskySubmittedBy")]
     public string? BlueskySubmittedBy { get; set; }
 
+    [JsonPropertyName("threadsSubmittedBy")]
+    public string? ThreadsSubmittedBy { get; set; }
+
+    [JsonPropertyName("twitterUsername")]
+    public string? TwitterUsername { get; set; }
+
+    [JsonPropertyName("twitterAccessToken")]
+    public string? TwitterAccessToken { get; set; }
+
     [JsonPropertyName("mastodonEndpoint")]
     public string? MastodonEndpoint { get; set; }
 
@@ -116,15 +118,17 @@ public sealed class FinalizedPhotoUpload
 
     [JsonPropertyName("mastodonAccessToken")]
     public string? MastodonAccessToken { get; set; }
+
+    [JsonPropertyName("threadsUsername")]
+    public string? ThreadsUsername { get; set; }
+
+    [JsonPropertyName("threadsAccessToken")]
+    public string? ThreadsAccessToken { get; set; }
 }
 
 /// <summary>
-/// The limits the server enforces on uploads.
+/// The limits returned by <c>GET /api/Upload/Limits</c>.
 /// </summary>
-/// <remarks>
-/// Fetched from <c>/api/Upload/Limits</c> so the app does not have to be rebuilt when they change.
-/// The defaults match the server as of writing, and are used when the call fails.
-/// </remarks>
 public sealed class UploadLimits
 {
     [JsonPropertyName("maxPhotosPerReport")]
@@ -143,5 +147,6 @@ public sealed class UploadLimits
     public double EastLongitude { get; set; } = -122.235787;
 
     [JsonPropertyName("minimumSupportedAppVersion")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? MinimumSupportedAppVersion { get; set; }
 }

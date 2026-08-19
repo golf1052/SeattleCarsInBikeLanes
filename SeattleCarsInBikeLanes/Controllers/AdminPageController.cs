@@ -27,6 +27,7 @@ using LinqToTwitter.OAuth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using SeattleCarsInBikeLanes.Core.Contracts;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.Database.Models;
 using SeattleCarsInBikeLanes.Providers;

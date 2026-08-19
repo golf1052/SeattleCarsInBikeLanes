@@ -1,7 +1,25 @@
-﻿namespace SeattleCarsInBikeLanes.Storage.Models
+﻿using SeattleCarsInBikeLanes.Core.Contracts;
+
+namespace SeattleCarsInBikeLanes.Storage.Models
 {
     public class InitialPhotoUploadMetadata : AbstractPhotoUploadMetadata
     {
+        public InitialPhotoUpload ToContract(string uri)
+        {
+            return new InitialPhotoUpload()
+            {
+                Uri = uri,
+                PhotoId = PhotoId,
+                SubmissionId = SubmissionId,
+                PhotoNumber = PhotoNumber,
+                PhotoDateTime = PhotoDateTime,
+                PhotoLatitude = PhotoLatitude,
+                PhotoLongitude = PhotoLongitude,
+                PhotoCrossStreet = PhotoCrossStreet,
+                Tags = Tags
+            };
+        }
+
         public InitialPhotoUploadMetadata(string photoId,
             string submissionId,
             int photoNumber,

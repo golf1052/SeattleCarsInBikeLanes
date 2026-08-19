@@ -1,4 +1,6 @@
-﻿namespace SeattleCarsInBikeLanes.Storage.Models
+﻿using SeattleCarsInBikeLanes.Core.Contracts;
+
+namespace SeattleCarsInBikeLanes.Storage.Models
 {
     public class FinalizedPhotoUploadMetadata : AbstractPhotoUploadMetadata
     {
@@ -38,6 +40,37 @@
         public string? TwitterLink { get; set; }
         public string? BlueskyAdminDid { get; set; }
         public string? BlueskyAccessJwt { get; set; }
+
+        public static FinalizedPhotoUploadMetadata FromContract(FinalizedPhotoUpload upload)
+        {
+            return new FinalizedPhotoUploadMetadata()
+            {
+                PhotoId = upload.PhotoId,
+                SubmissionId = upload.SubmissionId,
+                PhotoNumber = upload.PhotoNumber,
+                PhotoDateTime = upload.PhotoDateTime,
+                PhotoLatitude = upload.PhotoLatitude,
+                PhotoLongitude = upload.PhotoLongitude,
+                PhotoCrossStreet = upload.PhotoCrossStreet,
+                Tags = upload.Tags,
+                NumberOfCars = upload.NumberOfCars,
+                UserSpecifiedDateTime = upload.UserSpecifiedDateTime,
+                UserSpecifiedLocation = upload.UserSpecifiedLocation,
+                Attribute = upload.Attribute,
+                TwitterSubmittedBy = upload.TwitterSubmittedBy,
+                MastodonSubmittedBy = upload.MastodonSubmittedBy,
+                BlueskySubmittedBy = upload.BlueskySubmittedBy,
+                ThreadsSubmittedBy = upload.ThreadsSubmittedBy,
+                TwitterUsername = upload.TwitterUsername,
+                TwitterAccessToken = upload.TwitterAccessToken,
+                MastodonEndpoint = upload.MastodonEndpoint,
+                MastodonUsername = upload.MastodonUsername,
+                MastodonFullUsername = upload.MastodonFullUsername,
+                MastodonAccessToken = upload.MastodonAccessToken,
+                ThreadsUsername = upload.ThreadsUsername,
+                ThreadsAccessToken = upload.ThreadsAccessToken
+            };
+        }
 
         // Here because of bug when trying to deserialize values types to nullable value type properties
         // See https://github.com/dotnet/runtime/issues/44428
