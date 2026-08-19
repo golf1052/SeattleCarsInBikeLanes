@@ -16,6 +16,14 @@
             "targetFramework": "net10.0-ios"
         },
         {
+            "name": ".NET MAUI Android Release",
+            "type": "maui",
+            "request": "launch",
+            "preLaunchTask": "maui: Build",
+            "configuration": "Release",
+            "targetFramework": "net10.0-android"
+        },
+        {
             // Use IntelliSense to find out which attributes exist for C# debugging
             // Use hover for the description of the existing attributes
             // For further information visit https://github.com/OmniSharp/omnisharp-vscode/blob/master/debugger-launchjson.md
