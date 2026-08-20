@@ -23,6 +23,15 @@ public readonly record struct CameraReadinessMeasurement(
 /// <summary>
 /// Measures one journey to a rendered, interactive camera preview.
 /// </summary>
+/// <remarks>
+/// Current production call paths are expected to invoke the session from MAUI's UI thread,
+/// including lifecycle operations, permission continuations, and camera first-frame completion.
+/// The locks are intentionally defensive rather than required by a known concurrent production
+/// path. They preserve atomic state transitions if a future caller runs off the UI thread, a
+/// platform continuation changes behavior, or an <see cref="IDisposable"/> is disposed from
+/// another thread. They also ensure completion or cancellation occurs only once and cannot race
+/// with permission or excluded-delay updates.
+/// </remarks>
 public sealed class CameraReadinessSession
 {
     private readonly object gate = new object();
