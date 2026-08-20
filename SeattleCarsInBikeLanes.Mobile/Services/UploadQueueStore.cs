@@ -10,21 +10,26 @@ namespace SeattleCarsInBikeLanes.Mobile.Services;
 public sealed class UploadQueueRecord
 {
     [PrimaryKey]
+    [NotNull]
     [Column("id")]
     public string Id { get; set; } = string.Empty;
 
     /// <summary>
     /// The serialized <see cref="QueuedReportPayload"/>: which photos, and the report about them.
     /// </summary>
+    [NotNull]
     [Column("payload")]
     public string Payload { get; set; } = string.Empty;
 
+    [NotNull]
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
 
+    [NotNull]
     [Column("state")]
     public int State { get; set; }
 
+    [NotNull]
     [Column("attempts")]
     public int Attempts { get; set; }
 
@@ -43,6 +48,7 @@ public sealed class UploadQueueRecord
     /// <summary>
     /// Whether connectivity changes must preserve the server's requested retry time.
     /// </summary>
+    [NotNull]
     [Column("server_directed_retry")]
     public bool ServerDirectedRetry { get; set; }
 }
@@ -77,8 +83,24 @@ public interface IUploadQueueStore
 }
 
 /// <inheritdoc />
-public sealed class UploadQueueStore : IUploadQueueStore
+public sealed class UploadQueueStore : IUploadQueueStore, IAsyncDisposable
 {
+    // The app is still pre-release, so older development schemas are intentionally discarded rather
+    // than migrated. Once a public build exists, version changes must preserve queued reports.
+    internal const int SchemaVersion = 1;
+
+    private static readonly HashSet<string> ExpectedColumns = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "id",
+        "payload",
+        "created_at",
+        "state",
+        "attempts",
+        "last_error",
+        "next_attempt_at",
+        "server_directed_retry"
+    };
+
     private readonly string databasePath;
     private readonly SemaphoreSlim mutex = new SemaphoreSlim(1, 1);
     private SQLiteAsyncConnection? connection;
@@ -125,6 +147,23 @@ public sealed class UploadQueueStore : IUploadQueueStore
             (int)UploadQueueState.Uploading);
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        await mutex.WaitAsync();
+        try
+        {
+            if (connection is not null)
+            {
+                await connection.CloseAsync();
+                connection = null;
+            }
+        }
+        finally
+        {
+            mutex.Release();
+        }
+    }
+
     private async Task<SQLiteAsyncConnection> GetConnectionAsync()
     {
         if (connection is not null)
@@ -142,13 +181,47 @@ public sealed class UploadQueueStore : IUploadQueueStore
 
             SQLiteAsyncConnection created = new SQLiteAsyncConnection(databasePath,
                 SQLiteOpenFlags.ReadWrite | SQLiteOpenFlags.Create | SQLiteOpenFlags.SharedCache);
-            await created.CreateTableAsync<UploadQueueRecord>();
-            connection = created;
-            return connection;
+            try
+            {
+                await InitializeAsync(created);
+                connection = created;
+                return connection;
+            }
+            catch
+            {
+                await created.CloseAsync();
+                throw;
+            }
         }
         finally
         {
             mutex.Release();
+        }
+    }
+
+    private static async Task InitializeAsync(SQLiteAsyncConnection db)
+    {
+        int version = await db.ExecuteScalarAsync<int>("PRAGMA user_version");
+        if (version != SchemaVersion)
+        {
+            await db.RunInTransactionAsync(connection =>
+            {
+                connection.Execute("DROP TABLE IF EXISTS upload_queue");
+                connection.CreateTable<UploadQueueRecord>();
+                connection.Execute($"PRAGMA user_version = {SchemaVersion}");
+            });
+            return;
+        }
+
+        List<SQLiteConnection.ColumnInfo> columns = await db.GetTableInfoAsync("upload_queue");
+        HashSet<string> actualColumns = columns.Select(column => column.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        if (!ExpectedColumns.SetEquals(actualColumns))
+        {
+            string actual = string.Join(", ", actualColumns.Order(StringComparer.Ordinal));
+            string expected = string.Join(", ", ExpectedColumns.Order(StringComparer.Ordinal));
+            throw new InvalidOperationException(
+                $"Upload queue schema version {SchemaVersion} has columns [{actual}]; expected [{expected}].");
         }
     }
 }

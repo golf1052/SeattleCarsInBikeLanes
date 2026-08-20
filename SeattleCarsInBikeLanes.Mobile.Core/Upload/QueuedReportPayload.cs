@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Upload;
 
@@ -17,24 +18,14 @@ public sealed class QueuedPhoto
     public string Id { get; set; } = string.Empty;
 
     /// <summary>
-    /// Whether the photo came from the user's library rather than the app's camera.
+    /// Where the photo came from and where it is stored.
     /// </summary>
     /// <remarks>
-    /// Kept because imported assets and app-owned photos are marked as submitted differently, and
-    /// by the time a queued report succeeds the roll it came from is long gone.
+    /// Kept so PhotoCatalog.MarkSubmittedAsync can record submission state in the correct store
+    /// after the queued report uploads.
     /// </remarks>
-    [JsonPropertyName("imported")]
-    public bool Imported { get; set; }
-
-    /// <summary>
-    /// Whether the JPEG lives in the app's persistent private store rather than the system library.
-    /// </summary>
-    /// <remarks>
-    /// Added as a separate boolean so rows written by older versions, which only carried
-    /// <see cref="Imported"/>, continue to deserialize with the same meaning.
-    /// </remarks>
-    [JsonPropertyName("private")]
-    public bool Private { get; set; }
+    [JsonPropertyName("origin")]
+    public required PhotoOrigin Origin { get; set; }
 }
 
 /// <summary>
@@ -61,7 +52,14 @@ public sealed class QueuedReportPayload
 /// </summary>
 public static class QueuedReportSerializer
 {
-    private static readonly JsonSerializerOptions Options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Options = CreateOptions();
+
+    private static JsonSerializerOptions CreateOptions()
+    {
+        JsonSerializerOptions options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        options.Converters.Add(new JsonStringEnumConverter<PhotoOrigin>(allowIntegerValues: false));
+        return options;
+    }
 
     public static string Serialize(QueuedReportPayload payload)
     {
@@ -88,7 +86,11 @@ public static class QueuedReportSerializer
         try
         {
             QueuedReportPayload? payload = JsonSerializer.Deserialize<QueuedReportPayload>(json, Options);
-            return payload is null || payload.Photos.Count == 0 ? null : payload;
+            return payload?.Photos is not { Count: > 0 } ||
+                payload.Photos.Any(photo => photo is null) ||
+                payload.Draft is null
+                ? null
+                : payload;
         }
         catch (JsonException)
         {

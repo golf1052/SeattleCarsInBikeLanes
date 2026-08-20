@@ -1,3 +1,4 @@
+using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 using SeattleCarsInBikeLanes.Mobile.Core.Upload;
 
 namespace SeattleCarsInBikeLanes.Mobile.Services;
@@ -528,7 +529,8 @@ public sealed class UploadQueue : IUploadQueue
 
         report.State = decision.State;
         report.NextAttemptAt = decision.NextAttemptAt;
-        report.ServerDirectedRetry = retryAfter.HasValue && retryAfter.Value > TimeSpan.Zero;
+        report.ServerDirectedRetry =
+            decision.NextAttemptAt.HasValue && retryAfter.HasValue && retryAfter.Value > TimeSpan.Zero;
 
         if (decision.State == UploadQueueState.Failed)
         {
@@ -673,8 +675,7 @@ public sealed class UploadQueue : IUploadQueue
             Photos = report.Photos.Select(photo => new QueuedPhoto()
             {
                 Id = photo.Id,
-                Imported = photo.Origin is PhotoOrigin.Imported or PhotoOrigin.PrivateImported,
-                Private = photo.Origin is PhotoOrigin.PrivateCaptured or PhotoOrigin.PrivateImported
+                Origin = photo.Origin
             }).ToList(),
             Draft = report.Draft
         }),
@@ -700,13 +701,7 @@ public sealed class UploadQueue : IUploadQueue
             Photos = payload.Photos.Select(photo => new ReportPhoto()
             {
                 Id = photo.Id,
-                Origin = (photo.Imported, photo.Private) switch
-                {
-                    (false, false) => PhotoOrigin.Captured,
-                    (true, false) => PhotoOrigin.Imported,
-                    (false, true) => PhotoOrigin.PrivateCaptured,
-                    (true, true) => PhotoOrigin.PrivateImported
-                }
+                Origin = photo.Origin
             }).ToList(),
             Draft = payload.Draft,
             CreatedAt = record.CreatedAt,

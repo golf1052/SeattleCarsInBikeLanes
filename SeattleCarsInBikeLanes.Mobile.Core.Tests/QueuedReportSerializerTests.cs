@@ -1,4 +1,6 @@
+using System.Text.Json;
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
+using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 using SeattleCarsInBikeLanes.Mobile.Core.Upload;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Tests;
@@ -19,9 +21,10 @@ public class QueuedReportSerializerTests
         {
             Photos = new List<QueuedPhoto>()
             {
-                new QueuedPhoto() { Id = "asset-1", Imported = false },
-                new QueuedPhoto() { Id = "asset-2", Imported = true },
-                new QueuedPhoto() { Id = "asset-3", Imported = true, Private = true }
+                new QueuedPhoto() { Id = "captured", Origin = PhotoOrigin.Captured },
+                new QueuedPhoto() { Id = "imported", Origin = PhotoOrigin.Imported },
+                new QueuedPhoto() { Id = "private-captured", Origin = PhotoOrigin.PrivateCaptured },
+                new QueuedPhoto() { Id = "private-imported", Origin = PhotoOrigin.PrivateImported }
             },
             Draft = new ReportDraft()
             {
@@ -38,16 +41,27 @@ public class QueuedReportSerializerTests
         QueuedReportPayload? read = QueuedReportSerializer.Deserialize(QueuedReportSerializer.Serialize(payload));
 
         Assert.NotNull(read);
-        Assert.Equal(3, read.Photos.Count);
-        Assert.Equal("asset-1", read.Photos[0].Id);
-        Assert.False(read.Photos[0].Imported);
-
-        // Which store a photo's submitted flag goes in depends on this, and by the time a queued
-        // report succeeds the roll it came from is long gone.
-        Assert.True(read.Photos[1].Imported);
-        Assert.False(read.Photos[1].Private);
-        Assert.True(read.Photos[2].Imported);
-        Assert.True(read.Photos[2].Private);
+        Assert.Collection(read.Photos,
+            photo =>
+            {
+                Assert.Equal("captured", photo.Id);
+                Assert.Equal(PhotoOrigin.Captured, photo.Origin);
+            },
+            photo =>
+            {
+                Assert.Equal("imported", photo.Id);
+                Assert.Equal(PhotoOrigin.Imported, photo.Origin);
+            },
+            photo =>
+            {
+                Assert.Equal("private-captured", photo.Id);
+                Assert.Equal(PhotoOrigin.PrivateCaptured, photo.Origin);
+            },
+            photo =>
+            {
+                Assert.Equal("private-imported", photo.Id);
+                Assert.Equal(PhotoOrigin.PrivateImported, photo.Origin);
+            });
 
         Assert.Equal(3, read.Draft.NumberOfCars);
         Assert.Equal(new DateTime(2025, 6, 1, 9, 30, 0), read.Draft.TakenAt);
@@ -59,16 +73,29 @@ public class QueuedReportSerializerTests
     }
 
     [Fact]
-    public void ReadsRowsWrittenBeforePrivateStorageWasAdded()
+    public void WritesStableReadablePhotoOrigins()
     {
-        const string json =
-            """{"photos":[{"id":"captured","imported":false},{"id":"imported","imported":true}],"draft":{}}""";
+        QueuedReportPayload payload = new QueuedReportPayload()
+        {
+            Photos = new List<QueuedPhoto>()
+            {
+                new QueuedPhoto() { Id = "captured", Origin = PhotoOrigin.Captured },
+                new QueuedPhoto() { Id = "imported", Origin = PhotoOrigin.Imported },
+                new QueuedPhoto() { Id = "private-captured", Origin = PhotoOrigin.PrivateCaptured },
+                new QueuedPhoto() { Id = "private-imported", Origin = PhotoOrigin.PrivateImported }
+            }
+        };
 
-        QueuedReportPayload? read = QueuedReportSerializer.Deserialize(json);
+        string json = QueuedReportSerializer.Serialize(payload);
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement photos = document.RootElement.GetProperty("photos");
 
-        Assert.NotNull(read);
-        Assert.False(read.Photos[0].Private);
-        Assert.False(read.Photos[1].Private);
+        Assert.Equal("captured", photos[0].GetProperty("origin").GetString());
+        Assert.Equal("imported", photos[1].GetProperty("origin").GetString());
+        Assert.Equal("privateCaptured", photos[2].GetProperty("origin").GetString());
+        Assert.Equal("privateImported", photos[3].GetProperty("origin").GetString());
+        Assert.DoesNotContain("\"imported\":", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"private\":", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -79,7 +106,10 @@ public class QueuedReportSerializerTests
         // storage when the report is actually sent.
         QueuedReportPayload payload = new QueuedReportPayload()
         {
-            Photos = new List<QueuedPhoto>() { new QueuedPhoto() { Id = "asset-1" } },
+            Photos = new List<QueuedPhoto>()
+            {
+                new QueuedPhoto() { Id = "asset-1", Origin = PhotoOrigin.Captured }
+            },
             Draft = new ReportDraft() { Attribute = true }
         };
 
@@ -95,10 +125,17 @@ public class QueuedReportSerializerTests
     [InlineData("   ")]
     [InlineData("not json at all")]
     [InlineData("{\"photos\":[]}")]
+    [InlineData("{\"photos\":null,\"draft\":{}}")]
+    [InlineData("{\"photos\":[null],\"draft\":{}}")]
+    [InlineData("{\"photos\":[{\"id\":\"asset-1\",\"origin\":\"captured\"}],\"draft\":null}")]
+    [InlineData("{\"photos\":[{\"id\":\"asset-1\"}],\"draft\":{}}")]
+    [InlineData("{\"photos\":[{\"id\":\"asset-1\",\"imported\":false,\"private\":false}],\"draft\":{}}")]
+    [InlineData("{\"photos\":[{\"id\":\"asset-1\",\"origin\":\"unknown\"}],\"draft\":{}}")]
+    [InlineData("{\"photos\":[{\"id\":\"asset-1\",\"origin\":0}],\"draft\":{}}")]
     public void UnreadableRowsAreRejectedRatherThanThrown(string? json)
     {
-        // The caller is a queue drained on a background thread. A row written by an older build must
-        // not be able to stop every other report from going out.
+        // The caller drains queue rows on a background thread, so one malformed row must not stop
+        // every other report from going out.
         Assert.Null(QueuedReportSerializer.Deserialize(json));
     }
 }
