@@ -7,10 +7,11 @@ namespace SeattleCarsInBikeLanes.Mobile.Platforms.Android;
 
 /// <summary>
 /// Copies the sign-in cookies between Android's WebView cookie jar and the app's HTTP client.
+/// This is only used for Bluesky sign-in for validating user attribution.
 /// </summary>
 public sealed class WebViewCookieBridge : IWebViewCookieBridge
 {
-    public Task SyncToAsync(CookieContainer container, Uri siteUri)
+    public Task CopyWebViewCookiesToAppAsync(CookieContainer container, Uri siteUri)
     {
         ArgumentNullException.ThrowIfNull(container);
         ArgumentNullException.ThrowIfNull(siteUri);

@@ -111,7 +111,7 @@ public sealed class AuthService : IAuthService
     public async Task<AttributionIdentity?> RefreshAsync(CancellationToken cancellationToken = default)
     {
         // Pick up a session the user may have just established in the map or login web view.
-        await cookieBridge.SyncToAsync(cookieContainer, SiteUrls.BaseAddress);
+        await cookieBridge.CopyWebViewCookiesToAppAsync(cookieContainer, SiteUrls.BaseAddress);
 
         string? handle = await GetBlueskyHandleAsync(cancellationToken);
 
@@ -237,7 +237,7 @@ public sealed class AuthService : IAuthService
 
         // With no token the cookie is the only thing identifying the user, and it may have been
         // created in the web view since the last request.
-        await cookieBridge.SyncToAsync(cookieContainer, SiteUrls.BaseAddress);
+        await cookieBridge.CopyWebViewCookiesToAppAsync(cookieContainer, SiteUrls.BaseAddress);
     }
 
     private async Task<string?> GetBlueskyHandleAsync(CancellationToken cancellationToken)

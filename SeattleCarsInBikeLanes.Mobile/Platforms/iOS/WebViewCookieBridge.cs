@@ -14,7 +14,7 @@ namespace SeattleCarsInBikeLanes.Platforms.iOS;
 /// </remarks>
 public sealed class WebViewCookieBridge : IWebViewCookieBridge
 {
-    public Task SyncToAsync(CookieContainer container, Uri siteUri)
+    public Task CopyWebViewCookiesToAppAsync(CookieContainer container, Uri siteUri)
     {
         ArgumentNullException.ThrowIfNull(container);
         ArgumentNullException.ThrowIfNull(siteUri);

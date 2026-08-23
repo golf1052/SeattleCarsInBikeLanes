@@ -18,7 +18,7 @@ public interface IWebViewCookieBridge
     /// <summary>
     /// Copies the site's cookies out of the web view and into <paramref name="container"/>.
     /// </summary>
-    Task SyncToAsync(CookieContainer container, Uri siteUri);
+    Task CopyWebViewCookiesToAppAsync(CookieContainer container, Uri siteUri);
 
     /// <summary>
     /// Clears the site's cookies from the web view, so signing out actually signs out.
@@ -31,7 +31,7 @@ public interface IWebViewCookieBridge
 /// </summary>
 public sealed class NullWebViewCookieBridge : IWebViewCookieBridge
 {
-    public Task SyncToAsync(CookieContainer container, Uri siteUri) => Task.CompletedTask;
+    public Task CopyWebViewCookiesToAppAsync(CookieContainer container, Uri siteUri) => Task.CompletedTask;
 
     public Task ClearAsync(Uri siteUri) => Task.CompletedTask;
 }

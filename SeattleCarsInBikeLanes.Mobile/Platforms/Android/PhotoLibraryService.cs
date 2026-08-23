@@ -3,8 +3,6 @@ using System.Globalization;
 using Android.Content;
 using Android.Graphics;
 using Android.Provider;
-using Microsoft.Extensions.Logging;
-using Microsoft.Maui.ApplicationModel;
 using SeattleCarsInBikeLanes.Mobile.Core.Metadata;
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
 using SeattleCarsInBikeLanes.Mobile.Services;
@@ -330,7 +328,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         XmpUploadState state,
         CancellationToken cancellationToken = default)
     {
-        if (!TryParseContentUri(id, out AndroidUri? uri) || GetCapturedStatus(uri) != CapturedStatus.Captured)
+        if (!TryParseContentUri(id, out AndroidUri? uri) || GetAppOwnedPhotoStatus(uri) != AppOwnedPhotoStatus.AppOwned)
         {
             return false;
         }
@@ -475,12 +473,12 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
                 return false;
             }
 
-            switch (GetCapturedStatus(uri))
+            switch (GetAppOwnedPhotoStatus(uri))
             {
-                case CapturedStatus.Captured:
+                case AppOwnedPhotoStatus.AppOwned:
                     existing.Add(uri);
                     break;
-                case CapturedStatus.NotCaptured:
+                case AppOwnedPhotoStatus.Imported:
                     return false;
             }
         }
@@ -633,7 +631,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         }
     }
 
-    private CapturedStatus GetCapturedStatus(AndroidUri uri)
+    private AppOwnedPhotoStatus GetAppOwnedPhotoStatus(AndroidUri uri)
     {
         try
         {
@@ -646,7 +644,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
                 resolver.Query(ToMediaStoreUri(uri), projection, null, null, null);
             if (cursor is null || !cursor.MoveToFirst())
             {
-                return CapturedStatus.Missing;
+                return AppOwnedPhotoStatus.Missing;
             }
 
             string? path = cursor.GetString(
@@ -656,12 +654,12 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
 
             return string.Equals(path, RelativePath, StringComparison.Ordinal)
                 && string.Equals(owner, context.PackageName, StringComparison.Ordinal)
-                    ? CapturedStatus.Captured
-                    : CapturedStatus.NotCaptured;
+                    ? AppOwnedPhotoStatus.AppOwned
+                    : AppOwnedPhotoStatus.Imported;
         }
         catch (Exception)
         {
-            return CapturedStatus.NotCaptured;
+            return AppOwnedPhotoStatus.Imported;
         }
     }
 
@@ -687,7 +685,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
     }
 
     private AndroidUri GetReadableUri(AndroidUri uri) =>
-        GetCapturedStatus(uri) == CapturedStatus.Captured
+        GetAppOwnedPhotoStatus(uri) == AppOwnedPhotoStatus.AppOwned
             ? ToMediaStoreUri(uri)
             : uri;
 
@@ -756,11 +754,11 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         }
     }
 
-    private enum CapturedStatus
+    private enum AppOwnedPhotoStatus
     {
         Missing,
-        Captured,
-        NotCaptured
+        AppOwned,
+        Imported
     }
 
     private static class ImageColumns

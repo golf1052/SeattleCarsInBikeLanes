@@ -10,6 +10,7 @@ namespace SeattleCarsInBikeLanes.Platforms.Android;
 [Activity(Exported = false, Theme = "@android:style/Theme.Translucent.NoTitleBar")]
 internal sealed class PhotoLibraryActivity : Activity
 {
+    // The picker result request code is arbitrary, but must be unique within the app.
     private const int PickRequestCode = 1;
     private const string OperationExtra = "operation";
     private const string PickOperation = "pick";

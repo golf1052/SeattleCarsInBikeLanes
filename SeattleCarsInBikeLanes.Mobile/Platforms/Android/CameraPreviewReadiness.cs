@@ -1,7 +1,6 @@
 using AndroidX.Camera.View;
 using AndroidX.Lifecycle;
 using CommunityToolkit.Maui.Views;
-using Java.Lang;
 using SeattleCarsInBikeLanes.Mobile.Services;
 using Object = Java.Lang.Object;
 
