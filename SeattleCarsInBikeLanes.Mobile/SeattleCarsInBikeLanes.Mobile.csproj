@@ -47,6 +47,7 @@
 	</PropertyGroup>
 
 	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<UseMaterial3>true</UseMaterial3>
 		<AndroidManifestPlaceholders>googleMapsApiKey=$(GOOGLE_MAPS_API_KEY)</AndroidManifestPlaceholders>
 	</PropertyGroup>
 

@@ -1,5 +1,8 @@
 using SeattleCarsInBikeLanes.Mobile.Services;
 using SeattleCarsInBikeLanes.Mobile.Core.Permissions;
+#if ANDROID
+using SeattleCarsInBikeLanes.Mobile.Resources.Styles;
+#endif
 
 namespace SeattleCarsInBikeLanes.Mobile;
 
@@ -20,6 +23,11 @@ public partial class App : Application
 		ILogger<App> logger)
 	{
 		InitializeComponent();
+
+#if ANDROID
+		Resources.MergedDictionaries.Add(new Material3Colors());
+		Resources.MergedDictionaries.Add(new Material3Styles());
+#endif
 
 		this.uploadQueue = uploadQueue;
 		this.authService = authService;

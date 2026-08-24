@@ -21,10 +21,8 @@
                 </CollectionView>
 
                 <Border IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNullConverter}}"
-                        BackgroundColor="#FFF4F4"
-                        Stroke="#D13438"
-                        Padding="12">
-                    <Label Text="{Binding ErrorMessage}" TextColor="#A4262C" />
+                        Style="{StaticResource ErrorBorder}">
+                    <Label Text="{Binding ErrorMessage}" Style="{StaticResource ErrorTextLabel}" />
                 </Border>
 
                 <VerticalStackLayout Spacing="4">
@@ -47,7 +45,7 @@
                     <Label Text="Where" FontAttributes="Bold" />
                     <Label Text="{Binding CrossStreet}"
                            IsVisible="{Binding CrossStreet, Converter={StaticResource IsNotNullConverter}}" />
-                    <Label Text="{Binding LocationDescription}" FontSize="12" TextColor="Gray" />
+                    <Label Text="{Binding LocationDescription}" Style="{StaticResource SupportingTextLabel}" />
                     <Button Text="Pick on map" Clicked="PickLocationClicked" HorizontalOptions="Start" />
                 </VerticalStackLayout>
 
@@ -61,8 +59,7 @@
                 </VerticalStackLayout>
 
                 <Label Text="Sign in from Settings to have your reports credited to you."
-                       FontSize="12"
-                       TextColor="Gray"
+                       Style="{StaticResource SupportingTextLabel}"
                        IsVisible="{Binding CanAttribute, Converter={StaticResource InvertedBoolConverter}}" />
             </VerticalStackLayout>
         </ScrollView>
@@ -81,8 +78,7 @@
                     Clicked="SubmitClicked"
                     IsEnabled="{Binding IsUploading, Converter={StaticResource InvertedBoolConverter}}" />
             <Label Text="Your report is sent in the background, so you can put your phone away."
-                   FontSize="12"
-                   TextColor="Gray"
+                   Style="{StaticResource SupportingTextLabel}"
                    HorizontalTextAlignment="Center" />
         </VerticalStackLayout>
     </Grid>

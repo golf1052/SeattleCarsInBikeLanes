@@ -428,6 +428,7 @@
 
                             <Button Grid.Column="1"
                                     Text="Retry"
+                                    TextColor="White"
                                     FontSize="12"
                                     Padding="10,4"
                                     HeightRequest="34"
@@ -436,6 +437,7 @@
 
                             <Button Grid.Column="2"
                                     Text="Discard"
+                                    TextColor="White"
                                     FontSize="12"
                                     Padding="10,4"
                                     HeightRequest="34"

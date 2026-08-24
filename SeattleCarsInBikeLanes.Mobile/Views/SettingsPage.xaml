@@ -10,7 +10,7 @@
         <VerticalStackLayout Padding="16" Spacing="24">
 
             <Label Text="{Binding StatusMessage}"
-                   TextColor="{StaticResource Primary}"
+                   Style="{StaticResource StatusLabel}"
                    IsVisible="{Binding StatusMessage, Converter={StaticResource IsNotNullConverter}}" />
 
             <VerticalStackLayout Spacing="8">
@@ -44,8 +44,7 @@
             <VerticalStackLayout Spacing="8">
                 <Label Text="Photos" FontAttributes="Bold" FontSize="18" />
                 <Label Text="Photos taken in the app are saved to your &quot;Cars in Bike Lanes&quot; album. Imported photos stay where they are."
-                       FontSize="12"
-                       TextColor="Gray" />
+                       Style="{StaticResource SupportingTextLabel}" />
                 <Button Text="Forget imported photos"
                         Command="{Binding ClearImportedPhotosCommand}"
                         HorizontalOptions="Start" />
@@ -54,8 +53,7 @@
             <VerticalStackLayout Spacing="8">
                 <Label Text="Device" FontAttributes="Bold" FontSize="18" />
                 <Label Text="This ID is sent with your reports so abuse can be dealt with without affecting everyone else. It doesn't identify you."
-                       FontSize="12"
-                       TextColor="Gray" />
+                       Style="{StaticResource SupportingTextLabel}" />
                 <Label Text="{Binding DeviceId}" FontSize="12" FontFamily="Monospace" />
                 <Button Text="Copy device ID"
                         Command="{Binding CopyDeviceIdCommand}"
@@ -64,7 +62,8 @@
 
             <VerticalStackLayout Spacing="8">
                 <Label Text="About" FontAttributes="Bold" FontSize="18" />
-                <Label Text="{Binding AppVersion, StringFormat='Version {0}'}" FontSize="12" TextColor="Gray" />
+                <Label Text="{Binding AppVersion, StringFormat='Version {0}'}"
+                       Style="{StaticResource SupportingTextLabel}" />
                 <Button Text="Open the website" Command="{Binding OpenWebsiteCommand}" HorizontalOptions="Start" />
                 <Button Text="Source code" Command="{Binding OpenSourceCommand}" HorizontalOptions="Start" />
             </VerticalStackLayout>

@@ -25,6 +25,19 @@ Android 10 (API 29) or newer is required. Photo capture uses scoped MediaStore
 storage and imported photos use the system picker, so the app does not request
 broad photo or file-system access.
 
+### Material 3
+
+Android uses the .NET MAUI 10 Material 3 handlers and semantic design tokens.
+Android 12 (API 31) and newer derive the palette from the user's wallpaper;
+Android 10 and 11 use an accessible Material 3 palette generated from the app's
+purple brand color. Light and dark mode are both supported.
+
+The app icon and splash screen remain brand purple so launch identity is stable.
+The camera HUD also keeps fixed high-contrast colors over the live preview. These
+Android theme resources are not loaded on iOS, so its native appearance is
+unchanged. .NET MAUI 10 Shell tabs use the Material 3 token palette, but native
+Material 3 Shell navigation requires .NET MAUI 11.
+
 ### Deploy to an Android device
 
 Enable USB debugging, connect an unlocked device, and verify that ADB can see it:
