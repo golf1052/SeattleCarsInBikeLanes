@@ -1,28 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="m3_primary">#C9BEFF</color>
-    <color name="m3_on_primary">#30009B</color>
-    <color name="m3_primary_container">#4618CA</color>
-    <color name="m3_on_primary_container">#E6DEFF</color>
-    <color name="m3_secondary">#C9C3DC</color>
-    <color name="m3_on_secondary">#312E41</color>
-    <color name="m3_secondary_container">#484459</color>
-    <color name="m3_on_secondary_container">#E6DFF9</color>
-    <color name="m3_tertiary">#EDB8CD</color>
-    <color name="m3_on_tertiary">#482535</color>
-    <color name="m3_tertiary_container">#623B4C</color>
-    <color name="m3_on_tertiary_container">#FFD8E6</color>
+    <color name="m3_primary">#ACC7FF</color>
+    <color name="m3_on_primary">#002F67</color>
+    <color name="m3_primary_container">#004492</color>
+    <color name="m3_on_primary_container">#D7E2FF</color>
+    <color name="m3_secondary">#BEC6DC</color>
+    <color name="m3_on_secondary">#283041</color>
+    <color name="m3_secondary_container">#3F4759</color>
+    <color name="m3_on_secondary_container">#DAE2F9</color>
+    <color name="m3_tertiary">#DEBCDF</color>
+    <color name="m3_on_tertiary">#402844</color>
+    <color name="m3_tertiary_container">#573E5B</color>
+    <color name="m3_on_tertiary_container">#FBD7FC</color>
     <color name="m3_error">#FFB4AB</color>
     <color name="m3_on_error">#690005</color>
     <color name="m3_error_container">#93000A</color>
     <color name="m3_on_error_container">#FFB4AB</color>
-    <color name="m3_surface">#1C1B1F</color>
-    <color name="m3_surface_container">#201F23</color>
-    <color name="m3_surface_variant">#48454E</color>
-    <color name="m3_on_surface">#E5E1E6</color>
-    <color name="m3_on_surface_variant">#C9C5D0</color>
-    <color name="m3_outline">#938F99</color>
-    <color name="m3_outline_variant">#48454E</color>
+    <color name="m3_surface">#1B1B1F</color>
+    <color name="m3_surface_container">#1F1F23</color>
+    <color name="m3_surface_variant">#44474E</color>
+    <color name="m3_on_surface">#E3E2E6</color>
+    <color name="m3_on_surface_variant">#C4C6D0</color>
+    <color name="m3_outline">#8E9099</color>
+    <color name="m3_outline_variant">#44474E</color>
 
     <color name="colorPrimary">@color/m3_primary</color>
     <color name="colorPrimaryDark">@color/m3_primary</color>

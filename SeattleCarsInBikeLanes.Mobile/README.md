@@ -30,12 +30,13 @@ broad photo or file-system access.
 Android uses the .NET MAUI 10 Material 3 handlers and semantic design tokens.
 Android 12 (API 31) and newer derive the palette from the user's wallpaper;
 Android 10 and 11 use an accessible Material 3 palette generated from the app's
-purple brand color. Light and dark mode are both supported.
+cornflower blue (`#6495ED`) brand color. Light and dark mode are both supported.
 
-The app icon and splash screen remain brand purple so launch identity is stable.
+The shared iOS theme uses matching contrast-safe cornflower blue roles. The app
+icon and splash screen use exact `#6495ED` so launch identity is stable.
 The camera HUD also keeps fixed high-contrast colors over the live preview. These
-Android theme resources are not loaded on iOS, so its native appearance is
-unchanged. .NET MAUI 10 Shell tabs use the Material 3 token palette, but native
+Android theme resources are not loaded on iOS, which continues to use the shared
+MAUI styles. .NET MAUI 10 Shell tabs use the Material 3 token palette, but native
 Material 3 Shell navigation requires .NET MAUI 11.
 
 ### Deploy to an Android device

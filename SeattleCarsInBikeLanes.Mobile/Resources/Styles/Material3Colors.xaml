@@ -5,31 +5,31 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
 
-    <Color x:Key="M3Primary">#5F3DE2</Color>
+    <Color x:Key="M3Primary">#235CB1</Color>
     <Color x:Key="M3OnPrimary">#FFFFFF</Color>
-    <Color x:Key="M3PrimaryContainer">#E6DEFF</Color>
-    <Color x:Key="M3OnPrimaryContainer">#1B0063</Color>
+    <Color x:Key="M3PrimaryContainer">#D7E2FF</Color>
+    <Color x:Key="M3OnPrimaryContainer">#001A40</Color>
 
-    <Color x:Key="M3Secondary">#605C71</Color>
+    <Color x:Key="M3Secondary">#565E71</Color>
     <Color x:Key="M3OnSecondary">#FFFFFF</Color>
-    <Color x:Key="M3SecondaryContainer">#E6DFF9</Color>
-    <Color x:Key="M3OnSecondaryContainer">#1C192B</Color>
+    <Color x:Key="M3SecondaryContainer">#DAE2F9</Color>
+    <Color x:Key="M3OnSecondaryContainer">#131C2C</Color>
 
-    <Color x:Key="M3Tertiary">#7C5264</Color>
+    <Color x:Key="M3Tertiary">#705574</Color>
     <Color x:Key="M3OnTertiary">#FFFFFF</Color>
-    <Color x:Key="M3TertiaryContainer">#FFD8E6</Color>
-    <Color x:Key="M3OnTertiaryContainer">#301120</Color>
+    <Color x:Key="M3TertiaryContainer">#FBD7FC</Color>
+    <Color x:Key="M3OnTertiaryContainer">#29132E</Color>
 
     <Color x:Key="M3Error">#BA1A1A</Color>
     <Color x:Key="M3OnError">#FFFFFF</Color>
     <Color x:Key="M3ErrorContainer">#FFDAD6</Color>
     <Color x:Key="M3OnErrorContainer">#410002</Color>
 
-    <Color x:Key="M3Surface">#FFFBFF</Color>
-    <Color x:Key="M3SurfaceContainer">#F1ECF1</Color>
-    <Color x:Key="M3SurfaceVariant">#E6E0EC</Color>
-    <Color x:Key="M3OnSurface">#1C1B1F</Color>
-    <Color x:Key="M3OnSurfaceVariant">#48454E</Color>
-    <Color x:Key="M3Outline">#79757F</Color>
-    <Color x:Key="M3OutlineVariant">#C9C5D0</Color>
+    <Color x:Key="M3Surface">#FEFBFF</Color>
+    <Color x:Key="M3SurfaceContainer">#EFEDF1</Color>
+    <Color x:Key="M3SurfaceVariant">#E1E2EC</Color>
+    <Color x:Key="M3OnSurface">#1B1B1F</Color>
+    <Color x:Key="M3OnSurfaceVariant">#44474E</Color>
+    <Color x:Key="M3Outline">#74777F</Color>
+    <Color x:Key="M3OutlineVariant">#C4C6D0</Color>
 </ResourceDictionary>
