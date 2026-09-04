@@ -3,6 +3,7 @@ using golf1052.Mastodon.Models.Accounts;
 using golf1052.Mastodon.Models.Apps.OAuth;
 using golf1052.Mastodon.Models.OEmbed;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 using SeattleCarsInBikeLanes.Providers;
 
 namespace SeattleCarsInBikeLanes.Controllers
@@ -72,7 +73,10 @@ namespace SeattleCarsInBikeLanes.Controllers
             MastodonClient mastodonClient = await mastodonClientProvider.GetClient(endpointUri);
             return new MastodonOAuthUrlResponse()
             {
-                AuthUrl = mastodonClient.AuthorizeUser(RedirectUrl, Scopes)
+                AuthUrl = QueryHelpers.AddQueryString(
+                    mastodonClient.AuthorizeUser(RedirectUrl, Scopes),
+                    "force_login",
+                    "true")
             };
         }
 

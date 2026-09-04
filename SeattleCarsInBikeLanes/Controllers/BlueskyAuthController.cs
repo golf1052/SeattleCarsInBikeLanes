@@ -112,6 +112,9 @@ namespace SeattleCarsInBikeLanes.Controllers
                     oAuthClient: oAuthClient,
                     handle: parsedHandle,
                     returnUri: new Uri(options.RedirectUri),
+                    // Prevent the authorization server from silently reusing the account session
+                    // for this handle after the user has signed out of our site.
+                    uriExtraParameters: new[] { KeyValuePair.Create("prompt", "login") },
                     cancellationToken: cancellationToken);
 
                 if (oAuthClient.State is null)
