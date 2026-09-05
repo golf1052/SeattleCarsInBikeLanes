@@ -1,6 +1,13 @@
 (function() {
-    let nativeNotificationsEnabled = false;
-    const pendingNativeSignOuts = new Set();
+    const mobileAuthStorageKey = 'carsInBikeLanesMobileAuth';
+    const mobileAuthRequested =
+        new URLSearchParams(window.location.search).get('mobileAuth') === '1';
+    if (mobileAuthRequested) {
+        sessionStorage.setItem(mobileAuthStorageKey, '1');
+    }
+
+    const nativeNotificationsEnabled =
+        mobileAuthRequested || sessionStorage.getItem(mobileAuthStorageKey) === '1';
 
     function getProviderConfig(provider) {
         if (provider === 'bluesky') {
@@ -51,22 +58,10 @@
 
     function notifyNativeSignedOut(provider) {
         if (!nativeNotificationsEnabled) {
-            pendingNativeSignOuts.add(provider);
             return;
         }
 
         window.location.href = `cibl-mobile://auth/signed-out?provider=${provider}`;
-    }
-
-    function enableNativeNotifications() {
-        nativeNotificationsEnabled = true;
-        Array.from(pendingNativeSignOuts).forEach(function(provider, index) {
-            setTimeout(function() {
-                notifyNativeSignedOut(provider);
-            }, index * 50);
-        });
-        pendingNativeSignOuts.clear();
-        return true;
     }
 
     window.addEventListener('carsInBikeLanesAuthChanged', function(event) {
@@ -83,7 +78,6 @@
 
     window.carsInBikeLanesMobileAuth = Object.freeze({
         openSignIn: openSignIn,
-        applySignedOut: applySignedOut,
-        enableNativeNotifications: enableNativeNotifications
+        applySignedOut: applySignedOut
     });
 })();

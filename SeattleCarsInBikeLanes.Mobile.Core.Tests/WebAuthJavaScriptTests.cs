@@ -4,54 +4,31 @@ namespace SeattleCarsInBikeLanes.Mobile.Core.Tests;
 
 public sealed class WebAuthJavaScriptTests
 {
-    [Fact]
-    public void NotificationSetupSupportsEventsAndExistingButtonFallback()
-    {
-        Assert.Contains("enableNativeNotifications", WebAuthJavaScript.EnableNativeNotifications);
-        Assert.Contains("carsInBikeLanesAuthChanged", WebAuthJavaScript.EnableNativeNotifications);
-        Assert.Contains("blueskyLogoutButton", WebAuthJavaScript.EnableNativeNotifications);
-        Assert.Contains("mastodonLogoutButton", WebAuthJavaScript.EnableNativeNotifications);
-        Assert.Contains("cibl-mobile://auth/signed-out", WebAuthJavaScript.EnableNativeNotifications);
-    }
-
     [Theory]
-    [InlineData(WebAuthProvider.Bluesky, "bluesky", "blueskyHandleModal")]
-    [InlineData(WebAuthProvider.Mastodon, "mastodon", "mastodonServerModal")]
-    public void OpenSignInUsesBridgeAndModalFallback(
-        WebAuthProvider provider,
-        string providerName,
-        string modalId)
+    [InlineData(WebAuthProvider.Bluesky, "bluesky")]
+    [InlineData(WebAuthProvider.Mastodon, "mastodon")]
+    public void OpenSignInUsesBridge(WebAuthProvider provider, string providerName)
     {
         string script = WebAuthJavaScript.Build(
             new WebAuthAction(1, WebAuthActionKind.OpenSignIn, provider));
 
         Assert.Contains("carsInBikeLanesMobileAuth", script);
         Assert.Contains($"openSignIn('{providerName}')", script);
-        Assert.Contains(modalId, script);
+        Assert.DoesNotContain("document", script);
     }
 
     [Theory]
-    [InlineData(WebAuthProvider.Bluesky, "setBlueskyLoggedOut")]
-    [InlineData(WebAuthProvider.Mastodon, "clearMastodonAuth")]
-    public void ApplySignedOutUsesBridgeAndExistingFunctionFallback(
-        WebAuthProvider provider,
-        string fallbackFunction)
+    [InlineData(WebAuthProvider.Bluesky, "bluesky")]
+    [InlineData(WebAuthProvider.Mastodon, "mastodon")]
+    public void ApplySignedOutUsesBridge(WebAuthProvider provider, string providerName)
     {
         string script = WebAuthJavaScript.Build(
             new WebAuthAction(1, WebAuthActionKind.ApplySignedOut, provider));
 
         Assert.Contains("carsInBikeLanesMobileAuth", script);
-        Assert.Contains("applySignedOut", script);
-        Assert.Contains(fallbackFunction, script);
-    }
-
-    [Fact]
-    public void MastodonFallbackDoesNotNotifyNativeAgain()
-    {
-        string script = WebAuthJavaScript.Build(
-            new WebAuthAction(1, WebAuthActionKind.ApplySignedOut, WebAuthProvider.Mastodon));
-
-        Assert.Contains("clearMastodonAuth(false)", script);
+        Assert.Contains($"applySignedOut('{providerName}')", script);
+        Assert.DoesNotContain("document", script);
+        Assert.DoesNotContain("localStorage", script);
     }
 
     [Theory]

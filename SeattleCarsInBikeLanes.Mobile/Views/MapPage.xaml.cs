@@ -112,7 +112,6 @@ public partial class MapPage : ContentPage
 
         try
         {
-            await EnableNativeAuthNotificationsAsync();
             await ProcessPendingWebAuthActionsAsync();
 
             // The user may have signed in here rather than from Settings, and the web view's
@@ -186,24 +185,6 @@ public partial class MapPage : ContentPage
         finally
         {
             webAuthMutex.Release();
-        }
-    }
-
-    private async Task EnableNativeAuthNotificationsAsync()
-    {
-        try
-        {
-            string? result =
-                await Web.EvaluateJavaScriptAsync(WebAuthJavaScript.EnableNativeNotifications);
-
-            if (!WebAuthJavaScript.WasSuccessful(result))
-            {
-                logger.LogDebug("The web authentication notification listener was not enabled.");
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "Could not enable web authentication notifications.");
         }
     }
 
