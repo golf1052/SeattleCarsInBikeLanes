@@ -18,6 +18,9 @@ public static class WebViewJavaScriptResult
     {
         ArgumentNullException.ThrowIfNull(value);
 
+        // iOS:     "{\"token\":\"secret\"}"
+        // Android: {\"token\":\"secret\"}
+
         string trimmed = value.Trim();
         if (trimmed.StartsWith('"'))
         {
