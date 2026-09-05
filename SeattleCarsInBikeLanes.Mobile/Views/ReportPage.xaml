@@ -51,11 +51,21 @@
 
                 <VerticalStackLayout Spacing="4" IsVisible="{Binding CanAttribute}">
                     <Label Text="Attribution" FontAttributes="Bold" />
-                    <HorizontalStackLayout Spacing="8">
-                        <Switch IsToggled="{Binding Attribute}" />
-                        <Label Text="{Binding AttributionName, StringFormat='Credit this report to {0}'}"
-                               VerticalOptions="Center" />
-                    </HorizontalStackLayout>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                        <Switch Grid.Column="0"
+                                IsToggled="{Binding Attribute}"
+                                VerticalOptions="Start" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                            <Label Text="Credit this report"
+                                   FontAttributes="Bold" />
+                            <Label Text="{Binding BlueskyAttributionName, StringFormat='Bluesky: {0}'}"
+                                   LineBreakMode="WordWrap"
+                                   IsVisible="{Binding BlueskyAttributionName, Converter={StaticResource IsNotNullConverter}}" />
+                            <Label Text="{Binding MastodonAttributionName, StringFormat='Mastodon: {0}'}"
+                                   LineBreakMode="WordWrap"
+                                   IsVisible="{Binding MastodonAttributionName, Converter={StaticResource IsNotNullConverter}}" />
+                        </VerticalStackLayout>
+                    </Grid>
                 </VerticalStackLayout>
 
                 <Label Text="Sign in from Settings to have your reports credited to you."

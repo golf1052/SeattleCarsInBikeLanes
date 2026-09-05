@@ -19,21 +19,33 @@
                 <Label Text="Sign in so the reports you send can be credited to you."
                        IsVisible="{Binding IsSignedIn, Converter={StaticResource InvertedBoolConverter}}" />
 
-                <Label Text="{Binding AccountName, StringFormat='Bluesky: {0}'}"
-                       IsVisible="{Binding AccountName, Converter={StaticResource IsNotNullConverter}}" />
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Bluesky" FontAttributes="Bold" />
+                    <Label Text="{Binding AccountName}"
+                           IsVisible="{Binding IsBlueskySignedIn}" />
+                    <Button Text="Sign in with Bluesky"
+                            Clicked="BlueskySignInClicked"
+                            HorizontalOptions="Start"
+                            IsVisible="{Binding IsBlueskySignedIn, Converter={StaticResource InvertedBoolConverter}}" />
+                    <Button Text="Sign out"
+                            Command="{Binding SignOutBlueskyCommand}"
+                            HorizontalOptions="Start"
+                            IsVisible="{Binding IsBlueskySignedIn}" />
+                </VerticalStackLayout>
 
-                <Label Text="{Binding MastodonName, StringFormat='Mastodon: {0}'}"
-                       IsVisible="{Binding MastodonName, Converter={StaticResource IsNotNullConverter}}" />
-
-                <Button Text="Sign in"
-                        Clicked="SignInClicked"
-                        HorizontalOptions="Start"
-                        IsVisible="{Binding IsSignedIn, Converter={StaticResource InvertedBoolConverter}}" />
-
-                <Button Text="Sign out"
-                        Command="{Binding SignOutCommand}"
-                        HorizontalOptions="Start"
-                        IsVisible="{Binding IsSignedIn}" />
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Mastodon" FontAttributes="Bold" />
+                    <Label Text="{Binding MastodonName}"
+                           IsVisible="{Binding IsMastodonSignedIn}" />
+                    <Button Text="Sign in with Mastodon"
+                            Clicked="MastodonSignInClicked"
+                            HorizontalOptions="Start"
+                            IsVisible="{Binding IsMastodonSignedIn, Converter={StaticResource InvertedBoolConverter}}" />
+                    <Button Text="Sign out"
+                            Command="{Binding SignOutMastodonCommand}"
+                            HorizontalOptions="Start"
+                            IsVisible="{Binding IsMastodonSignedIn}" />
+                </VerticalStackLayout>
 
                 <HorizontalStackLayout Spacing="8" IsVisible="{Binding IsSignedIn}">
                     <Switch IsToggled="{Binding AttributeByDefault}" />
@@ -65,6 +77,7 @@
                 <Label Text="{Binding AppVersion, StringFormat='Version {0}'}"
                        Style="{StaticResource SupportingTextLabel}" />
                 <Button Text="Open the website" Command="{Binding OpenWebsiteCommand}" HorizontalOptions="Start" />
+                <Button Text="Privacy policy" Command="{Binding OpenPrivacyPolicyCommand}" HorizontalOptions="Start" />
                 <Button Text="Source code" Command="{Binding OpenSourceCommand}" HorizontalOptions="Start" />
             </VerticalStackLayout>
         </VerticalStackLayout>

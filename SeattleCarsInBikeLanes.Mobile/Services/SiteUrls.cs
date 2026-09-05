@@ -7,16 +7,13 @@ public static class SiteUrls
 {
     public static Uri BaseAddress { get; } = new Uri("https://seattle.carinbikelane.com/");
 
+    public static Uri Privacy { get; } = new Uri("https://carinbikelane.com/privacy");
+
     /// <summary>
     /// The map, embedded rather than rebuilt. The query parameter lets the site tell app traffic
     /// apart and hide anything that does not belong in a native shell.
     /// </summary>
-    public static Uri Map { get; } = new Uri(BaseAddress, "?client=ios");
-
-    /// <summary>
-    /// Where the user is sent to sign in.
-    /// </summary>
-    public static Uri Login { get; } = new Uri(BaseAddress, "?client=ios");
+    public static Uri Map { get; } = new Uri(BaseAddress, "?client=ios&mobileAuth=1");
 
     public static Uri BlueskyMe { get; } = new Uri(BaseAddress, "api/BlueskyAuth/me");
 

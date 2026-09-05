@@ -62,7 +62,10 @@ public sealed partial class ReportViewModel : ObservableObject
     public partial bool CanAttribute { get; set; }
 
     [ObservableProperty]
-    public partial string? AttributionName { get; set; }
+    public partial string? BlueskyAttributionName { get; set; }
+
+    [ObservableProperty]
+    public partial string? MastodonAttributionName { get; set; }
 
     [ObservableProperty]
     public partial bool IsUploading { get; set; }
@@ -100,7 +103,9 @@ public sealed partial class ReportViewModel : ObservableObject
 
         AttributionIdentity? identity = authService.CurrentIdentity;
         CanAttribute = identity?.CanAttribute == true;
-        AttributionName = identity?.DisplayName;
+        BlueskyAttributionName = identity?.HasBluesky == true ? identity.BlueskyHandle : null;
+        MastodonAttributionName =
+            identity?.HasMastodon == true ? identity.MastodonFullUsername : null;
 
         // Somebody who has asked to be credited should not have to say so on every report.
         Attribute = CanAttribute && AppPreferences.AttributeByDefault;

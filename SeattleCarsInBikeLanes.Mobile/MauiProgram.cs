@@ -3,6 +3,7 @@ using CommunityToolkit.Maui;
 using CommunityToolkit.Maui.Core.Handlers;
 using Microsoft.Maui.Handlers;
 using SeattleCarsInBikeLanes.Mobile.Core.Metadata;
+using SeattleCarsInBikeLanes.Mobile.Core.Navigation;
 using SeattleCarsInBikeLanes.Mobile.Core.Permissions;
 using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 using SeattleCarsInBikeLanes.Mobile.Services;
@@ -102,6 +103,7 @@ public static class MauiProgram
 		services.AddSingleton<ICameraReadinessMetrics, CameraReadinessMetrics>();
 		services.AddSingleton<ILaunchPermissionGateway, MauiLaunchPermissionGateway>();
 		services.AddSingleton<LaunchPermissionCoordinator>();
+		services.AddSingleton<WebAuthActionCoordinator>();
 
 		// One cookie container, shared, so the session copied out of the web view is visible to
 		// every request the app makes.
@@ -133,6 +135,7 @@ public static class MauiProgram
 		services.AddSingleton<ICaptureService, CaptureService>();
 		services.AddSingleton<IPhotoCatalog, PhotoCatalog>();
 		services.AddSingleton<IAuthService, AuthService>();
+		services.AddSingleton<IMastodonSessionCapture, MastodonSessionCapture>();
 		services.AddSingleton<IUploadService, UploadService>();
 
 		// A singleton because a report outlives the page that created it. Everything about the
@@ -183,6 +186,5 @@ public static class MauiProgram
 		services.AddSingleton<MapPage>();
 		services.AddSingleton<SettingsPage>();
 		services.AddTransient<ReportPage>();
-		services.AddTransient<LoginPage>();
 	}
 }

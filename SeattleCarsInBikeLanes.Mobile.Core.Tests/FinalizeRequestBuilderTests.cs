@@ -108,6 +108,28 @@ public class FinalizeRequestBuilderTests
     }
 
     [Fact]
+    public void CreditsBothPlatformsIndependentlyWhenBothAreLinked()
+    {
+        ReportDraft draft = Draft();
+        draft.Attribute = true;
+        AttributionIdentity identity = new AttributionIdentity()
+        {
+            BlueskyHandle = "someone.bsky.social",
+            MastodonUsername = "someone",
+            MastodonFullUsername = "@someone@example.social",
+            MastodonEndpoint = "https://example.social",
+            MastodonAccessToken = "secret-token"
+        };
+
+        List<FinalizedPhotoUpload> result = FinalizeRequestBuilder.Build(Photos(), draft, identity);
+
+        Assert.True(result[0].Attribute);
+        Assert.Equal("Submitted by someone.bsky.social", result[0].BlueskySubmittedBy);
+        Assert.Equal("Submitted by @someone@example.social", result[0].MastodonSubmittedBy);
+        Assert.Equal("secret-token", result[0].MastodonAccessToken);
+    }
+
+    [Fact]
     public void SendsMastodonCredentialsOnlyWhenCrediting()
     {
         AttributionIdentity identity = new AttributionIdentity()

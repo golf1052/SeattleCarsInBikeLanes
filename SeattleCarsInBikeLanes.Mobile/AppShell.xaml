@@ -7,7 +7,7 @@
     Shell.FlyoutBehavior="Disabled"
     Title="Cars in Bike Lanes">
 
-    <TabBar>
+    <TabBar Route="MainTabs">
         <!-- The camera is first so a cold launch lands on a live preview, which is the whole
              reason the app exists. -->
         <Tab Title="Camera">
@@ -16,7 +16,7 @@
             </Tab.Icon>
             <ShellContent ContentTemplate="{DataTemplate views:CameraPage}" Route="CameraPage" />
         </Tab>
-        <Tab Title="Map">
+        <Tab Title="Map" Route="MapTab">
             <Tab.Icon>
                 <FontImageSource FontFamily="FluentIcons" Glyph="&#xF52E;" Size="24" />
             </Tab.Icon>

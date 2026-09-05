@@ -37,7 +37,19 @@ public interface IAuthService
     /// </remarks>
     Task SetMastodonAsync(string endpoint, string accessToken, CancellationToken cancellationToken = default);
 
-    Task SignOutAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Signs out of Bluesky only, leaving a linked Mastodon account signed in.
+    /// </summary>
+    Task SignOutBlueskyAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Signs out of Mastodon only, leaving a linked Bluesky account signed in.
+    /// </summary>
+    /// <remarks>
+    /// The server keeps no Mastodon session of its own, so this never needs a network call: the
+    /// access token lives only in secure storage and forgetting it is enough.
+    /// </remarks>
+    Task SignOutMastodonAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Applies whatever credentials the app holds to an outgoing request.
@@ -161,7 +173,6 @@ public sealed class AuthService : IAuthService
         await TrySetAsync(MastodonUsernameKey, username.Username);
         await TrySetAsync(MastodonFullUsernameKey, username.FullUsername);
         await TrySetAsync(MastodonTokenKey, accessToken);
-
         CurrentIdentity = await BuildIdentityAsync(CurrentIdentity?.BlueskyHandle);
         RaiseIdentityChanged();
     }
@@ -193,7 +204,7 @@ public sealed class AuthService : IAuthService
         }
     }
 
-    public async Task SignOutAsync(CancellationToken cancellationToken = default)
+    public async Task SignOutBlueskyAsync(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -205,14 +216,10 @@ public sealed class AuthService : IAuthService
         {
             // The local session is going away regardless, so a failure to tell the server is not
             // worth blocking sign out over.
-            logger.LogWarning(ex, "Failed to tell the server about signing out.");
+            logger.LogWarning(ex, "Failed to tell the server about signing out of Bluesky.");
         }
 
-        foreach (string key in new[]
-        {
-            BlueskyTokenKey, BlueskyHandleKey,
-            MastodonTokenKey, MastodonEndpointKey, MastodonUsernameKey, MastodonFullUsernameKey
-        })
+        foreach (string key in new[] { BlueskyTokenKey, BlueskyHandleKey })
         {
             SecureStorage.Default.Remove(key);
         }
@@ -221,7 +228,24 @@ public sealed class AuthService : IAuthService
         ClearCookies();
         await cookieBridge.ClearAsync(SiteUrls.BaseAddress);
 
-        CurrentIdentity = null;
+        // A linked Mastodon account is unaffected: it carries its own credentials and has no
+        // session of its own to sign out of here.
+        CurrentIdentity = await BuildIdentityAsync(null);
+        RaiseIdentityChanged();
+    }
+
+    public async Task SignOutMastodonAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (string key in new[]
+        {
+            MastodonTokenKey, MastodonEndpointKey, MastodonUsernameKey, MastodonFullUsernameKey
+        })
+        {
+            SecureStorage.Default.Remove(key);
+        }
+
+        // A linked Bluesky account is unaffected: its cookie/token and secure storage are untouched.
+        CurrentIdentity = await BuildIdentityAsync(CurrentIdentity?.BlueskyHandle);
         RaiseIdentityChanged();
     }
 

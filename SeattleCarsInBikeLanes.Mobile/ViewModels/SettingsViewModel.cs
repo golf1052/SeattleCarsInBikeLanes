@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SeattleCarsInBikeLanes.Mobile.Core.Navigation;
 using SeattleCarsInBikeLanes.Mobile.Core.Upload;
 using SeattleCarsInBikeLanes.Mobile.Services;
 
@@ -14,18 +15,21 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IDeviceIdentityService deviceIdentity;
     private readonly IPhotoCatalog photoCatalog;
     private readonly IUploadQueue uploadQueue;
+    private readonly WebAuthActionCoordinator webAuthActions;
     private readonly ILogger<SettingsViewModel> logger;
 
     public SettingsViewModel(IAuthService authService,
         IDeviceIdentityService deviceIdentity,
         IPhotoCatalog photoCatalog,
         IUploadQueue uploadQueue,
+        WebAuthActionCoordinator webAuthActions,
         ILogger<SettingsViewModel> logger)
     {
         this.authService = authService;
         this.deviceIdentity = deviceIdentity;
         this.photoCatalog = photoCatalog;
         this.uploadQueue = uploadQueue;
+        this.webAuthActions = webAuthActions;
         this.logger = logger;
 
         authService.IdentityChanged += (_, _) => ApplyIdentity();
@@ -40,6 +44,12 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string? MastodonName { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsBlueskySignedIn { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsMastodonSignedIn { get; set; }
 
     [ObservableProperty]
     public partial string DeviceId { get; set; } = string.Empty;
@@ -77,17 +87,34 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task SignOutAsync()
+    private async Task SignOutBlueskyAsync()
     {
         try
         {
-            await authService.SignOutAsync();
-            StatusMessage = "Signed out.";
+            await authService.SignOutBlueskyAsync();
+            webAuthActions.QueueApplySignedOut(WebAuthProvider.Bluesky);
+            StatusMessage = "Signed out of Bluesky.";
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to sign out.");
-            StatusMessage = "Couldn't sign out.";
+            logger.LogError(ex, "Failed to sign out of Bluesky.");
+            StatusMessage = "Couldn't sign out of Bluesky.";
+        }
+    }
+
+    [RelayCommand]
+    private async Task SignOutMastodonAsync()
+    {
+        try
+        {
+            await authService.SignOutMastodonAsync();
+            webAuthActions.QueueApplySignedOut(WebAuthProvider.Mastodon);
+            StatusMessage = "Signed out of Mastodon.";
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to sign out of Mastodon.");
+            StatusMessage = "Couldn't sign out of Mastodon.";
         }
     }
 
@@ -116,6 +143,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private static Task OpenWebsiteAsync() => Browser.Default.OpenAsync(SiteUrls.BaseAddress);
 
     [RelayCommand]
+    private static Task OpenPrivacyPolicyAsync() => Browser.Default.OpenAsync(SiteUrls.Privacy);
+
+    [RelayCommand]
     private static Task OpenSourceAsync() =>
         Browser.Default.OpenAsync(new Uri("https://github.com/golf1052/SeattleCarsInBikeLanes"));
 
@@ -126,5 +156,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsSignedIn = identity?.CanAttribute == true;
         AccountName = identity?.BlueskyHandle;
         MastodonName = identity?.MastodonFullUsername;
+        IsBlueskySignedIn = !string.IsNullOrWhiteSpace(AccountName);
+        IsMastodonSignedIn = !string.IsNullOrWhiteSpace(MastodonName);
     }
 }

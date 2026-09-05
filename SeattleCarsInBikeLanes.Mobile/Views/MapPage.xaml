@@ -14,5 +14,13 @@
                            IsRunning="True"
                            VerticalOptions="Center"
                            HorizontalOptions="Center" />
+
+        <Button x:Name="CancelSignInButton"
+                Text="Cancel sign in"
+                Clicked="CancelSignInClicked"
+                IsVisible="False"
+                HorizontalOptions="End"
+                VerticalOptions="End"
+                Margin="12" />
     </Grid>
 </ContentPage>

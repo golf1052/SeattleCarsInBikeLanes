@@ -75,7 +75,8 @@ Run this matrix on a physical Android 10+ device before merging mobile changes:
 | Thumbnails | Captured and imported images render in the roll and report preview |
 | Delete | Captured photos are deleted only after app confirmation; imported photos are forgotten by the app but remain in the device library |
 | Anonymous report | A report can be submitted without signing in and its photos move to the reported section |
-| Signed-in report | Bluesky or Mastodon sign-in is reflected in report attribution; signing out clears both HTTP and WebView sessions |
+| Signed-in report | Each Settings provider button switches to Map and opens the correct sign-in modal; the other provider remains available when one account is linked; successful sign-in is reflected in Settings and report attribution |
+| Sign-out synchronization | Signing out either provider in Settings updates native attribution and the already-loaded Map UI/storage; signing out from the Map website updates Settings; neither direction signs out the other provider, and Settings-originated sign-out also works when Map has not loaded yet or reloads before handling the request |
 | Weak/offline network | A report stays queued, survives stopping the process, and resumes through WorkManager after connectivity returns |
 | Upload payload | Large photos are resized while EXIF, GPS, orientation, and XMP remain readable by the server |
 | Map | Google Maps loads and off-site main-frame links open externally without embedded posts ejecting the user from the app |

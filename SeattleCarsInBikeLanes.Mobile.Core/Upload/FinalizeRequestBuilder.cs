@@ -38,7 +38,18 @@ public sealed class AttributionIdentity
     /// <summary>
     /// What the user sees when deciding whether to be credited.
     /// </summary>
-    public string? DisplayName => HasBluesky ? BlueskyHandle : MastodonFullUsername;
+    /// <remarks>
+    /// A report is credited on every linked platform independently (see
+    /// <see cref="FinalizeRequestBuilder.Build"/>), so this names every account that would be
+    /// credited rather than just one of them.
+    /// </remarks>
+    public string? DisplayName => (HasBluesky, HasMastodon) switch
+    {
+        (true, true) => $"{BlueskyHandle} and {MastodonFullUsername}",
+        (true, false) => BlueskyHandle,
+        (false, true) => MastodonFullUsername,
+        _ => null
+    };
 }
 
 /// <summary>
