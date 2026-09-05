@@ -38,6 +38,19 @@ public class WebNavigationPolicyTests
     }
 
     [Fact]
+    public void ShouldOpenExternally_IgnoresUnrelatedAuthorizationParameters()
+    {
+        Uri target = new Uri(
+            "https://bsky.social/oauth/authorize" +
+            "?unrelated=value" +
+            "&client_id=https%3A%2F%2Fseattle.carinbikelane.com%2Fclient-metadata.json" +
+            "&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3Arequest-123");
+
+        Assert.Equal(WebNavigationAction.RestartSocialAuthorization,
+            policy.GetAction(target, SiteBaseAddress));
+    }
+
+    [Fact]
     public void ResetSocialAuthorization_StopsTreatingOffSitePagesAsAuthorization()
     {
         Uri authorization = new Uri(
@@ -107,6 +120,9 @@ public class WebNavigationPolicyTests
     [InlineData("http://bsky.social/oauth/authorize?client_id=https%3A%2F%2Fseattle.carinbikelane.com%2Fclient-metadata.json&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3Arequest-123")]
     [InlineData("https://bsky.social/oauth/authorize?client_id=https%3A%2F%2Fevil.example%2Fclient-metadata.json&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3Arequest-123")]
     [InlineData("https://bsky.social/oauth/authorize?client_id=https%3A%2F%2Fseattle.carinbikelane.com%2Fclient-metadata.json")]
+    [InlineData("https://bsky.social/oauth/authorize?client_id=&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3Arequest-123")]
+    [InlineData("https://bsky.social/oauth/authorize?client_id=https%3A%2F%2Fseattle.carinbikelane.com%2Fclient-metadata.json&client_id=https%3A%2F%2Fseattle.carinbikelane.com%2Fclient-metadata.json&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3Arequest-123")]
+    [InlineData("https://bsky.social/oauth/authorize?client_id=%ZZ&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3Arequest-123")]
     public void ShouldOpenExternally_RejectsInvalidBlueskyAuthorization(string url)
     {
         Assert.Equal(WebNavigationAction.OpenExternally,
@@ -117,7 +133,10 @@ public class WebNavigationPolicyTests
     [InlineData("http://mastodon.social/oauth/authorize?response_type=code&client_id=client-123&redirect_uri=https%3A%2F%2Fseattle.carinbikelane.com%2Fmastodonredirect")]
     [InlineData("https://mastodon.social/oauth/authorize?response_type=token&client_id=client-123&redirect_uri=https%3A%2F%2Fseattle.carinbikelane.com%2Fmastodonredirect")]
     [InlineData("https://mastodon.social/oauth/authorize?response_type=code&redirect_uri=https%3A%2F%2Fseattle.carinbikelane.com%2Fmastodonredirect")]
+    [InlineData("https://mastodon.social/oauth/authorize?response_type=code&client_id=&redirect_uri=https%3A%2F%2Fseattle.carinbikelane.com%2Fmastodonredirect")]
     [InlineData("https://mastodon.social/oauth/authorize?response_type=code&client_id=client-123&redirect_uri=https%3A%2F%2Fevil.example%2Fmastodonredirect")]
+    [InlineData("https://mastodon.social/oauth/authorize?response_type=code&response_type=code&client_id=client-123&redirect_uri=https%3A%2F%2Fseattle.carinbikelane.com%2Fmastodonredirect")]
+    [InlineData("https://mastodon.social/oauth/authorize?response_type=code&client_id=client-123&redirect_uri=%ZZ")]
     public void ShouldOpenExternally_RejectsInvalidMastodonAuthorization(string url)
     {
         Assert.Equal(WebNavigationAction.OpenExternally,

@@ -7,6 +7,7 @@ public sealed class WebAuthNotificationTests
     [Theory]
     [InlineData("cibl-mobile://auth/signed-out?provider=bluesky", WebAuthProvider.Bluesky)]
     [InlineData("cibl-mobile://auth/signed-out?provider=mastodon", WebAuthProvider.Mastodon)]
+    [InlineData("cibl-mobile://auth/signed-out?unrelated=value&provider=%62luesky", WebAuthProvider.Bluesky)]
     public void ParsesProviderSignOut(string value, WebAuthProvider expected)
     {
         Assert.True(WebAuthNotification.TryGetSignedOutProvider(new Uri(value), out WebAuthProvider provider));
@@ -18,7 +19,11 @@ public sealed class WebAuthNotificationTests
     [InlineData("cibl-mobile://other/signed-out?provider=bluesky")]
     [InlineData("cibl-mobile://auth/other?provider=bluesky")]
     [InlineData("cibl-mobile://auth/signed-out?provider=unknown")]
+    [InlineData("cibl-mobile://auth/signed-out?provider=Bluesky")]
     [InlineData("cibl-mobile://auth/signed-out")]
+    [InlineData("cibl-mobile://auth/signed-out?provider=")]
+    [InlineData("cibl-mobile://auth/signed-out?provider=bluesky&provider=mastodon")]
+    [InlineData("cibl-mobile://auth/signed-out?provider=%ZZ")]
     public void RejectsInvalidNotification(string value)
     {
         Assert.False(WebAuthNotification.TryGetSignedOutProvider(new Uri(value), out _));

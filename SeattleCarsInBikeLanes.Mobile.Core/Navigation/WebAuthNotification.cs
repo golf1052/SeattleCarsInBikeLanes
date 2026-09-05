@@ -1,3 +1,5 @@
+using System.Web;
+
 namespace SeattleCarsInBikeLanes.Mobile.Core.Navigation;
 
 /// <summary>
@@ -27,30 +29,17 @@ public static class WebAuthNotification
             return false;
         }
 
-        foreach (string pair in target.Query
-            .TrimStart('?')
-            .Split('&', StringSplitOptions.RemoveEmptyEntries))
+        string? value = HttpUtility.ParseQueryString(target.Query)["provider"];
+        if (value?.Equals("bluesky", StringComparison.Ordinal) == true)
         {
-            int separator = pair.IndexOf('=');
-            if (separator <= 0 ||
-                !Uri.UnescapeDataString(pair[..separator])
-                    .Equals("provider", StringComparison.Ordinal))
-            {
-                continue;
-            }
+            provider = WebAuthProvider.Bluesky;
+            return true;
+        }
 
-            string value = Uri.UnescapeDataString(pair[(separator + 1)..]);
-            if (value.Equals("bluesky", StringComparison.Ordinal))
-            {
-                provider = WebAuthProvider.Bluesky;
-                return true;
-            }
-
-            if (value.Equals("mastodon", StringComparison.Ordinal))
-            {
-                provider = WebAuthProvider.Mastodon;
-                return true;
-            }
+        if (value?.Equals("mastodon", StringComparison.Ordinal) == true)
+        {
+            provider = WebAuthProvider.Mastodon;
+            return true;
         }
 
         return false;
