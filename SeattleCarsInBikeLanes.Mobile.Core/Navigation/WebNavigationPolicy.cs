@@ -10,6 +10,11 @@ public enum WebNavigationAction
     RestartSocialAuthorization
 }
 
+/// <summary>
+/// Applies only to the map's WebView on <c>MapPage</c>. The policy keeps ordinary
+/// external links out of the embedded map while allowing Bluesky and Mastodon
+/// authorization redirects to remain there so sign-in can complete.
+/// </summary>
 public sealed class WebNavigationPolicy
 {
     private const string OAuthRequestUriPrefix = "urn:ietf:params:oauth:request_uri:";
