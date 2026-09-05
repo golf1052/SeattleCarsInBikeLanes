@@ -337,6 +337,14 @@ public partial class CameraPage : ContentPage
         finally
         {
             EndPreviewReadyWait(cancellation, cancel: !frameReady);
+
+            // StartCameraPreview can throw before firstFrame is awaited above (for example when the
+            // native camera provider was torn down from under us). Left unobserved, firstFrame's
+            // fault would otherwise surface later on the finalizer thread and crash the app.
+            if (!frameReady)
+            {
+                ObserveFireAndForget(firstFrame);
+            }
         }
 
         if (!IsPreviewExpected)
@@ -351,6 +359,15 @@ public partial class CameraPage : ContentPage
         ResumePreviewState();
         cameraReadiness.Complete();
     }
+
+    /// <summary>
+    /// Prevents a task's fault from being rethrown on the finalizer thread when it can no longer be
+    /// awaited by its original caller.
+    /// </summary>
+    private static void ObserveFireAndForget(Task task) =>
+        task.ContinueWith(
+            static t => _ = t.Exception,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
 
     /// <summary>
     /// Takes the camera back off the moment the page is no longer the one being looked at.
@@ -511,6 +528,13 @@ public partial class CameraPage : ContentPage
             finally
             {
                 EndPreviewReadyWait(cancellation, cancel: !frameReady);
+
+                // See the comment on ObserveFireAndForget in StartPreviewCoreAsync: CameraHost.Add
+                // can throw before firstFrame is awaited, leaving its eventual fault unobserved.
+                if (!frameReady)
+                {
+                    ObserveFireAndForget(firstFrame);
+                }
             }
 
             if (!IsPreviewExpected)
