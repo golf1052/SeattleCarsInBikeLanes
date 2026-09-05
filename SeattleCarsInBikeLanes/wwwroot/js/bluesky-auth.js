@@ -106,11 +106,16 @@ function loginWithBluesky() {
     });
 }
 
-function clearBlueskyAuth() {
-    fetch('/api/BlueskyAuth/logout', { method: 'POST' })
+function clearBlueskyAuth(notifyNative = true) {
+    return fetch('/api/BlueskyAuth/logout', { method: 'POST' })
     .catch(() => { /* Signing out locally is what matters. */ })
     .then(() => {
         setBlueskyLoggedOut();
+        if (notifyNative) {
+            window.dispatchEvent(new CustomEvent('carsInBikeLanesAuthChanged', {
+                detail: { provider: 'bluesky', signedIn: false }
+            }));
+        }
     });
 }
 

@@ -98,13 +98,18 @@ function setMastodonButtonAsLoggedOut() {
     mastodonButton.innerText = 'Sign in with Mastodon';
 }
 
-function clearMastodonAuth() {
+function clearMastodonAuth(notifyNative = true) {
     localStorage.removeItem('mastodonEndpoint');
     localStorage.removeItem('mastodonAccessToken');
     loggedInMastodonFullUsername = null;
     loggedInMastodonUsername = null;
     setMastodonButtonAsLoggedOut();
     document.getElementById('mastodonLogoutButton').className = 'dropdown-item disabled';
+    if (notifyNative) {
+        window.dispatchEvent(new CustomEvent('carsInBikeLanesAuthChanged', {
+            detail: { provider: 'mastodon', signedIn: false }
+        }));
+    }
 }
 
 function checkMastodonAuth() {
