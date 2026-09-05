@@ -140,14 +140,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private static Task OpenWebsiteAsync() => Browser.Default.OpenAsync(SiteUrls.BaseAddress);
+    private static Task OpenWebsiteAsync() =>
+        Browser.Default.OpenAsync(SiteUrls.BaseAddress, BrowserLaunchMode.External);
 
     [RelayCommand]
-    private static Task OpenPrivacyPolicyAsync() => Browser.Default.OpenAsync(SiteUrls.Privacy);
+    private static Task OpenPrivacyPolicyAsync() =>
+        Browser.Default.OpenAsync(SiteUrls.Privacy, BrowserLaunchMode.External);
 
     [RelayCommand]
     private static Task OpenSourceAsync() =>
-        Browser.Default.OpenAsync(new Uri("https://github.com/golf1052/SeattleCarsInBikeLanes"));
+        Browser.Default.OpenAsync(
+            new Uri("https://github.com/golf1052/SeattleCarsInBikeLanes"),
+            BrowserLaunchMode.External);
 
     private void ApplyIdentity()
     {
