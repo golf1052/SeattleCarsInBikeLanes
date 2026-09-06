@@ -3,6 +3,60 @@
 Fonts from https://github.com/microsoft/fluentui-system-icons
   - see `fonts` folder
 
+## App icon
+
+The same two SVG layers in `Resources/AppIcon` define the icon on every platform:
+
+- `appicon.svg`: pale background (`#ECF1F9`) and street grid (`#D4DFEE`).
+- `appiconfg.svg`: cornflower-blue pin (`#6495ED`) and bicycle (`#142F42`).
+
+MAUI generates Android's adaptive layers and the icons for non-iOS targets.
+Android's foreground scale is `0.68` to keep the pin inside launcher masks; the
+other platforms use the full-size composition.
+
+iOS uses the standard `Platforms/iOS/Assets.xcassets/appicon.appiconset`
+catalog because MAUI 10's generated `MauiIcon` does not define a dark appearance.
+Its default 1024px PNG is opaque. The explicit dark PNG keeps the same foreground
+and street geometry, removes the background fill, and uses `#263955` for the
+streets so iOS can supply its dark backdrop. iOS chooses the appearance using the
+user's Home Screen icon settings, independently of the app's in-app theme.
+There is no Icon Composer document or custom build-time icon compiler.
+
+After editing the shared SVGs, regenerate the checked-in iOS PNGs with the
+.NET 10 SDK:
+
+```bash
+dotnet run --file scripts/export-ios-app-icons.cs
+```
+
+Or run the executable script directly on macOS/Linux:
+
+```bash
+./scripts/export-ios-app-icons.cs
+```
+
+These examples use the repository root, but the exporter resolves the SVGs and
+output directory relative to its own source file, so it can run from any directory.
+The file-based app declares its Svg.Skia and native Skia dependencies inline;
+.NET restores them on the first run. It reads the shared SVGs rather than
+duplicating their geometry and is an artwork-editing tool, not a build dependency.
+
+Android 13+ has a small `mipmap-anydpi-v33/appicon.xml` override that reuses MAUI's
+generated color layers and supplies `drawable/appicon_monochrome.xml` for themed
+icons. This preserves the bicycle cutout and street grid: MAUI 10's default
+monochrome source is the opaque colored foreground, which would hide the bicycle.
+Keep this derived glyph aligned with the shared SVGs when changing the design.
+
+Clean the affected platform target after changing icon assets to remove stale
+generated resources; launchers can also cache the previous icon. For checkouts
+inside OneDrive, keep signed iOS output outside the synced directory if
+`codesign` reports resource-fork or Finder-info errors, for example:
+
+```bash
+dotnet build -f net10.0-ios -r iossimulator-arm64 \
+  -p:OutputPath="$HOME/Library/Caches/SeattleCarsInBikeLanes/ios-build/"
+```
+
 ## Android setup
 
 The app requires a Google Maps SDK for Android API key. Copy the local build

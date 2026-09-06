@@ -52,8 +52,13 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<!-- App Icon -->
-		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#6495ED" />
+		<!-- iOS uses an asset catalog for light/dark appearances of the same SVG artwork. -->
+		<MauiIcon Include="Resources\AppIcon\appicon.svg"
+				  ForegroundFile="Resources\AppIcon\appiconfg.svg"
+				  Color="#ECF1F9"
+				  Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'ios'">
+			<ForegroundScale Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">0.68</ForegroundScale>
+		</MauiIcon>
 
 		<!-- Splash Screen -->
 		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#6495ED" BaseSize="128,128" />
