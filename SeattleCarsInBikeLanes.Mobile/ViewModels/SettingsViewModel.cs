@@ -7,26 +7,23 @@ using SeattleCarsInBikeLanes.Mobile.Services;
 namespace SeattleCarsInBikeLanes.Mobile.ViewModels;
 
 /// <summary>
-/// Account, device and app information.
+/// Account and app information.
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly IAuthService authService;
-    private readonly IDeviceIdentityService deviceIdentity;
     private readonly IPhotoCatalog photoCatalog;
     private readonly IUploadQueue uploadQueue;
     private readonly WebAuthActionCoordinator webAuthActions;
     private readonly ILogger<SettingsViewModel> logger;
 
     public SettingsViewModel(IAuthService authService,
-        IDeviceIdentityService deviceIdentity,
         IPhotoCatalog photoCatalog,
         IUploadQueue uploadQueue,
         WebAuthActionCoordinator webAuthActions,
         ILogger<SettingsViewModel> logger)
     {
         this.authService = authService;
-        this.deviceIdentity = deviceIdentity;
         this.photoCatalog = photoCatalog;
         this.uploadQueue = uploadQueue;
         this.webAuthActions = webAuthActions;
@@ -52,9 +49,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial bool IsMastodonSignedIn { get; set; }
 
     [ObservableProperty]
-    public partial string DeviceId { get; set; } = string.Empty;
-
-    [ObservableProperty]
     public partial string? StatusMessage { get; set; }
 
     /// <summary>
@@ -73,18 +67,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     public string AppVersion => $"{AppInfo.Current.VersionString} ({AppInfo.Current.BuildString})";
 
     [RelayCommand]
-    public async Task LoadAsync()
-    {
-        DeviceId = await deviceIdentity.GetDeviceIdAsync();
-        await authService.RefreshAsync();
-    }
-
-    [RelayCommand]
-    private async Task CopyDeviceIdAsync()
-    {
-        await Clipboard.Default.SetTextAsync(DeviceId);
-        StatusMessage = "Device ID copied.";
-    }
+    public Task LoadAsync() => authService.RefreshAsync();
 
     [RelayCommand]
     private async Task SignOutBlueskyAsync()

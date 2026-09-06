@@ -63,16 +63,6 @@
             </VerticalStackLayout>
 
             <VerticalStackLayout Spacing="8">
-                <Label Text="Device" FontAttributes="Bold" FontSize="18" />
-                <Label Text="This ID is sent with your reports so abuse can be dealt with without affecting everyone else. It doesn't identify you."
-                       Style="{StaticResource SupportingTextLabel}" />
-                <Label Text="{Binding DeviceId}" FontSize="12" FontFamily="Monospace" />
-                <Button Text="Copy device ID"
-                        Command="{Binding CopyDeviceIdCommand}"
-                        HorizontalOptions="Start" />
-            </VerticalStackLayout>
-
-            <VerticalStackLayout Spacing="8">
                 <Label Text="About" FontAttributes="Bold" FontSize="18" />
                 <Label Text="{Binding AppVersion, StringFormat='Version {0}'}"
                        Style="{StaticResource SupportingTextLabel}" />

@@ -4,7 +4,7 @@ using SeattleCarsInBikeLanes.Mobile.ViewModels;
 namespace SeattleCarsInBikeLanes.Mobile.Views;
 
 /// <summary>
-/// Account, device and app information.
+/// Account and app information.
 /// </summary>
 public partial class SettingsPage : ContentPage
 {
