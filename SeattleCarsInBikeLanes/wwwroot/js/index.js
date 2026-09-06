@@ -1,4 +1,6 @@
 let map = null;
+let mapReady = false;
+let mapTheme = window.siteTheme.getTheme();
 let reportedItemsPromise = null;
 let dataSource = null;
 let popup = null;
@@ -22,9 +24,58 @@ let blLayer = null;
 let clLayer = null;
 let oLayer = null;
 let trailsLayer = null;
-const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 let loggedInMastodonFullUsername = null;
 let loggedInMastodonUsername = null;
+
+function getBikeFacilityLegendItems(theme) {
+    return [
+        { label: 'Protected Bike Lane', color: 'rgb(22, 145, 208)', strokeWidth: 4 },
+        { label: 'Buffered Bike Lane', color: 'rgb(28, 179, 255)', strokeWidth: 3 },
+        { label: 'Painted Bike Lane', color: 'rgb(255, 108, 44)', strokeWidth: 3 },
+        { label: 'Climbing Lane', color: 'rgb(0, 168, 93)', strokeWidth: 2 },
+        { label: 'Miscellaneous Off Street Bicycle Facility', color: theme === 'dark' ? '#fff' : '#000', strokeWidth: 2 },
+        { label: 'Multi-Use Trail', color: 'rgb(168, 56, 0)', strokeWidth: 4 }
+    ];
+}
+
+function applyWebTheme(theme) {
+    if (mapReady && map && mapTheme !== theme) {
+        map.setStyle({
+            style: theme === 'dark' ? 'night' : 'road'
+        });
+        mapTheme = theme;
+    }
+
+    [filterLegendControl, uploadLegendControl, filterStatusLegendControl].forEach(legendControl => {
+        if (legendControl) {
+            legendControl.setOptions({
+                style: theme
+            });
+        }
+    });
+
+    const otherBikeLaneColor = theme === 'dark' ? '#fff' : '#000';
+    if (oLayer) {
+        oLayer.setOptions({
+            strokeColor: otherBikeLaneColor
+        });
+    }
+    if (bikeLaneLegendControl) {
+        bikeLaneLegendControl.setOptions({
+            style: theme,
+            legends: [{
+                type: 'category',
+                itemLayout: 'row',
+                shape: 'line',
+                fitItems: true,
+                shapeSize: 20,
+                items: getBikeFacilityLegendItems(theme)
+            }]
+        });
+    }
+}
+
+window.siteTheme.subscribe(applyWebTheme);
 
 function toggleFilterLegendControl() {
     toggleLegendControl(filterLegendControl);
@@ -729,11 +780,12 @@ function initUploadDoneLegendHtml() {
 }
 
 function initMap() {
+    mapTheme = window.siteTheme.getTheme();
     map = new atlas.Map('map', {
         center: [-122.333301, 47.606501],
         zoom: 11,
         language: 'en-US',
-        style: darkMode ? 'night' : 'road',
+        style: mapTheme === 'dark' ? 'night' : 'road',
         authOptions: {
             authType: 'anonymous',
             clientId: 'df857d2c-3805-4793-90e4-63e84a499756',
@@ -746,6 +798,8 @@ function initMap() {
     });
 
     map.events.add('ready', function() {
+        mapReady = true;
+        applyWebTheme(window.siteTheme.getTheme());
         initMapControls();
         popup = new atlas.Popup();
 
@@ -765,7 +819,7 @@ function initMap() {
         .then(reportedItems => {
             filterLegendControl = new atlas.control.LegendControl({
                 title: 'Filters',
-                style: 'auto',
+                style: window.siteTheme.getTheme(),
                 showToggle: false,
                 visible: false,
                 legends: [{
@@ -777,7 +831,7 @@ function initMap() {
 
             uploadLegendControl = new atlas.control.LegendControl({
                 title: 'Upload',
-                style: 'auto',
+                style: window.siteTheme.getTheme(),
                 showToggle: false,
                 visible: false,
                 legends: [{
@@ -790,7 +844,7 @@ function initMap() {
             // Add filter status legend control (top-right)
             filterStatusLegendControl = new atlas.control.LegendControl({
                 title: 'Current Filters',
-                style: 'auto',
+                style: window.siteTheme.getTheme(),
                 showToggle: false,
                 visible: true,
                 legends: [{
@@ -855,7 +909,7 @@ function initMap() {
             .then(lanes => {
                 bikeLaneLegendControl = new atlas.control.LegendControl({
                     title: 'Bike Facilities',
-                    style: 'auto',
+                    style: window.siteTheme.getTheme(),
                     visible: false,
                     legends: [{
                         type: 'category',
@@ -863,14 +917,7 @@ function initMap() {
                         shape: 'line',
                         fitItems: true,
                         shapeSize: 20,
-                        items: [
-                            { label: 'Protected Bike Lane', color: 'rgb(22, 145, 208)', strokeWidth: 4 },
-                            { label: 'Buffered Bike Lane', color: 'rgb(28, 179, 255)', strokeWidth: 3 },
-                            { label: 'Painted Bike Lane', color: 'rgb(255, 108, 44)', strokeWidth: 3 },
-                            { label: 'Climbing Lane', color: 'rgb(0, 168, 93)', strokeWidth: 2 },
-                            { label: 'Miscellaneous Off Street Bicycle Facility', color: darkMode ? '#fff': '#000', strokeWidth: 2 },
-                            { label: 'Multi-Use Trail', color: 'rgb(168, 56, 0)', strokeWidth: 4 }
-                        ]
+                        items: getBikeFacilityLegendItems(window.siteTheme.getTheme())
                     }]
                 });
                 map.controls.add(bikeLaneLegendControl, { position: 'bottom-left' });
@@ -879,7 +926,7 @@ function initMap() {
                 bblLayer = getLineLayer(getBufferedBikeLanesCollection(lanes), 'rgb(28, 179, 255)', 3, map);
                 blLayer = getLineLayer(getPaintedBikeLanesCollection(lanes), 'rgb(255, 108, 44)', 3, map);
                 clLayer = getLineLayer(getClimbingLanesCollection(lanes), 'rgb(0, 168, 93)', 2, map);
-                otherBikeLaneColor = darkMode ? '#fff' : '#000';
+                const otherBikeLaneColor = window.siteTheme.isDark() ? '#fff' : '#000';
                 oLayer = getLineLayer(getOtherLanesCollection(lanes), otherBikeLaneColor, 2, map);
                 map.layers.add(pblLayer);
                 map.layers.add(bblLayer);
@@ -969,16 +1016,6 @@ function initMap() {
     });
 }
 
-function initDarkMode() {
-    if (!darkMode) {
-        return;
-    }
-    const nav = document.querySelector('nav');
-    nav.classList.remove('bg-light');
-    nav.classList.add('navbar-dark', 'bg-dark');
-}
-
-initDarkMode();
 initControls();
 initMap();
 checkMastodonAuth();
