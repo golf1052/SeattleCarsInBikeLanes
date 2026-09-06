@@ -1,5 +1,7 @@
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
+using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 using SeattleCarsInBikeLanes.Mobile.Core.Upload;
+using SeattleCarsInBikeLanes.Mobile.Services;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Tests;
 
@@ -36,6 +38,68 @@ public class ReportValidatorTests
 
         Assert.False(result.IsValid);
         Assert.Contains("at most 4", result.Error, StringComparison.Ordinal);
+    }
+
+    private static ReportPhoto Photo(string id, bool submitted, PhotoOrigin origin = PhotoOrigin.Captured) =>
+        new ReportPhoto() { Id = id, Origin = origin, Submitted = submitted };
+
+    [Theory]
+    [InlineData(PhotoOrigin.Captured)]
+    [InlineData(PhotoOrigin.Imported)]
+    [InlineData(PhotoOrigin.PrivateCaptured)]
+    [InlineData(PhotoOrigin.PrivateImported)]
+    public void RejectsAlreadyReportedPhotosRegardlessOfOriginOrMissingSubmissionDetails(PhotoOrigin origin)
+    {
+        ReportPhoto[] selected = new[] { Photo("reported", submitted: true, origin) };
+
+        ValidationResult result = ReportValidator.ValidatePhotos(selected, maxPhotos: 4);
+
+        Assert.False(result.IsValid);
+        Assert.Contains("not reported again", result.Error, StringComparison.Ordinal);
+        Assert.Single(selected);
+        Assert.True(selected[0].Submitted);
+    }
+
+    [Fact]
+    public void RejectsAMixedSelectionWithoutRemovingPhotosAvailableForDeletion()
+    {
+        ReportPhoto unreported = Photo("unreported", submitted: false);
+        ReportPhoto reported = Photo("reported", submitted: true);
+        List<ReportPhoto> selected = new List<ReportPhoto>() { unreported, reported };
+
+        ValidationResult result = ReportValidator.ValidatePhotos(selected, maxPhotos: 4);
+
+        Assert.False(result.IsValid);
+        Assert.Contains("can be deleted", result.Error, StringComparison.Ordinal);
+        Assert.Equal(new[] { unreported, reported }, selected);
+        Assert.False(unreported.Submitted);
+        Assert.True(reported.Submitted);
+    }
+
+    [Fact]
+    public void DeselectingReportedPhotosMakesTheRemainingSelectionReportable()
+    {
+        ReportPhoto reported = Photo("reported", submitted: true);
+        List<ReportPhoto> selected = new List<ReportPhoto>() { Photo("new", submitted: false), reported };
+        Assert.False(ReportValidator.ValidatePhotos(selected, maxPhotos: 4).IsValid);
+
+        selected.Remove(reported);
+
+        Assert.True(ReportValidator.ValidatePhotos(selected, maxPhotos: 4).IsValid);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(4, true)]
+    [InlineData(5, false)]
+    public void UnreportedSelectionStillHonorsPhotoLimits(int count, bool expected)
+    {
+        ReportPhoto[] selected = Enumerable.Range(0, count)
+            .Select(index => Photo(index.ToString(), submitted: false))
+            .ToArray();
+
+        Assert.Equal(expected, ReportValidator.ValidatePhotos(selected, maxPhotos: 4).IsValid);
     }
 
     [Fact]

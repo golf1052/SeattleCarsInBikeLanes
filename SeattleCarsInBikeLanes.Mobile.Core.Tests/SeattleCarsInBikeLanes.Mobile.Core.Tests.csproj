@@ -15,6 +15,14 @@
   <ItemGroup>
     <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\UploadQueueStore.cs"
              Link="Services\UploadQueueStore.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\PhotoCatalog.cs"
+             Link="Services\PhotoCatalog.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\ImportedPhotoStore.cs"
+             Link="Services\ImportedPhotoStore.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IPhotoLibraryService.cs"
+             Link="Services\IPhotoLibraryService.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IImageResizer.cs"
+             Link="Services\IImageResizer.cs" />
     <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Platforms\iOS\BackgroundTaskLifetime.cs"
              Link="Platforms\iOS\BackgroundTaskLifetime.cs" />
 
@@ -28,6 +36,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
     <PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.11" />

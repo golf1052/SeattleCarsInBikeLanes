@@ -75,11 +75,36 @@ Run this matrix on a physical Android 10+ device before merging mobile changes:
 | Thumbnails | Captured and imported images render in the roll and report preview |
 | Delete | Captured photos are deleted only after app confirmation; imported photos are forgotten by the app but remain in the device library |
 | Anonymous report | A report can be submitted without signing in and its photos move to the reported section |
+| Report grouping on iOS and Android | A one-photo report and a separate three-photo report appear under two distinct submission-time headers, newest report first; the same groups remain after restarting the app |
+| Grouped history interactions | Four-photo reports wrap within their own group; reported photos remain selectable/deletable but cannot be reported again, including in a mixed selection with unreported photos; removing the last photo removes its group, and expanded history does not crowd out recent/pending photos |
 | Signed-in report | Each Settings provider button switches to Map and opens the correct sign-in modal; the other provider remains available when one account is linked; successful sign-in is reflected in Settings and report attribution |
 | Sign-out synchronization | Signing out either provider in Settings updates native attribution and the already-loaded Map UI/storage; signing out from the Map website updates Settings; neither direction signs out the other provider, and Settings-originated sign-out also works when Map has not loaded yet or reloads before handling the request |
 | Weak/offline network | A report stays queued, survives stopping the process, and resumes through WorkManager after connectivity returns |
 | Upload payload | Large photos are resized while EXIF, GPS, orientation, and XMP remain readable by the server |
 | Map | Google Maps loads and off-site main-frame links open externally without embedded posts ejecting the user from the app |
+
+### Already reported
+
+The camera roll groups submitted photos by their saved submission ID, with a
+local submission timestamp and photo count above each report. Reports appear
+newest first, even when their photos were taken earlier. The section stays
+collapsed by default and scrolls within a capped height when expanded.
+
+This is the same grouped MAUI photo list on iOS and Android, using each platform's
+existing light/dark theme. Tapping still selects an individual photo for the
+existing actions; it does not open a new report-details screen. Reported photos
+can still be selected for deletion, but any selection containing one hides the
+report button. Deselect the reported photos to report the remaining unreported
+photos. Counts reflect
+photos still available in the local catalog, not an account-wide report history.
+
+To try it, expand the section with a one-photo report and a separate three-photo
+report present, then restart the app and confirm the groups remain distinct.
+Also check four-photo wrapping, deletion, portrait/landscape, larger text, and
+light/dark mode on both platforms, including captured and imported photos.
+`SiteUrls` currently targets the live site: use existing reports or a development
+build pointed at a test backend rather than sending fabricated production reports.
+No app-data reset or migration is needed.
 
 ### Sentry metrics parity
 

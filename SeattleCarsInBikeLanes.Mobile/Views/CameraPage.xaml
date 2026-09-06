@@ -2,16 +2,17 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:viewmodels="clr-namespace:SeattleCarsInBikeLanes.Mobile.ViewModels"
+             xmlns:photos="clr-namespace:SeattleCarsInBikeLanes.Mobile.Core.Photos;assembly=SeattleCarsInBikeLanes.Mobile.Core"
              x:Class="SeattleCarsInBikeLanes.Mobile.Views.CameraPage"
              x:DataType="viewmodels:CameraViewModel"
              Shell.NavBarIsVisible="False"
              Style="{StaticResource CameraPageStyle}">
 
     <ContentPage.Resources>
-        <!-- Shared so a photo looks and behaves the same whichever of the two sections it is in. -->
+        <!-- Shared so a photo looks and behaves the same in every section. -->
         <DataTemplate x:Key="PhotoRollItemTemplate" x:DataType="viewmodels:PhotoItemViewModel">
             <Grid>
-                <Image Source="{Binding Thumbnail}" Aspect="AspectFill" HeightRequest="110" />
+                <Image Source="{Binding Thumbnail}" Aspect="AspectFill" HeightRequest="{x:Static photos:PhotoRollLayout.ThumbnailHeight}" />
 
                 <Border IsVisible="{Binding IsSelected}"
                         Style="{StaticResource CameraPhotoRollSelectionBorder}"
@@ -310,7 +311,10 @@
                             HeightRequest="{Binding RecentRollHeight}"
                             IsVisible="{Binding HasRecentPhotos}">
                 <CollectionView.ItemsLayout>
-                    <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="4" VerticalItemSpacing="4" />
+                    <GridItemsLayout Orientation="Vertical"
+                                     Span="{x:Static photos:PhotoRollLayout.Columns}"
+                                     HorizontalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}"
+                                     VerticalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}" />
                 </CollectionView.ItemsLayout>
             </CollectionView>
 
@@ -330,7 +334,10 @@
                             ItemTemplate="{StaticResource PhotoRollItemTemplate}"
                             Margin="8">
                 <CollectionView.ItemsLayout>
-                    <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="4" VerticalItemSpacing="4" />
+                    <GridItemsLayout Orientation="Vertical"
+                                     Span="{x:Static photos:PhotoRollLayout.Columns}"
+                                     HorizontalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}"
+                                     VerticalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}" />
                 </CollectionView.ItemsLayout>
                 <CollectionView.EmptyView>
                     <!-- Hidden when the just taken section is holding everything, where saying
@@ -373,15 +380,36 @@
 
             <CollectionView x:Name="ReportedPhotoRoll"
                             Grid.Row="5"
-                            ItemsSource="{Binding ReportedPhotos}"
+                            ItemsSource="{Binding ReportedGroups}"
+                            IsGrouped="True"
                             SelectionMode="None"
                             ItemTemplate="{StaticResource PhotoRollItemTemplate}"
                             Margin="8,4"
                             HeightRequest="{Binding ReportedRollHeight}"
                             IsVisible="{Binding AreReportedPhotosExpanded}">
                 <CollectionView.ItemsLayout>
-                    <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="4" VerticalItemSpacing="4" />
+                    <GridItemsLayout Orientation="Vertical"
+                                     Span="{x:Static photos:PhotoRollLayout.Columns}"
+                                     HorizontalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}"
+                                     VerticalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}" />
                 </CollectionView.ItemsLayout>
+                <CollectionView.GroupHeaderTemplate>
+                    <DataTemplate x:DataType="viewmodels:ReportedPhotoGroupViewModel">
+                        <Label Text="{Binding Header}"
+                               Style="{StaticResource CameraPhotoRollSectionLabel}"
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               Padding="8,6"
+                               MinimumHeightRequest="{x:Static photos:PhotoRollLayout.ReportHeaderHeight}"
+                               LineBreakMode="WordWrap"
+                               SemanticProperties.HeadingLevel="Level2" />
+                    </DataTemplate>
+                </CollectionView.GroupHeaderTemplate>
+                <CollectionView.GroupFooterTemplate>
+                    <DataTemplate x:DataType="viewmodels:ReportedPhotoGroupViewModel">
+                        <Grid HeightRequest="{x:Static photos:PhotoRollLayout.ReportFooterHeight}" />
+                    </DataTemplate>
+                </CollectionView.GroupFooterTemplate>
             </CollectionView>
             </Grid>
         </Grid>

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using SeattleCarsInBikeLanes.Mobile.Core.Metadata;
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
 using SeattleCarsInBikeLanes.Mobile.Core.Photos;
@@ -8,7 +9,7 @@ namespace SeattleCarsInBikeLanes.Mobile.Services;
 /// <summary>
 /// A photo as the app presents it: an asset plus where it came from and whether it has been sent.
 /// </summary>
-public sealed class ReportPhoto : IPhotoMoment
+public sealed class ReportPhoto : IPhotoMoment, IReportedPhoto
 {
     public required string Id { get; init; }
 
@@ -19,6 +20,10 @@ public sealed class ReportPhoto : IPhotoMoment
     public GeoPosition? Location { get; init; }
 
     public bool Submitted { get; init; }
+
+    public string? SubmissionId { get; init; }
+
+    public DateTimeOffset? SubmittedAt { get; init; }
 }
 
 public readonly record struct ForgetImportedPhotosResult(int Removed, int Retained);
@@ -95,8 +100,8 @@ public sealed class PhotoCatalog : IPhotoCatalog
     /// Concurrent because reports are now sent from a background queue, so the flag is written from
     /// a worker thread while the roll is being read on the UI thread.
     /// </remarks>
-    private readonly ConcurrentDictionary<string, bool> uploadStateCache =
-        new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, XmpUploadState> uploadStateCache =
+        new ConcurrentDictionary<string, XmpUploadState>(StringComparer.Ordinal);
 
     public PhotoCatalog(IPhotoLibraryService photoLibrary,
         IPrivatePhotoStore privatePhotos,
@@ -126,31 +131,39 @@ public sealed class PhotoCatalog : IPhotoCatalog
 
         List<ReportPhoto> photos =
             new List<ReportPhoto>(captured.Count + imported.Count + privateAssets.Count);
+        Dictionary<string, ImportedPhoto> indexed = imported.ToDictionary(
+            photo => photo.LocalIdentifier, StringComparer.Ordinal);
 
         foreach (PhotoAsset asset in captured)
         {
+            indexed.TryGetValue(asset.Id, out ImportedPhoto? record);
+            XmpUploadState state = await ReadUploadStateAsync(
+                asset.Id, PhotoOrigin.Captured, record, cancellationToken);
             photos.Add(new ReportPhoto()
             {
                 Id = asset.Id,
                 Origin = PhotoOrigin.Captured,
                 CreatedAt = asset.CreatedAt,
                 Location = asset.Location,
-                Submitted = await ReadCapturedUploadStateAsync(asset.Id, cancellationToken)
+                Submitted = state.Uploaded,
+                SubmissionId = state.SubmissionId,
+                SubmittedAt = state.UploadedAt
             });
         }
 
         foreach (PrivatePhotoAsset asset in privateAssets)
         {
+            XmpUploadState state = await ReadUploadStateAsync(
+                asset.Id, PhotoOrigin.PrivateCaptured, null, cancellationToken);
             photos.Add(new ReportPhoto()
             {
                 Id = asset.Id,
                 Origin = asset.Imported ? PhotoOrigin.PrivateImported : PhotoOrigin.PrivateCaptured,
                 CreatedAt = asset.CreatedAt,
                 Location = asset.Location,
-                Submitted = await ReadUploadStateAsync(
-                    asset.Id,
-                    PhotoOrigin.PrivateCaptured,
-                    cancellationToken)
+                Submitted = state.Uploaded,
+                SubmissionId = state.SubmissionId,
+                SubmittedAt = state.UploadedAt
             });
         }
 
@@ -159,9 +172,6 @@ public sealed class PhotoCatalog : IPhotoCatalog
             IReadOnlyList<PhotoAsset> importedAssets = await photoLibrary.GetPhotosAsync(
                 imported.Select(photo => photo.LocalIdentifier).ToList(),
                 cancellationToken);
-
-            Dictionary<string, ImportedPhoto> state =
-                imported.ToDictionary(photo => photo.LocalIdentifier, StringComparer.Ordinal);
 
             // Assets missing from the fetch were deleted from the library, so stop tracking them.
             HashSet<string> stillPresent = importedAssets.Select(asset => asset.Id).ToHashSet(StringComparer.Ordinal);
@@ -177,14 +187,9 @@ public sealed class PhotoCatalog : IPhotoCatalog
 
             foreach (PhotoAsset asset in importedAssets)
             {
-                bool submitted = state.TryGetValue(asset.Id, out ImportedPhoto? record) && record.Submitted;
-
-                // A photo the app captured, exported, and had re-imported still carries its own
-                // flag, and the photo is the more trustworthy of the two.
-                if (!submitted)
-                {
-                    submitted = await ReadCapturedUploadStateAsync(asset.Id, cancellationToken);
-                }
+                indexed.TryGetValue(asset.Id, out ImportedPhoto? record);
+                XmpUploadState state = await ReadUploadStateAsync(
+                    asset.Id, PhotoOrigin.Imported, record, cancellationToken);
 
                 photos.Add(new ReportPhoto()
                 {
@@ -192,7 +197,9 @@ public sealed class PhotoCatalog : IPhotoCatalog
                     Origin = PhotoOrigin.Imported,
                     CreatedAt = asset.CreatedAt,
                     Location = asset.Location,
-                    Submitted = submitted
+                    Submitted = state.Uploaded,
+                    SubmissionId = state.SubmissionId,
+                    SubmittedAt = state.UploadedAt
                 });
             }
         }
@@ -212,7 +219,7 @@ public sealed class PhotoCatalog : IPhotoCatalog
             string? libraryId = await photoLibrary.SaveCapturedPhotoAsync(jpeg, cancellationToken);
             if (libraryId is not null)
             {
-                uploadStateCache[libraryId] = false;
+                uploadStateCache[libraryId] = XmpUploadState.NotUploaded;
 
                 IReadOnlyList<PhotoAsset> saved =
                     await photoLibrary.GetPhotosAsync(new[] { libraryId }, cancellationToken);
@@ -238,7 +245,7 @@ public sealed class PhotoCatalog : IPhotoCatalog
             return null;
         }
 
-        uploadStateCache[privateAsset.Id] = false;
+        uploadStateCache[privateAsset.Id] = XmpUploadState.NotUploaded;
 
         return new ReportPhoto()
         {
@@ -290,6 +297,10 @@ public sealed class PhotoCatalog : IPhotoCatalog
             await importedPhotos.AddAsync(ids);
         }
 
+        Dictionary<string, ImportedPhoto> indexed = ids.Count > 0
+            ? (await importedPhotos.GetAllAsync()).ToDictionary(
+                photo => photo.LocalIdentifier, StringComparer.Ordinal)
+            : new Dictionary<string, ImportedPhoto>(StringComparer.Ordinal);
         IReadOnlyList<PhotoAsset> assets = ids.Count > 0
             ? await photoLibrary.GetPhotosAsync(ids, cancellationToken)
             : Array.Empty<PhotoAsset>();
@@ -303,16 +314,18 @@ public sealed class PhotoCatalog : IPhotoCatalog
             if (!string.IsNullOrWhiteSpace(selected.LibraryId) &&
                 assetsById.TryGetValue(selected.LibraryId, out PhotoAsset? asset))
             {
+                indexed.TryGetValue(asset.Id, out ImportedPhoto? record);
+                XmpUploadState state = await ReadUploadStateAsync(
+                    asset.Id, PhotoOrigin.Imported, record, cancellationToken);
                 imported.Add(new ReportPhoto()
                 {
                     Id = asset.Id,
                     Origin = PhotoOrigin.Imported,
                     CreatedAt = asset.CreatedAt,
                     Location = asset.Location,
-                    Submitted = await ReadUploadStateAsync(
-                        asset.Id,
-                        PhotoOrigin.Imported,
-                        cancellationToken)
+                    Submitted = state.Uploaded,
+                    SubmissionId = state.SubmissionId,
+                    SubmittedAt = state.UploadedAt
                 });
                 continue;
             }
@@ -324,15 +337,17 @@ public sealed class PhotoCatalog : IPhotoCatalog
 
             PrivatePhotoAsset privateAsset =
                 await privatePhotos.SaveAsync(selected.Jpeg, imported: true, cancellationToken);
+            XmpUploadState privateState = await ReadUploadStateAsync(
+                privateAsset.Id, PhotoOrigin.PrivateImported, null, cancellationToken);
             imported.Add(new ReportPhoto()
             {
                 Id = privateAsset.Id,
                 Origin = PhotoOrigin.PrivateImported,
                 CreatedAt = privateAsset.CreatedAt,
                 Location = privateAsset.Location,
-                Submitted = (await privatePhotos.ReadUploadStateAsync(
-                    privateAsset.Id,
-                    cancellationToken)).Uploaded
+                Submitted = privateState.Uploaded,
+                SubmissionId = privateState.SubmissionId,
+                SubmittedAt = privateState.UploadedAt
             });
         }
 
@@ -377,13 +392,14 @@ public sealed class PhotoCatalog : IPhotoCatalog
     {
         ArgumentNullException.ThrowIfNull(photos);
 
-        XmpUploadState state = new XmpUploadState(true, DateTimeOffset.UtcNow, submissionId);
+        DateTimeOffset submittedAt = DateTimeOffset.UtcNow;
+        XmpUploadState state = new XmpUploadState(true, submittedAt, submissionId);
         List<string> fallbackToIndex = new List<string>();
 
         foreach (ReportPhoto photo in photos.Where(photo => photo.Origin == PhotoOrigin.Captured))
         {
             bool written = await photoLibrary.WriteUploadStateAsync(photo.Id, state, cancellationToken);
-            uploadStateCache[photo.Id] = true;
+            uploadStateCache[photo.Id] = state;
 
             if (!written)
             {
@@ -403,7 +419,7 @@ public sealed class PhotoCatalog : IPhotoCatalog
                 privatePhoto.Id,
                 state,
                 cancellationToken);
-            uploadStateCache[privatePhoto.Id] = true;
+            uploadStateCache[privatePhoto.Id] = state;
             if (!written)
             {
                 logger.LogWarning("Could not stamp private photo {Id} as submitted.", privatePhoto.Id);
@@ -419,11 +435,11 @@ public sealed class PhotoCatalog : IPhotoCatalog
         if (importedIds.Count > 0)
         {
             await importedPhotos.AddAsync(importedIds);
-            await importedPhotos.MarkSubmittedAsync(importedIds, submissionId);
+            await importedPhotos.MarkSubmittedAsync(importedIds, submissionId, submittedAt);
 
             foreach (string id in importedIds)
             {
-                uploadStateCache[id] = true;
+                uploadStateCache[id] = state;
             }
         }
     }
@@ -502,24 +518,50 @@ public sealed class PhotoCatalog : IPhotoCatalog
         return removed;
     }
 
-    private async Task<bool> ReadCapturedUploadStateAsync(string id, CancellationToken cancellationToken) =>
-        await ReadUploadStateAsync(id, PhotoOrigin.Captured, cancellationToken);
-
-    private async Task<bool> ReadUploadStateAsync(string id,
+    private async Task<XmpUploadState> ReadUploadStateAsync(string id,
         PhotoOrigin origin,
+        ImportedPhoto? indexedPhoto,
         CancellationToken cancellationToken)
     {
-        if (uploadStateCache.TryGetValue(id, out bool cached))
+        if (!uploadStateCache.TryGetValue(id, out XmpUploadState state))
         {
-            return cached;
+            state = origin is PhotoOrigin.PrivateCaptured or PhotoOrigin.PrivateImported ||
+                IsPrivateId(id)
+                ? await privatePhotos.ReadUploadStateAsync(id, cancellationToken)
+                : await photoLibrary.ReadUploadStateAsync(id, cancellationToken);
         }
 
-        XmpUploadState state = origin is PhotoOrigin.PrivateCaptured or PhotoOrigin.PrivateImported ||
-            IsPrivateId(id)
-            ? await privatePhotos.ReadUploadStateAsync(id, cancellationToken)
-            : await photoLibrary.ReadUploadStateAsync(id, cancellationToken);
-        uploadStateCache[id] = state.Uploaded;
-        return state.Uploaded;
+        if (indexedPhoto is { Submitted: true })
+        {
+            XmpUploadState indexedState = new XmpUploadState(true,
+                indexedPhoto.SubmittedAt is DateTime submittedAt
+                    ? new DateTimeOffset(DateTime.SpecifyKind(submittedAt, DateTimeKind.Utc))
+                    : null,
+                indexedPhoto.SubmissionId);
+            state = LatestUploadState(state, indexedState);
+        }
+
+        // An upload can complete while the metadata read is in flight.
+        return uploadStateCache.AddOrUpdate(id, state, (_, cached) => LatestUploadState(cached, state));
+    }
+
+    private static XmpUploadState LatestUploadState(XmpUploadState first, XmpUploadState second)
+    {
+        if (!first.Uploaded)
+        {
+            return second;
+        }
+
+        if (!second.Uploaded)
+        {
+            return first;
+        }
+
+        // A photo can be reported again after an earlier metadata write fell back to the index.
+        int order = Nullable.Compare(first.UploadedAt, second.UploadedAt);
+        return order == 0
+            ? string.IsNullOrWhiteSpace(second.SubmissionId) ? first : second
+            : order > 0 ? first : second;
     }
 
     private static bool IsPrivateId(string id) =>

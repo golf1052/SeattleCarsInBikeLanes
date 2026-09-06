@@ -85,7 +85,7 @@ public interface IUploadQueue
     /// <summary>
     /// Adds a report to the queue and starts sending it.
     /// </summary>
-    /// <returns>False when one of the photos is already spoken for by another queued report.</returns>
+    /// <returns>False for an empty selection or photos already submitted or in another queued report.</returns>
     Task<bool> EnqueueAsync(IReadOnlyList<ReportPhoto> photos,
         ReportDraft draft,
         CancellationToken cancellationToken = default);
@@ -247,6 +247,12 @@ public sealed class UploadQueue : IUploadQueue
 
         if (photos.Count == 0)
         {
+            return false;
+        }
+
+        if (photos.Any(photo => photo.Submitted))
+        {
+            logger.LogWarning("Refusing to queue photos that have already been reported.");
             return false;
         }
 

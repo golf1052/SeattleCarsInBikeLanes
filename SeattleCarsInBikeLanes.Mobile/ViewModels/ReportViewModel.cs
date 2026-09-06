@@ -183,6 +183,14 @@ public sealed partial class ReportViewModel : ObservableObject
             return false;
         }
 
+        ValidationResult photoValidation = ReportValidator.ValidatePhotos(
+            photos, uploadService.Limits.MaxPhotosPerReport);
+        if (!photoValidation.IsValid)
+        {
+            ErrorMessage = photoValidation.Error;
+            return false;
+        }
+
         ReportDraft draft = BuildDraft();
 
         ValidationResult validation = ReportValidator.Validate(draft,
@@ -204,9 +212,7 @@ public sealed partial class ReportViewModel : ObservableObject
         {
             if (!await uploadQueue.EnqueueAsync(photos, draft, cancellationToken))
             {
-                // The only way to get here is a photo already spoken for by a report still on its
-                // way out, which the roll would have shown had it caught up.
-                ErrorMessage = "One of these photos has already been reported.";
+                ErrorMessage = "One of these photos has already been reported or is waiting to send.";
                 return false;
             }
 

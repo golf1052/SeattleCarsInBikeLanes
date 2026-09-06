@@ -45,7 +45,9 @@ public interface IImportedPhotoStore
 
     Task RemoveAsync(IEnumerable<string> localIdentifiers);
 
-    Task MarkSubmittedAsync(IEnumerable<string> localIdentifiers, string? submissionId);
+    Task MarkSubmittedAsync(IEnumerable<string> localIdentifiers,
+        string? submissionId,
+        DateTimeOffset? submittedAt = null);
 
     Task ClearAsync();
 }
@@ -104,12 +106,14 @@ public sealed class ImportedPhotoStore : IImportedPhotoStore
         }
     }
 
-    public async Task MarkSubmittedAsync(IEnumerable<string> localIdentifiers, string? submissionId)
+    public async Task MarkSubmittedAsync(IEnumerable<string> localIdentifiers,
+        string? submissionId,
+        DateTimeOffset? submittedAt = null)
     {
         ArgumentNullException.ThrowIfNull(localIdentifiers);
 
         SQLiteAsyncConnection db = await GetConnectionAsync();
-        DateTime now = DateTime.UtcNow;
+        DateTime now = (submittedAt ?? DateTimeOffset.UtcNow).UtcDateTime;
 
         foreach (string identifier in localIdentifiers)
         {

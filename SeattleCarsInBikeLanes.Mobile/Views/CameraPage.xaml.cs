@@ -997,12 +997,13 @@ public partial class CameraPage : ContentPage
 
     private async void ReportClicked(object? sender, EventArgs e)
     {
-        List<ReportPhoto> selected = viewModel.SelectedPhotos.Select(item => item.Photo).ToList();
-        if (selected.Count == 0)
+        if (!viewModel.CanReport)
         {
+            viewModel.StatusMessage = "Select only unreported photos that are not already waiting to send.";
             return;
         }
 
+        List<ReportPhoto> selected = viewModel.SelectedPhotos.Select(item => item.Photo).ToList();
         try
         {
             await Shell.Current.GoToAsync(nameof(ReportPage), new Dictionary<string, object>()

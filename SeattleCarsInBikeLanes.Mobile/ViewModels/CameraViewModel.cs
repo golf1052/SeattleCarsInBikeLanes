@@ -11,7 +11,7 @@ namespace SeattleCarsInBikeLanes.Mobile.ViewModels;
 /// <summary>
 /// One photo in the roll.
 /// </summary>
-public sealed partial class PhotoItemViewModel : ObservableObject
+public sealed partial class PhotoItemViewModel : ObservableObject, IReportedPhoto
 {
     public PhotoItemViewModel(ReportPhoto photo)
     {
@@ -22,6 +22,12 @@ public sealed partial class PhotoItemViewModel : ObservableObject
     public ReportPhoto Photo { get; private set; }
 
     public string Id => Photo.Id;
+
+    public DateTimeOffset? CreatedAt => Photo.CreatedAt;
+
+    public string? SubmissionId => Photo.SubmissionId;
+
+    public DateTimeOffset? SubmittedAt => Photo.SubmittedAt;
 
     public bool IsImported =>
         Photo.Origin is PhotoOrigin.Imported or PhotoOrigin.PrivateImported;
@@ -147,21 +153,6 @@ public sealed partial class CameraViewModel : ObservableObject
 {
     private const int ThumbnailPixelSize = 240;
 
-    /// <summary>
-    /// Mirrors the roll's layout in CameraPage.xaml, which the fixed sections' heights are worked
-    /// out from.
-    /// </summary>
-    private const int RollColumns = 3;
-
-    private const double ThumbnailHeight = 110;
-
-    private const double ThumbnailSpacing = 4;
-
-    /// <summary>
-    /// The most a pinned section may take when it has the page to itself.
-    /// </summary>
-    private const double MaxPinnedRollHeight = 244;
-
     private readonly IPhotoCatalog photoCatalog;
     private readonly IPhotoLibraryService photoLibrary;
     private readonly IUploadService uploadService;
@@ -282,6 +273,13 @@ public sealed partial class CameraViewModel : ObservableObject
     /// </remarks>
     public ObservableCollection<PhotoItemViewModel> ReportedPhotos { get; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ReportedHeader))]
+    [NotifyPropertyChangedFor(nameof(ReportedRollHeight))]
+    [NotifyPropertyChangedFor(nameof(RecentRollHeight))]
+    public partial IReadOnlyList<ReportedPhotoGroupViewModel> ReportedGroups { get; private set; } =
+        Array.Empty<ReportedPhotoGroupViewModel>();
+
     /// <summary>
     /// Every tile in the roll, whichever section it is in.
     /// </summary>
@@ -331,11 +329,22 @@ public sealed partial class CameraViewModel : ObservableObject
     /// Same reasoning as <see cref="ReportedRollHeight"/>: a CollectionView in an auto sized row
     /// has nothing to measure against and collapses.
     /// </remarks>
-    public double RecentRollHeight => Math.Min(RollHeightFor(RecentPhotos.Count), PinnedSectionCap);
+    public double RecentRollHeight => PinnedRollHeights.Recent;
 
     public bool HasReportedPhotos => ReportedPhotos.Count > 0;
 
-    public string ReportedHeader => $"Already reported ({ReportedPhotos.Count})";
+    public string ReportedHeader
+    {
+        get
+        {
+            int count = ReportedGroups.Count(group => group.SubmissionId is not null);
+            string reports = count == 1 ? "1 report" : $"{count} reports";
+            string photos = ReportedPhotos.Count == 1 ? "1 photo" : $"{ReportedPhotos.Count} photos";
+            return count > 0
+                ? $"Already reported - {reports} - {photos}"
+                : $"Already reported - {photos}";
+        }
+    }
 
     /// <summary>
     /// Whether the already reported photos are folded out.
@@ -356,35 +365,13 @@ public sealed partial class CameraViewModel : ObservableObject
     /// </summary>
     /// <remarks>
     /// A CollectionView in an auto sized row has nothing to measure against and collapses, so it
-    /// has to be told. The height is worked out from the number of rows of thumbnails so a couple
-    /// of reported photos do not leave a wall of empty space, and capped so the section can never
-    /// crowd out the photos still waiting to be reported.
+    /// has to be told. Each report starts a new thumbnail row and has its own header. The viewport
+    /// is capped so the section cannot crowd out the photos still waiting to be reported.
     /// </remarks>
-    public double ReportedRollHeight => Math.Min(RollHeightFor(ReportedPhotos.Count), PinnedSectionCap);
+    public double ReportedRollHeight => PinnedRollHeights.Reported;
 
-    /// <summary>
-    /// The most either pinned section may take.
-    /// </summary>
-    /// <remarks>
-    /// Both sit in auto sized rows either side of the roll, which is the only part of the page that
-    /// can give. Left to themselves on a small phone they add up to more than the screen has and
-    /// squeeze the photos still waiting to be reported down to nothing, and there is no outer
-    /// scroll to recover them with. Sharing the budget means two sections showing at once are each
-    /// held to a single row.
-    /// </remarks>
-    private double PinnedSectionCap =>
-        HasRecentPhotos && AreReportedPhotosExpanded && HasReportedPhotos
-            ? ThumbnailHeight
-            : MaxPinnedRollHeight;
-
-    /// <summary>
-    /// How tall a section of the roll is with a given number of photos in it.
-    /// </summary>
-    private static double RollHeightFor(int photos)
-    {
-        int rows = (photos + RollColumns - 1) / RollColumns;
-        return (rows * ThumbnailHeight) + (Math.Max(rows - 1, 0) * ThumbnailSpacing);
-    }
+    private (double Recent, double Reported) PinnedRollHeights => PhotoRollLayout.Measure(
+        RecentPhotos.Count, ReportedGroups.Select(group => group.Count), AreReportedPhotosExpanded);
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
@@ -546,9 +533,8 @@ public sealed partial class CameraViewModel : ObservableObject
     /// Otherwise the report button sits over the live camera preview, which is nowhere near the
     /// photos it would be reporting.
     ///
-    /// A photo whose report is already in the queue is excluded too. It has not reached the site
-    /// yet, so nothing else about it says it is spoken for, and reporting it again would put two
-    /// copies of the same thing up.
+    /// Submitted photos remain selectable for deletion, but cannot be reported again. Queued
+    /// photos are also excluded because they are already on their way to the site.
     /// </remarks>
     public bool CanReport
     {
@@ -556,8 +542,7 @@ public sealed partial class CameraViewModel : ObservableObject
         {
             IReadOnlyList<PhotoItemViewModel> selected = SelectedPhotos;
             return IsRollVisible &&
-                selected.Count > 0 &&
-                selected.Count <= MaxPhotosPerReport &&
+                ReportValidator.ValidatePhotos(selected, MaxPhotosPerReport).IsValid &&
                 !selected.Any(photo => photo.IsQueued);
         }
     }
@@ -758,9 +743,10 @@ public sealed partial class CameraViewModel : ObservableObject
         }
 
         IReadOnlyList<PhotoItemViewModel> selected = SelectedPhotos;
+        ValidationResult validation = ReportValidator.ValidatePhotos(selected, MaxPhotosPerReport);
 
-        StatusMessage = selected.Count > MaxPhotosPerReport
-            ? $"A report can have at most {MaxPhotosPerReport} photos. Deselect some to report, or delete them."
+        StatusMessage = selected.Count > 0 && !validation.IsValid
+            ? validation.Error
             : selected.Any(item => item.IsQueued)
                 ? "One of these photos is already on its way to the site."
                 : null;
@@ -933,6 +919,8 @@ public sealed partial class CameraViewModel : ObservableObject
                 ReportedPhotos.Remove(item);
             }
 
+            RebuildReportedGroups();
+
             if (LatestThumbnail is not null && !HasPhotos)
             {
                 LatestThumbnail = null;
@@ -1026,11 +1014,7 @@ public sealed partial class CameraViewModel : ObservableObject
             }
         }
 
-        // Nothing left to fold away, so the section should not come back open next time there is.
-        if (ReportedPhotos.Count == 0)
-        {
-            AreReportedPhotosExpanded = false;
-        }
+        RebuildReportedGroups();
 
         // Snapshot before awaiting: a capture finishing mid reload would otherwise mutate one of the
         // bound collections while this is still walking it.
@@ -1048,6 +1032,24 @@ public sealed partial class CameraViewModel : ObservableObject
 
         OnPropertyChanged(nameof(CanReport));
         OnPropertyChanged(nameof(CanDelete));
+    }
+
+    private void RebuildReportedGroups()
+    {
+        ReportedGroups = ReportedPhotoGrouper.Group(ReportedPhotos)
+            .Select(group => new ReportedPhotoGroupViewModel(group))
+            .ToList();
+
+        foreach (PhotoItemViewModel photo in ReportedPhotos.Where(photo =>
+                     string.IsNullOrWhiteSpace(photo.SubmissionId) || photo.SubmittedAt is null))
+        {
+            logger.LogWarning("Reported photo {Id} has incomplete submission details.", photo.Id);
+        }
+
+        if (ReportedPhotos.Count == 0)
+        {
+            AreReportedPhotosExpanded = false;
+        }
     }
 
     /// <summary>

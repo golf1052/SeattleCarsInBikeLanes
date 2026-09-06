@@ -1,4 +1,5 @@
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
+using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Upload;
 
@@ -115,11 +116,27 @@ public static class ReportDraftMerge
 /// Checks a report before it costs the user an upload.
 /// </summary>
 /// <remarks>
-/// Every rule here is also enforced by the server. The point is to fail in the moment, on the
-/// phone, rather than after uploading several megabytes over a cellular connection.
+/// Checks both the server's report requirements and the app's local submission state before
+/// uploading several megabytes over a cellular connection.
 /// </remarks>
 public static class ReportValidator
 {
+    public static ValidationResult ValidatePhotos(IReadOnlyList<IReportedPhoto> photos, int maxPhotos)
+    {
+        ArgumentNullException.ThrowIfNull(photos);
+
+        if (photos.Any(photo => photo.Submitted))
+        {
+            return ValidationResult.Invalid(
+                "Already reported photos can be deleted, but not reported again. Deselect them to report other photos.");
+        }
+
+        return photos.Count > maxPhotos
+            ? ValidationResult.Invalid(
+                $"A report can have at most {maxPhotos} photos. Deselect some to report, or delete them.")
+            : ValidatePhotoCount(photos.Count, maxPhotos);
+    }
+
     public static ValidationResult Validate(ReportDraft draft,
         int photoCount,
         BoundingBox boundingBox,
@@ -129,14 +146,10 @@ public static class ReportValidator
         ArgumentNullException.ThrowIfNull(draft);
         ArgumentNullException.ThrowIfNull(boundingBox);
 
-        if (photoCount < 1)
+        ValidationResult photoValidation = ValidatePhotoCount(photoCount, maxPhotos);
+        if (!photoValidation.IsValid)
         {
-            return ValidationResult.Invalid("Pick at least one photo.");
-        }
-
-        if (photoCount > maxPhotos)
-        {
-            return ValidationResult.Invalid($"A report can have at most {maxPhotos} photos.");
+            return photoValidation;
         }
 
         if (draft.NumberOfCars < 1)
@@ -165,6 +178,18 @@ public static class ReportValidator
         }
 
         return ValidationResult.Valid;
+    }
+
+    private static ValidationResult ValidatePhotoCount(int photoCount, int maxPhotos)
+    {
+        if (photoCount < 1)
+        {
+            return ValidationResult.Invalid("Pick at least one photo.");
+        }
+
+        return photoCount > maxPhotos
+            ? ValidationResult.Invalid($"A report can have at most {maxPhotos} photos.")
+            : ValidationResult.Valid;
     }
 }
 
