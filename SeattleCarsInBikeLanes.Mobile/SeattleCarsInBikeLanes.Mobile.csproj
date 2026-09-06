@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="EnableDiagnostics;EnableMauiXamlDiagnostics">
 
 	<Import Project="SeattleCarsInBikeLanes.Mobile.local.props"
 			Condition="Exists('SeattleCarsInBikeLanes.Mobile.local.props')" />
@@ -44,6 +44,13 @@
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'tizen'">6.5</SupportedOSPlatformVersion>
+	</PropertyGroup>
+
+	<!-- VS Code injects diagnostics even for Release. TreatAsLocalProperty lets this
+	     override its command-line values and keep trimming/AOT inputs consistent. -->
+	<PropertyGroup Condition="'$(Configuration)' == 'Release' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+		<EnableDiagnostics>false</EnableDiagnostics>
+		<EnableMauiXamlDiagnostics>false</EnableMauiXamlDiagnostics>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">

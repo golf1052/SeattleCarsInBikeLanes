@@ -92,6 +92,95 @@ restart the device after deploying rather than uninstalling and losing app data.
 The splash PNGs are generated from the shared SVGs; they are native image-catalog
 inputs, not a separately drawn bitmap design.
 
+## iOS Release startup troubleshooting
+
+If a device Release build aborts immediately, capture the failure before changing
+app code. List connected devices with `xcrun devicectl list devices`, then launch
+the installed app with its console attached:
+
+```bash
+xcrun devicectl device process launch --device "<device-identifier>" \
+  --terminate-existing --console com.golf1052.SeattleCarsInBikeLanes.Mobile
+```
+
+A `SIGABRT` whose symbolicated native stack contains Mono's `load_aot_module` can
+indicate stale or inconsistent ahead-of-time (AOT) build artifacts. This happens
+before app startup and Sentry initialization, so there may be no managed exception
+or Sentry event. A successful incremental build alone does not rule it out.
+Device crash reports are available through `devicectl device info files` and
+`devicectl device copy from` with `--domain-type systemCrashLogs`; keep the matching
+build's `.app.dSYM` to symbolicate them.
+
+Clean the exact device configuration, then rebuild. From the repository root:
+
+```bash
+project="SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.csproj"
+output="$HOME/Library/Caches/SeattleCarsInBikeLanes/ios-release/"
+
+dotnet clean "$project" -f net10.0-ios -c Release -r ios-arm64 \
+  -p:OutputPath="$output" &&
+dotnet build "$project" -f net10.0-ios -c Release -r ios-arm64 \
+  -p:OutputPath="$output"
+```
+
+The output override keeps the signed bundle outside OneDrive. Otherwise, OneDrive
+can attach `com.apple.FinderInfo` to a generated framework such as `Sentry.framework`
+and make code signing fail even after the project's metadata-cleanup targets run.
+That signing failure is separate from the runtime AOT abort.
+
+Install the newly built bundle over the existing app, then relaunch:
+
+```bash
+xcrun devicectl device install app --device "<device-identifier>" \
+  "$HOME/Library/Caches/SeattleCarsInBikeLanes/ios-release/SeattleCarsInBikeLanes.Mobile.app"
+xcrun devicectl device process launch --device "<device-identifier>" \
+  --terminate-existing --console com.golf1052.SeattleCarsInBikeLanes.Mobile
+```
+
+Do not uninstall or reset app data for this recovery: an over-install preserves
+private photos, settings, and the upload queue. Deploy the bundle from the selected
+output directory, not an older copy under `bin`.
+
+### Confirmed diagnostics-toggle trigger
+
+With .NET SDK `10.0.302` and iOS workload `26.5.10315`, this failure was reproduced
+before the project override below by building Release normally, then building the
+same configuration/RID/output incrementally with `-p:EnableDiagnostics=True`.
+No source or package change was required. VS Code's MAUI extension `1.16.88` adds
+this property when its XAML diagnostics are enabled, including for the Release
+launch configuration.
+
+Enabling diagnostics changes the EventSource/Metrics feature switches used during
+trimming. That produces different `System.Private.CoreLib` and
+`System.Collections.Concurrent` assembly identities (MVIDs). The iOS SDK can retain
+AOT output for unchanged dependent assemblies instead of rebuilding it against
+those new identities. In the reproduced failure, `SeattleCarsInBikeLanes.Core` and
+four `SQLitePCLRaw` modules retained stale references. Mono reported:
+
+```text
+AOT: module SeattleCarsInBikeLanes.Core is unusable
+(GUID of dependent assembly System.Private.CoreLib doesn't match ...)
+```
+
+Regenerating those five native AOT modules, with the same diagnostics settings and
+without changing managed code, repaired the bundle. This was reproduced with
+signed output outside OneDrive; Finder metadata is a separate signing problem.
+See the SDK's [diagnostics-dependent trimming defaults](https://github.com/dotnet/macios/blob/ac895e19154cd3305df029b18849b2e5ed98e036/dotnet/targets/Xamarin.Shared.Sdk.targets#L133-L139)
+and [AOT dependency freshness logic](https://github.com/dotnet/macios/blob/ac895e19154cd3305df029b18849b2e5ed98e036/msbuild/Xamarin.MacDev.Tasks/Tasks/AOTCompile.cs#L94-L165).
+
+The mobile project now forces `EnableDiagnostics` and `EnableMauiXamlDiagnostics`
+to `false` for iOS Release only. Its `TreatAsLocalProperty` declaration allows those
+values to override VS Code's command-line properties; ordinary project properties
+cannot override `-p:` values. Debug retains its diagnostics and XAML Hot Reload,
+and Android settings are unchanged. No global VS Code Hot Reload setting is needed.
+
+Clean the iOS Release configuration once when adopting this override to remove
+previous diagnostics-enabled AOT output. Later command-line and IDE Release builds
+use consistent diagnostics settings without cleaning on every build. If deliberately
+maintaining separate diagnostic and distribution profiles, isolate both intermediate
+and output directories: changing only `OutputPath` still shares the AOT cache under
+`obj`. Disabling trimming or enabling the interpreter is not necessary.
+
 ## Android setup
 
 The app requires a Google Maps SDK for Android API key. Copy the local build
