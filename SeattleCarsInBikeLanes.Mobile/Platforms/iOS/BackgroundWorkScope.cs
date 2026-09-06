@@ -1,4 +1,3 @@
-using Foundation;
 using Microsoft.Extensions.Logging;
 using SeattleCarsInBikeLanes.Mobile.Services;
 using UIKit;
@@ -11,8 +10,18 @@ namespace SeattleCarsInBikeLanes.Platforms.iOS;
 /// <remarks>
 /// A user reports a car and puts their phone straight back in their pocket, which is exactly when
 /// iOS suspends the app. Without this the upload stops mid flight, and because the server discards
-/// an unfinished upload after ten minutes the whole thing has to start again later. Asking for a
-/// background task buys the roughly thirty seconds a report over a cellular connection needs.
+/// an unfinished upload after ten minutes the whole thing has to start again later. A background
+/// task gives an upload begun while the app was active a grace period to finish.
+///
+/// Apple does not guarantee a fixed duration. Apple Developer Technical Support (DTS) engineers
+/// describe the currently observed allowance as roughly thirty seconds. The actual duration is
+/// system-determined and may be shorter. Once the app is in the background,
+/// <see cref="UIApplication.BackgroundTimeRemaining"/> is the runtime source of the remaining
+/// allowance, not a guarantee that execution will continue for that long. This is only a grace
+/// period; the persistent upload queue must still recover from interruption.
+///
+/// See https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time
+/// and https://developer.apple.com/forums/thread/85066.
 /// </remarks>
 public sealed class BackgroundWorkScope : IBackgroundWorkScope
 {
@@ -25,38 +34,42 @@ public sealed class BackgroundWorkScope : IBackgroundWorkScope
 
     public async Task<IAsyncDisposable> BeginAsync(string name)
     {
-        // UIApplication is main thread only, and the queue is drained from a background task.
-        nint identifier = await MainThread.InvokeOnMainThreadAsync(() =>
-            UIApplication.SharedApplication.BeginBackgroundTask(name, () =>
-            {
-                // Reaching here means the grace period ran out. The task is ended by Dispose in the
-                // ordinary case, and there is nothing useful to do here beyond noting it: iOS kills
-                // an app that is still holding the task at this point, so the report will be found
-                // in the queue and started again next launch.
-                logger.LogWarning("The background window for {Name} expired before the work finished.", name);
-            }));
+        // Keep native begin/end calls on the main thread, where UIKit invokes expiration.
+        return await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            UIApplication application = UIApplication.SharedApplication;
+            BackgroundTaskLifetime lifetime = new BackgroundTaskLifetime(
+                UIApplication.BackgroundTaskInvalid,
+                application.EndBackgroundTask);
+            Scope scope = new Scope(lifetime);
 
-        return identifier == UIApplication.BackgroundTaskInvalid
-            ? new NoScope()
-            : new Scope(identifier);
+            nint identifier = application.BeginBackgroundTask(name, () =>
+            {
+                try
+                {
+                    logger.LogWarning("The background window for {Name} expired before the work finished.", name);
+                }
+                finally
+                {
+                    lifetime.End();
+                }
+            });
+
+            lifetime.Initialize(identifier);
+            return scope;
+        });
     }
 
     private sealed class Scope : IAsyncDisposable
     {
-        private readonly nint identifier;
+        private readonly BackgroundTaskLifetime lifetime;
 
-        public Scope(nint identifier)
+        public Scope(BackgroundTaskLifetime lifetime)
         {
-            this.identifier = identifier;
+            this.lifetime = lifetime;
         }
 
         public async ValueTask DisposeAsync() =>
-            await MainThread.InvokeOnMainThreadAsync(() =>
-                UIApplication.SharedApplication.EndBackgroundTask(identifier));
-    }
-
-    private sealed class NoScope : IAsyncDisposable
-    {
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+            await MainThread.InvokeOnMainThreadAsync(lifetime.End);
     }
 }

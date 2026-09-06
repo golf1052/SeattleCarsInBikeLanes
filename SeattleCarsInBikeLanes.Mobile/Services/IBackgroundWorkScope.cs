@@ -13,11 +13,13 @@ namespace SeattleCarsInBikeLanes.Mobile.Services;
 public interface IBackgroundWorkScope
 {
     /// <summary>
-    /// Asks for time to finish a piece of work. Disposing the result gives it back.
+    /// Asks for time to finish a piece of work. Disposing the result releases any remaining allowance.
     /// </summary>
     /// <remarks>
     /// The time has to be handed back promptly. iOS kills an app that holds a background task past
-    /// its expiry rather than merely suspending it.
+    /// its expiry rather than merely suspending it, so platform expiration handling also releases
+    /// the allowance. Repeated disposal, including after expiration, is safe. Releasing the allowance
+    /// does not itself complete or cancel the work; the persistent queue must recover if interrupted.
     /// </remarks>
     Task<IAsyncDisposable> BeginAsync(string name);
 }
