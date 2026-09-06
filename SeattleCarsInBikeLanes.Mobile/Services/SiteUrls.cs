@@ -13,7 +13,7 @@ public static class SiteUrls
     /// The map, embedded rather than rebuilt. The query parameter lets the site tell app traffic
     /// apart and hide anything that does not belong in a native shell.
     /// </summary>
-    public static Uri Map { get; } = new Uri(BaseAddress, "?client=ios&mobileAuth=1");
+    public static Uri Map { get; } = new Uri(BaseAddress, "?mobileAuth=1");
 
     public static Uri BlueskyMe { get; } = new Uri(BaseAddress, "api/BlueskyAuth/me");
 
