@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <style name="App.SplashTheme" parent="Maui.SplashTheme">
+        <item name="android:statusBarColor">@color/maui_splash_color</item>
+        <item name="android:navigationBarColor">@color/maui_splash_color</item>
+        <item name="android:windowLightStatusBar">@bool/splash_light_system_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/splash_light_system_bars</item>
+    </style>
+
     <style name="Maui.Material3.Theme.Base" parent="Theme.Material3.DayNight">
         <item name="maui_edgetoedge_optout">true</item>
         <item name="maui_splash">false</item>

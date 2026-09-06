@@ -28,6 +28,8 @@
 	</array>
 	<key>XSAppIconAssets</key>
 	<string>Assets.xcassets/appicon.appiconset</string>
+	<key>UILaunchStoryboardName</key>
+	<string>BikeLaunchScreen</string>
 
 	<!-- Reports are sent from a queue rather than while the user waits, so the app has to be able
 	     to finish sending one after they have put their phone away. The processing mode covers the

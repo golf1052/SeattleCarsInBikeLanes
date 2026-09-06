@@ -13,9 +13,10 @@ const int iconSize = 1024;
 var scriptDirectory = Path.GetDirectoryName(GetSourcePath())
     ?? throw new InvalidOperationException("Cannot locate the icon exporter.");
 var root = Path.GetFullPath(Path.Combine(scriptDirectory, ".."));
-var source = Path.Combine(root, "SeattleCarsInBikeLanes.Mobile", "Resources", "AppIcon");
-var output = Path.Combine(root, "SeattleCarsInBikeLanes.Mobile", "Platforms", "iOS",
-    "Assets.xcassets", "appicon.appiconset");
+var appDirectory = Path.Combine(root, "SeattleCarsInBikeLanes.Mobile");
+var source = Path.Combine(appDirectory, "Resources", "AppIcon");
+var iosAssets = Path.Combine(appDirectory, "Platforms", "iOS", "Assets.xcassets");
+var output = Path.Combine(iosAssets, "appicon.appiconset");
 
 var background = XDocument.Load(Path.Combine(source, "appicon.svg"));
 var darkBackground = new XDocument(background);
@@ -35,9 +36,13 @@ var foregroundPicture = LoadPicture(foregroundSvg, foreground, "foreground");
 
 using var lightPng = Render(lightPicture, foregroundPicture, opaque: true);
 using var darkPng = Render(darkPicture, foregroundPicture, opaque: false);
-Directory.CreateDirectory(output);
-Save(lightPng, "appicon-light.png", "opaque");
-Save(darkPng, "appicon-dark.png", "transparent background");
+Save(lightPng, output, "appicon-light.png", "opaque");
+Save(darkPng, output, "appicon-dark.png", "transparent background");
+Save(lightPng, Path.Combine(iosAssets, "SplashIcon.imageset"), "splash-light.png", "opaque");
+Save(darkPng, Path.Combine(iosAssets, "SplashIcon.imageset"), "splash-dark.png", "transparent background");
+Save(lightPng, Path.Combine(appDirectory, "Resources", "Splash"), "splash.png", "opaque");
+Save(darkPng, Path.Combine(appDirectory, "Platforms", "Android", "Resources", "drawable-nodpi"),
+    "splash_dark.png", "transparent background");
 
 static string GetSourcePath([CallerFilePath] string path = "") => path;
 
@@ -81,9 +86,11 @@ static void DrawLayer(SKCanvas canvas, SKPicture picture)
     canvas.Restore();
 }
 
-void Save(SKData png, string filename, string appearance)
+void Save(SKData png, string directory, string filename, string appearance)
 {
-    using var stream = File.Create(Path.Combine(output, filename));
+    Directory.CreateDirectory(directory);
+    var path = Path.Combine(directory, filename);
+    using var stream = File.Create(path);
     png.SaveTo(stream);
-    Console.WriteLine($"Exported {filename} ({iconSize}x{iconSize}, {appearance})");
+    Console.WriteLine($"Exported {Path.GetRelativePath(root, path)} ({iconSize}x{iconSize}, {appearance})");
 }

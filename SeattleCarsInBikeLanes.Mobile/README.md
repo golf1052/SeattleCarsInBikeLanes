@@ -40,6 +40,7 @@ output directory relative to its own source file, so it can run from any directo
 The file-based app declares its Svg.Skia and native Skia dependencies inline;
 .NET restores them on the first run. It reads the shared SVGs rather than
 duplicating their geometry and is an artwork-editing tool, not a build dependency.
+The same command also refreshes the splash images on both mobile platforms.
 
 Android 13+ has a small `mipmap-anydpi-v33/appicon.xml` override that reuses MAUI's
 generated color layers and supplies `drawable/appicon_monochrome.xml` for themed
@@ -56,6 +57,40 @@ inside OneDrive, keep signed iOS output outside the synced directory if
 dotnet build -f net10.0-ios -r iossimulator-arm64 \
   -p:OutputPath="$HOME/Library/Caches/SeattleCarsInBikeLanes/ios-build/"
 ```
+
+## Splash screen
+
+On iOS and Android, the launch screen uses the full app-icon artwork and follows
+the **system** light/dark setting before managed app code starts:
+
+| System appearance | Background |
+| --- | --- |
+| Light | `#ECF1F9`, matching the light icon |
+| Dark | `#101C2D`, the selected flat dark background |
+
+The iOS app icon's transparent dark background is supplied by the OS; it does not
+have a fixed color to reuse. The splash therefore uses the explicitly selected
+dark navy. Home Screen icon appearance can be chosen independently of the system
+theme and does not override the splash appearance.
+
+iOS uses `Platforms/iOS/BikeLaunchScreen.storyboard` with `SplashBackground` and
+`SplashIcon` asset-catalog appearances. Android retains MAUI's splash generation,
+with native night-qualified color/image resources and `App.SplashTheme` inheriting
+`Maui.SplashTheme`. Android 10/11 use the centered 128dp image; Android 12+ use
+MAUI's 108dp image sizing within the OS-controlled splash mask. System-bar colors
+and icon contrast follow the same appearance.
+
+`dotnet run --file scripts/export-ios-app-icons.cs` refreshes all launch artwork
+from the shared icon SVGs. There are no runtime theme-switching handlers or
+artificial launch delays. The OS controls when the launch screen is shown and
+dismissed; Android does not show it for hot starts, and iOS may cache launch
+snapshots. Other MAUI targets retain the shared light splash fallback.
+
+The iOS storyboard has a new name to invalidate previously cached blank launch
+snapshots. If an existing device install still shows an old or blank launch screen,
+restart the device after deploying rather than uninstalling and losing app data.
+The splash PNGs are generated from the shared SVGs; they are native image-catalog
+inputs, not a separately drawn bitmap design.
 
 ## Android setup
 
@@ -86,8 +121,9 @@ Android 12 (API 31) and newer derive the palette from the user's wallpaper;
 Android 10 and 11 use an accessible Material 3 palette generated from the app's
 cornflower blue (`#6495ED`) brand color. Light and dark mode are both supported.
 
-The shared iOS theme uses matching contrast-safe cornflower blue roles. The app
-icon and splash screen use exact `#6495ED` so launch identity is stable.
+The shared iOS theme uses matching contrast-safe cornflower blue roles. The pin
+in the app icon and splash screen uses exact `#6495ED`, while the splash background
+follows the light/dark colors above.
 The camera HUD also keeps fixed high-contrast colors over the live preview. These
 Android theme resources are not loaded on iOS, which continues to use the shared
 MAUI styles. .NET MAUI 10 Shell tabs use the Material 3 token palette, but native
