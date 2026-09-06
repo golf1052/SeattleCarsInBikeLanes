@@ -19,7 +19,7 @@
 
                 <!-- The checkmark is how the user tells an already reported photo from one that
                      still needs sending. -->
-                <Label Text="&#xE73E;"
+                <Label Text="&#xF295;"
                        FontFamily="FluentIcons"
                        FontSize="18"
                        TextColor="White"
