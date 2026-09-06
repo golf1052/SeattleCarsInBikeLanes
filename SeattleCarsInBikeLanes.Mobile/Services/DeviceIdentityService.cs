@@ -8,11 +8,6 @@ namespace SeattleCarsInBikeLanes.Mobile.Services;
 /// from everyone. It is not an account, it identifies nobody, and it is only ever sent to this
 /// app's own backend.
 /// </remarks>
-public interface IDeviceIdentityService
-{
-    Task<string> GetDeviceIdAsync();
-}
-
 /// <inheritdoc />
 public sealed class DeviceIdentityService : IDeviceIdentityService
 {

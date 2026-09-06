@@ -7,15 +7,16 @@ namespace SeattleCarsInBikeLanes.Mobile.Core.Upload;
 /// The identity a report can be credited to.
 /// </summary>
 /// <remarks>
-/// Bluesky is deliberately just a handle. The server takes the Bluesky identity from the
-/// authenticated session and ignores anything the client sends, so the handle here is only used to
-/// build the display string and to know whether attribution is possible at all.
+/// Stable account IDs constrain native requests; the server derives attribution from the supplied
+/// credential, never these display names. This presentation/request type is not a queue payload.
 ///
 /// Mastodon works the other way around: the site has no Mastodon session, so the access token
 /// travels with the report and the server verifies it.
 /// </remarks>
 public sealed class AttributionIdentity
 {
+    public string? BlueskyDid { get; init; }
+    public string? MastodonAccountId { get; init; }
     public string? BlueskyHandle { get; init; }
 
     public string? MastodonUsername { get; init; }
@@ -24,6 +25,7 @@ public sealed class AttributionIdentity
 
     public string? MastodonEndpoint { get; init; }
 
+    [System.Text.Json.Serialization.JsonIgnore]
     public string? MastodonAccessToken { get; init; }
 
     public bool HasBluesky => !string.IsNullOrWhiteSpace(BlueskyHandle);

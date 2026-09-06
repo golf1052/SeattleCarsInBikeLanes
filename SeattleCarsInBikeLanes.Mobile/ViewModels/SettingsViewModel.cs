@@ -67,7 +67,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     public string AppVersion => $"{AppInfo.Current.VersionString} ({AppInfo.Current.BuildString})";
 
     [RelayCommand]
-    public Task LoadAsync() => authService.RefreshAsync();
+    public async Task LoadAsync()
+    {
+        await authService.RefreshAsync();
+        StatusMessage = authService.RefreshError;
+    }
 
     [RelayCommand]
     private async Task SignOutBlueskyAsync()
@@ -75,7 +79,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             await authService.SignOutBlueskyAsync();
-            webAuthActions.QueueApplySignedOut(WebAuthProvider.Bluesky);
             StatusMessage = "Signed out of Bluesky.";
         }
         catch (Exception ex)
@@ -91,7 +94,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             await authService.SignOutMastodonAsync();
-            webAuthActions.QueueApplySignedOut(WebAuthProvider.Mastodon);
             StatusMessage = "Signed out of Mastodon.";
         }
         catch (Exception ex)
@@ -106,6 +108,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         try
         {
+            await uploadQueue.StartAsync();
             HashSet<string> queued = uploadQueue.Reports
                 .SelectMany(report => report.Photos)
                 .Select(photo => photo.Id)

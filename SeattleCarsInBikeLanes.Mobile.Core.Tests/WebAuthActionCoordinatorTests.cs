@@ -28,15 +28,16 @@ public sealed class WebAuthActionCoordinatorTests
     }
 
     [Fact]
-    public void CoalescesDuplicateProviderSignOut()
+    public void RepeatedProviderSignOutInvalidatesOlderAcknowledgement()
     {
         WebAuthActionCoordinator coordinator = new WebAuthActionCoordinator();
 
         WebAuthAction first = coordinator.QueueApplySignedOut(WebAuthProvider.Bluesky);
         WebAuthAction duplicate = coordinator.QueueApplySignedOut(WebAuthProvider.Bluesky);
 
-        Assert.Equal(first, duplicate);
-        Assert.Equal([first], coordinator.GetPendingActions());
+        Assert.NotEqual(first, duplicate);
+        Assert.False(coordinator.Acknowledge(first.Id));
+        Assert.Equal([duplicate], coordinator.GetPendingActions());
     }
 
     [Fact]

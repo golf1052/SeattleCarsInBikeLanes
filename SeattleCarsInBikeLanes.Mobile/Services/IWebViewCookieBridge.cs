@@ -7,8 +7,8 @@ namespace SeattleCarsInBikeLanes.Mobile.Services;
 /// </summary>
 /// <remarks>
 /// The user signs in on the real website inside a WebView, so the resulting session is a cookie
-/// that belongs to the web view rather than to the app. Everything the app does with the API has to
-/// present that same session, and the two do not share a cookie jar on their own.
+/// that belongs to the web view rather than to the app. Active login exchanges that cookie for a
+/// native bearer. Queued uploads deliberately use a separate cookie-free client.
 ///
 /// On iOS every WKWebView shares one cookie store by default, so signing in anywhere in the app
 /// (including on the map tab) is enough.

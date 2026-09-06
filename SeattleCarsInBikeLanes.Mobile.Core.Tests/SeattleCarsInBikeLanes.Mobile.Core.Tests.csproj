@@ -13,6 +13,14 @@
        transitively through Core, while these tests remain free of Magick.NET and the three sibling
        repositories the site depends on. -->
   <ItemGroup>
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\AuthService.cs" Link="Services\AuthService.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\UploadQueue.cs" Link="Services\UploadQueue.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\UploadService.cs" Link="Services\UploadService.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IQueueRuntime.cs" Link="Services\IQueueRuntime.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IDeviceIdentityService.cs" Link="Services\IDeviceIdentityService.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IBackgroundWorkScope.cs" Link="Services\IBackgroundWorkScope.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IWebViewCookieBridge.cs" Link="Services\IWebViewCookieBridge.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\SiteUrls.cs" Link="Services\SiteUrls.cs" />
     <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\UploadQueueStore.cs"
              Link="Services\UploadQueueStore.cs" />
     <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\PhotoCatalog.cs"

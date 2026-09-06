@@ -89,8 +89,30 @@ namespace SeattleCarsInBikeLanes.Controllers
             return new MastodonUsernameResponse()
             {
                 Username = mastodonAccount.Username,
-                FullUsername = $"@{mastodonAccount.Username}@{endpoint.Host}"
+                FullUsername = $"@{mastodonAccount.Username}@{endpoint.Host}",
+                AccountId = mastodonAccount.Id
             };
+        }
+
+        [HttpPost("NativeIdentity")]
+        public async Task<IActionResult> NativeIdentity([FromBody] MastodonUsernameRequest request,
+            [FromServices] MastodonCredentialVerifier verifier, CancellationToken cancellationToken)
+        {
+            try
+            {
+                VerifiedMastodonAccount account = await verifier.VerifyAsync(request.ServerUrl,
+                    request.AccessToken, cancellationToken);
+                return Ok(account);
+            }
+            catch (CredentialRejectedException)
+            {
+                return Unauthorized();
+            }
+            catch (Exception ex) when (ex is ProviderUnavailableException or HttpRequestException or System.Text.Json.JsonException ||
+                ex is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable);
+            }
         }
 
         [HttpPost("redirect")]
@@ -119,6 +141,7 @@ namespace SeattleCarsInBikeLanes.Controllers
 
         public class MastodonUsernameResponse
         {
+            public string AccountId { get; set; } = string.Empty;
             public string Username { get; set; } = string.Empty;
             public string FullUsername { get; set; } = string.Empty;
         }

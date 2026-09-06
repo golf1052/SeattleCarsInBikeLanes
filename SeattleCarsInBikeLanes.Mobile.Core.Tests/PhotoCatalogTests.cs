@@ -115,7 +115,7 @@ public sealed class PhotoCatalogTests
     }
 
     [Fact]
-    public async Task CapturedMetadataWriteFailurePersistsInIndexAndDeduplicatesWithoutLosingMetadata()
+    public async Task CapturedMetadataWriteFailureDoesNotAcknowledgeOrCreateAnIndex()
     {
         using ImportedPhotoTestDatabase database = new ImportedPhotoTestDatabase();
         ImportedPhotoStore imported = new ImportedPhotoStore(database.Path);
@@ -124,19 +124,14 @@ public sealed class PhotoCatalogTests
         library.FailMetadataWrites = true;
         PhotoCatalog catalog = CreateCatalog(library, new FakePrivatePhotoStore(), imported);
 
-        await catalog.MarkSubmittedAsync(await catalog.GetPhotosAsync(), "fallback-report");
+        IReadOnlyList<ReportPhoto> photos = await catalog.GetPhotosAsync();
+        await Assert.ThrowsAsync<IOException>(() => catalog.MarkSubmittedAsync(photos, "pending-report"));
 
         ReportPhoto immediate = Assert.Single(await catalog.GetPhotosAsync());
         Assert.Equal(PhotoOrigin.Captured, immediate.Origin);
-        Assert.True(immediate.Submitted);
-        Assert.Equal("fallback-report", immediate.SubmissionId);
-        DateTimeOffset timestamp = Assert.IsType<DateTimeOffset>(immediate.SubmittedAt);
-        XmpUploadState expected = new XmpUploadState(true, timestamp, "fallback-report");
-        ImportedPhoto indexed = Assert.Single(await imported.GetAllAsync());
-        Assert.Equal("captured", indexed.LocalIdentifier);
-        Assert.True(indexed.Submitted);
-        Assert.Equal(expected.SubmissionId, indexed.SubmissionId);
-        Assert.Equal(timestamp.UtcTicks, indexed.SubmittedAt?.Ticks);
+        Assert.False(immediate.Submitted);
+        XmpUploadState expected = XmpUploadState.NotUploaded;
+        Assert.Empty(await imported.GetAllAsync());
         Assert.Equal(XmpUploadState.NotUploaded, await library.ReadUploadStateAsync("captured"));
 
         await database.CloseConnectionAsync();
@@ -152,14 +147,13 @@ public sealed class PhotoCatalogTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task RereportedCaptureUsesNewestXmpOrFallbackIndexAfterRestart(bool latestWriteFails)
+    public async Task CapturedAcknowledgementUsesOnlyDurableXmpAfterRestart(bool latestWriteFails)
     {
         using ImportedPhotoTestDatabase database = new ImportedPhotoTestDatabase();
         ImportedPhotoStore imported = new ImportedPhotoStore(database.Path);
         FakePhotoLibrary library = new FakePhotoLibrary();
         XmpUploadState oldState = new XmpUploadState(true, DateTimeOffset.UtcNow.AddDays(-1), "old-report");
-        library.AddPhoto("captured", true,
-            latestWriteFails ? JpegWithState(oldState) : XmpPhotoTestContent.BlankJpeg());
+        library.AddPhoto("captured", true, JpegWithState(oldState));
         await imported.AddAsync(new[] { "captured" });
         await imported.MarkSubmittedAsync(new[] { "captured" }, oldState.SubmissionId, oldState.UploadedAt);
         PhotoCatalog catalog = CreateCatalog(library, new FakePrivatePhotoStore(), imported);
@@ -167,16 +161,23 @@ public sealed class PhotoCatalogTests
         AssertState(oldState, Assert.Single(original));
         library.FailMetadataWrites = latestWriteFails;
 
-        await catalog.MarkSubmittedAsync(original, "new-report");
+        DateTimeOffset timestamp = DateTimeOffset.UtcNow;
+        if (latestWriteFails)
+        {
+            await Assert.ThrowsAsync<IOException>(() =>
+                catalog.MarkSubmittedAsync(original, "new-report", submittedAt: timestamp));
+        }
+        else
+        {
+            await catalog.MarkSubmittedAsync(original, "new-report", submittedAt: timestamp);
+        }
 
         ReportPhoto immediate = Assert.Single(await catalog.GetPhotosAsync());
-        DateTimeOffset timestamp = Assert.IsType<DateTimeOffset>(immediate.SubmittedAt);
-        Assert.True(timestamp > oldState.UploadedAt);
-        XmpUploadState expected = new XmpUploadState(true, timestamp, "new-report");
+        XmpUploadState expected = latestWriteFails ? oldState : new XmpUploadState(true, timestamp, "new-report");
         AssertState(expected, immediate);
         Assert.Equal(PhotoOrigin.Captured, immediate.Origin);
         ImportedPhoto indexed = Assert.Single(await imported.GetAllAsync());
-        XmpUploadState expectedIndex = latestWriteFails ? expected : oldState;
+        XmpUploadState expectedIndex = oldState;
         Assert.Equal(expectedIndex.SubmissionId, indexed.SubmissionId);
         Assert.Equal(expectedIndex.UploadedAt?.UtcTicks, indexed.SubmittedAt?.Ticks);
         Assert.Equal(latestWriteFails ? oldState : expected,
@@ -197,7 +198,7 @@ public sealed class PhotoCatalogTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task TimestampTieBetweenXmpAndIndexRetainsTheKnownSubmissionId(bool xmpHasId)
+    public async Task CapturedXmpIsAuthoritativeEvenIfAnImportedIndexHasMoreFields(bool xmpHasId)
     {
         using ImportedPhotoTestDatabase database = new ImportedPhotoTestDatabase();
         ImportedPhotoStore imported = new ImportedPhotoStore(database.Path);
@@ -209,6 +210,7 @@ public sealed class PhotoCatalogTests
         await imported.MarkSubmittedAsync(new[] { "captured" },
             xmpHasId ? null : expected.SubmissionId, SubmittedAt);
         await database.CloseConnectionAsync();
+        expected = expected with { SubmissionId = xmpHasId ? expected.SubmissionId : null };
 
         PhotoCatalog catalog = CreateCatalog(new FakePhotoLibrary(library), new FakePrivatePhotoStore(),
             new ImportedPhotoStore(database.Path));
@@ -358,6 +360,25 @@ public sealed class PhotoCatalogTests
         new PhotoCatalog(library, privatePhotos, imported, new PassthroughImageResizer(),
             NullLogger<PhotoCatalog>.Instance);
 
+    [Fact]
+    public async Task ExplicitlyImportedOlderCaptureKeepsItsReferenceButUsesXmp()
+    {
+        using ImportedPhotoTestDatabase database = new();
+        FakePhotoLibrary library = new();
+        for (int i = 0; i < 101; i++) library.AddPhoto($"capture-{i}", true, XmpPhotoTestContent.BlankJpeg());
+        library.PickedPhotos = [new PickedPhoto("capture-100", null)];
+        ImportedPhotoStore index = new(database.Path);
+        PhotoCatalog catalog = CreateCatalog(library, new FakePrivatePhotoStore(), index);
+        ReportPhoto selected = Assert.Single(await catalog.ImportPhotosAsync(1));
+        Assert.Equal(PhotoOrigin.Captured, selected.Origin);
+        Assert.Contains(await catalog.GetPhotosAsync(), photo => photo.Id == selected.Id);
+        await catalog.MarkSubmittedAsync([selected], "receipt", submittedAt: SubmittedAt);
+        Assert.False(Assert.Single(await index.GetAllAsync()).Submitted);
+        PhotoCatalog reopened = CreateCatalog(new FakePhotoLibrary(library), new FakePrivatePhotoStore(), new ImportedPhotoStore(database.Path));
+        ReportPhoto restored = Assert.Single(await reopened.GetPhotosAsync(), photo => photo.Id == selected.Id);
+        Assert.Equal("receipt", restored.SubmissionId);
+    }
+
     private static byte[] JpegWithState(XmpUploadState state) =>
         new XmpPhotoTestContent().SetUploadState(XmpPhotoTestContent.BlankJpeg(), state);
 
@@ -386,7 +407,7 @@ public sealed class PhotoCatalogTests
         public bool ConfirmsCapturedPhotoDeletion => false;
 
         public void AddPhoto(string id, bool captured, byte[] jpeg) =>
-            photos.Add(id, new LibraryPhoto(new PhotoAsset(id, null, null), captured, jpeg.ToArray()));
+            photos.Add(id, new LibraryPhoto(new PhotoAsset(id, null, null, IsAppOwned: captured), captured, jpeg.ToArray()));
 
         public Task<PhotoLibraryAccess> CheckAccessAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Access);

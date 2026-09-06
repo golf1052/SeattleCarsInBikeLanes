@@ -165,6 +165,11 @@ namespace SeattleCarsInBikeLanes
             // Setup services
             var services = builder.Services;
             services.AddSingleton<HttpClient>();
+            services.AddSingleton(_ => new MastodonCredentialVerifier(new HttpClient(new HttpClientHandler
+            {
+                AllowAutoRedirect = false,
+                UseCookies = false
+            })));
             services.AddSingleton<HelperMethods>();
             services.AddSingleton<StatusResponse>();
             services.AddSingleton<DefaultAzureCredential>(c =>
@@ -340,11 +345,6 @@ namespace SeattleCarsInBikeLanes
                     serviceProvider.GetRequiredService<ILogger<InitialUploadPruner>>(),
                     serviceProvider.GetRequiredService<BlobContainerClient>(),
                     TimeSpan.FromMinutes(10));
-                InitialUploadPruner submissionClaimPruner = new InitialUploadPruner(
-                    serviceProvider.GetRequiredService<ILogger<InitialUploadPruner>>(),
-                    serviceProvider.GetRequiredService<BlobContainerClient>(),
-                    TimeSpan.FromDays(30),
-                    SubmissionClaimProvider.BlobPrefix);
             }
 
             // Configure the HTTP request pipeline.

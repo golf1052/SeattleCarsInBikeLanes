@@ -56,6 +56,7 @@ public partial class ReportPage : ContentPage, IQueryAttributable
     protected override async void OnNavigatedTo(NavigatedToEventArgs args)
     {
         base.OnNavigatedTo(args);
+        viewModel.StartIdentityUpdates();
 
         try
         {
@@ -71,6 +72,12 @@ public partial class ReportPage : ContentPage, IQueryAttributable
         {
             logger.LogError(ex, "Failed to prepare the report page.");
         }
+    }
+
+    protected override void OnNavigatedFrom(NavigatedFromEventArgs args)
+    {
+        viewModel.StopIdentityUpdates();
+        base.OnNavigatedFrom(args);
     }
 
     private async void PickLocationClicked(object? sender, EventArgs e)

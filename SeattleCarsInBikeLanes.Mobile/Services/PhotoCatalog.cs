@@ -60,7 +60,8 @@ public interface IPhotoCatalog
 
     Task MarkSubmittedAsync(IReadOnlyList<ReportPhoto> photos,
         string? submissionId,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? submittedAt = null);
 
     /// <summary>
     /// Removes photos from the app's view of the world.
@@ -136,6 +137,7 @@ public sealed class PhotoCatalog : IPhotoCatalog
 
         foreach (PhotoAsset asset in captured)
         {
+            if (!asset.IsAvailable) continue;
             indexed.TryGetValue(asset.Id, out ImportedPhoto? record);
             XmpUploadState state = await ReadUploadStateAsync(
                 asset.Id, PhotoOrigin.Captured, record, cancellationToken);
@@ -187,14 +189,19 @@ public sealed class PhotoCatalog : IPhotoCatalog
 
             foreach (PhotoAsset asset in importedAssets)
             {
+                if (!asset.IsAvailable || captured.Any(photo => photo.Id == asset.Id))
+                {
+                    continue;
+                }
                 indexed.TryGetValue(asset.Id, out ImportedPhoto? record);
+                PhotoOrigin origin = asset.IsAppOwned ? PhotoOrigin.Captured : PhotoOrigin.Imported;
                 XmpUploadState state = await ReadUploadStateAsync(
-                    asset.Id, PhotoOrigin.Imported, record, cancellationToken);
+                    asset.Id, origin, record, cancellationToken);
 
                 photos.Add(new ReportPhoto()
                 {
                     Id = asset.Id,
-                    Origin = PhotoOrigin.Imported,
+                    Origin = origin,
                     CreatedAt = asset.CreatedAt,
                     Location = asset.Location,
                     Submitted = state.Uploaded,
@@ -315,12 +322,14 @@ public sealed class PhotoCatalog : IPhotoCatalog
                 assetsById.TryGetValue(selected.LibraryId, out PhotoAsset? asset))
             {
                 indexed.TryGetValue(asset.Id, out ImportedPhoto? record);
+                if (!asset.IsAvailable) continue;
+                PhotoOrigin origin = asset.IsAppOwned ? PhotoOrigin.Captured : PhotoOrigin.Imported;
                 XmpUploadState state = await ReadUploadStateAsync(
-                    asset.Id, PhotoOrigin.Imported, record, cancellationToken);
+                    asset.Id, origin, record, cancellationToken);
                 imported.Add(new ReportPhoto()
                 {
                     Id = asset.Id,
-                    Origin = PhotoOrigin.Imported,
+                    Origin = origin,
                     CreatedAt = asset.CreatedAt,
                     Location = asset.Location,
                     Submitted = state.Uploaded,
@@ -388,59 +397,45 @@ public sealed class PhotoCatalog : IPhotoCatalog
 
     public async Task MarkSubmittedAsync(IReadOnlyList<ReportPhoto> photos,
         string? submissionId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? submittedAt = null)
     {
         ArgumentNullException.ThrowIfNull(photos);
-
-        DateTimeOffset submittedAt = DateTimeOffset.UtcNow;
-        XmpUploadState state = new XmpUploadState(true, submittedAt, submissionId);
-        List<string> fallbackToIndex = new List<string>();
-
-        foreach (ReportPhoto photo in photos.Where(photo => photo.Origin == PhotoOrigin.Captured))
+        ArgumentException.ThrowIfNullOrWhiteSpace(submissionId);
+        XmpUploadState state = new XmpUploadState(true, submittedAt ?? DateTimeOffset.UtcNow, submissionId);
+        foreach (ReportPhoto photo in photos)
         {
-            bool written = await photoLibrary.WriteUploadStateAsync(photo.Id, state, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (photo.Origin == PhotoOrigin.Imported)
+            {
+                await importedPhotos.AddAsync([photo.Id]);
+                await importedPhotos.MarkSubmittedAsync([photo.Id], submissionId, state.UploadedAt);
+                ImportedPhoto? persisted = (await importedPhotos.GetAllAsync())
+                    .SingleOrDefault(item => item.LocalIdentifier == photo.Id);
+                if (persisted is not { Submitted: true } || persisted.SubmissionId != submissionId ||
+                    persisted.SubmittedAt != state.UploadedAt?.UtcDateTime)
+                {
+                    throw new IOException("The imported photo submission acknowledgement was not saved.");
+                }
+            }
+            else
+            {
+                bool privatePhoto = IsPrivateId(photo.Id);
+                Task<XmpUploadState> Read() => privatePhoto
+                    ? privatePhotos.ReadUploadStateAsync(photo.Id, cancellationToken)
+                    : photoLibrary.ReadUploadStateAsync(photo.Id, cancellationToken);
+                if (await Read() != state)
+                {
+                    bool written = privatePhoto
+                        ? await privatePhotos.WriteUploadStateAsync(photo.Id, state, cancellationToken)
+                        : await photoLibrary.WriteUploadStateAsync(photo.Id, state, cancellationToken);
+                    if (!written || await Read() != state)
+                    {
+                        throw new IOException("The photo submission acknowledgement could not be saved in XMP.");
+                    }
+                }
+            }
             uploadStateCache[photo.Id] = state;
-
-            if (!written)
-            {
-                // The report did upload, so losing the flag would invite a duplicate submission.
-                // Recording it alongside the imported photos is worse than the photo carrying it,
-                // but much better than forgetting.
-                logger.LogWarning("Could not stamp {Id} as submitted, falling back to the local index.", photo.Id);
-                fallbackToIndex.Add(photo.Id);
-            }
-
-        }
-
-        foreach (ReportPhoto privatePhoto in photos.Where(photo =>
-                     photo.Origin is PhotoOrigin.PrivateCaptured or PhotoOrigin.PrivateImported))
-        {
-            bool written = await privatePhotos.WriteUploadStateAsync(
-                privatePhoto.Id,
-                state,
-                cancellationToken);
-            uploadStateCache[privatePhoto.Id] = state;
-            if (!written)
-            {
-                logger.LogWarning("Could not stamp private photo {Id} as submitted.", privatePhoto.Id);
-            }
-        }
-
-        List<string> importedIds = photos
-            .Where(photo => photo.Origin == PhotoOrigin.Imported)
-            .Select(photo => photo.Id)
-            .Concat(fallbackToIndex)
-            .ToList();
-
-        if (importedIds.Count > 0)
-        {
-            await importedPhotos.AddAsync(importedIds);
-            await importedPhotos.MarkSubmittedAsync(importedIds, submissionId, submittedAt);
-
-            foreach (string id in importedIds)
-            {
-                uploadStateCache[id] = state;
-            }
         }
     }
 
@@ -511,8 +506,8 @@ public sealed class PhotoCatalog : IPhotoCatalog
             }
         }
 
-        // A captured photo can also carry an imported record, from the fallback that runs when its
-        // own metadata could not be stamped, so every id is offered to the store.
+        // An explicitly picked older capture can also have an index reference, but its submitted
+        // state remains in XMP. Remove that reference when the owned photo is deleted.
         await ForgetAsync(removed, cancellationToken);
 
         return removed;
@@ -531,7 +526,7 @@ public sealed class PhotoCatalog : IPhotoCatalog
                 : await photoLibrary.ReadUploadStateAsync(id, cancellationToken);
         }
 
-        if (indexedPhoto is { Submitted: true })
+        if (origin == PhotoOrigin.Imported && indexedPhoto is { Submitted: true })
         {
             XmpUploadState indexedState = new XmpUploadState(true,
                 indexedPhoto.SubmittedAt is DateTime submittedAt
@@ -557,7 +552,7 @@ public sealed class PhotoCatalog : IPhotoCatalog
             return first;
         }
 
-        // A photo can be reported again after an earlier metadata write fell back to the index.
+        // Concurrent catalog reads must not replace a newer durable acknowledgement with an older one.
         int order = Nullable.Compare(first.UploadedAt, second.UploadedAt);
         return order == 0
             ? string.IsNullOrWhiteSpace(second.SubmissionId) ? first : second

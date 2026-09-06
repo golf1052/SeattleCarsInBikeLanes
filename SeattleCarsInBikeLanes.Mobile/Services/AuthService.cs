@@ -1,389 +1,313 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text.Json.Serialization;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using SeattleCarsInBikeLanes.Core.Contracts;
+using SeattleCarsInBikeLanes.Mobile.Core.Navigation;
 using SeattleCarsInBikeLanes.Mobile.Core.Upload;
 
 namespace SeattleCarsInBikeLanes.Mobile.Services;
 
-/// <summary>
-/// Who the user is signed in as, for attribution.
-/// </summary>
 public interface IAuthService
 {
-    /// <summary>
-    /// The identity the app last saw, without going to the network.
-    /// </summary>
     AttributionIdentity? CurrentIdentity { get; }
-
+    long Generation { get; }
+    string? RefreshError { get; }
     event EventHandler? IdentityChanged;
-
-    /// <summary>
-    /// Loads whatever was stored last time the app ran.
-    /// </summary>
     Task InitializeAsync();
-
-    /// <summary>
-    /// Re-reads the session from the web view and the site.
-    /// </summary>
     Task<AttributionIdentity?> RefreshAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Records the Mastodon credentials the site left in the browser.
-    /// </summary>
-    /// <remarks>
-    /// The username is not stored alongside them, so it is resolved from the server the same way
-    /// the website does.
-    /// </remarks>
-    Task SetMastodonAsync(string endpoint, string accessToken, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Signs out of Bluesky only, leaving a linked Mastodon account signed in.
-    /// </summary>
+    Task SetMastodonAsync(string endpoint, string accessToken, CancellationToken cancellationToken = default,
+        long? expectedGeneration = null);
     Task SignOutBlueskyAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Signs out of Mastodon only, leaving a linked Bluesky account signed in.
-    /// </summary>
-    /// <remarks>
-    /// The server keeps no Mastodon session of its own, so this never needs a network call: the
-    /// access token lives only in secure storage and forgetting it is enough.
-    /// </remarks>
     Task SignOutMastodonAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Applies whatever credentials the app holds to an outgoing request.
-    /// </summary>
+    Task<bool> AcknowledgeWebSignOutAsync(WebAuthAction action);
+    Task<bool> BeginSignInAsync(WebAuthProvider provider);
     Task AuthenticateAsync(HttpRequestMessage request, CancellationToken cancellationToken = default);
+    Task CaptureQueuedAsync(string reportId, bool attribute, long generation,
+        Func<QueuedAttribution, Task> persist, CancellationToken cancellationToken);
 }
 
-/// <inheritdoc />
 public sealed class AuthService : IAuthService
 {
-    private const string BlueskyTokenKey = "cbl.bluesky-token";
-    private const string BlueskyHandleKey = "cbl.bluesky-handle";
-    private const string MastodonTokenKey = "cbl.mastodon-token";
-    private const string MastodonEndpointKey = "cbl.mastodon-endpoint";
-    private const string MastodonUsernameKey = "cbl.mastodon-username";
-    private const string MastodonFullUsernameKey = "cbl.mastodon-full-username";
-
-    private readonly HttpClient httpClient;
+    private const string SessionKey = "cbl.active-session.v2";
+    private readonly HttpClient cookies;
+    private readonly HttpClient native;
     private readonly CookieContainer cookieContainer;
     private readonly IWebViewCookieBridge cookieBridge;
+    private readonly ISecureValueStore storage;
+    private readonly QueuedCredentialVault vault;
+    private readonly WebAuthActionCoordinator webActions;
+    private readonly IClientDispatcher dispatcher;
     private readonly ILogger<AuthService> logger;
-    private readonly SemaphoreSlim initializeMutex = new SemaphoreSlim(1, 1);
-
-    private string? blueskyToken;
+    private readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1);
+    private AccountSession session = new AccountSession();
     private bool initialized;
+    private long generation;
 
-    public AuthService(HttpClient httpClient,
-        CookieContainer cookieContainer,
-        IWebViewCookieBridge cookieBridge,
-        ILogger<AuthService> logger)
+    public AuthService(HttpClient cookies, HttpClient native, CookieContainer cookieContainer,
+        IWebViewCookieBridge cookieBridge, ISecureValueStore storage, QueuedCredentialVault vault,
+        WebAuthActionCoordinator webActions, IClientDispatcher dispatcher, ILogger<AuthService> logger)
     {
-        this.httpClient = httpClient;
-        this.cookieContainer = cookieContainer;
-        this.cookieBridge = cookieBridge;
-        this.logger = logger;
+        this.cookies = cookies; this.native = native; this.cookieContainer = cookieContainer;
+        this.cookieBridge = cookieBridge; this.storage = storage; this.vault = vault;
+        this.webActions = webActions; this.dispatcher = dispatcher; this.logger = logger;
     }
 
     public AttributionIdentity? CurrentIdentity { get; private set; }
-
+    public long Generation => Interlocked.Read(ref generation);
+    public string? RefreshError { get; private set; }
     public event EventHandler? IdentityChanged;
 
-    /// <summary>
-    /// Loads whatever was stored last time the app ran.
-    /// </summary>
-    /// <remarks>
-    /// Run at startup rather than from a page, because a report can be sent from the queue without
-    /// the user having opened anything that would otherwise refresh the identity, and a report that
-    /// was meant to be credited to somebody would go up anonymous.
-    /// </remarks>
     public async Task InitializeAsync()
     {
-        await initializeMutex.WaitAsync();
+        await gate.WaitAsync();
         try
         {
-            if (initialized)
-            {
-                return;
-            }
-
-            blueskyToken = await TryGetAsync(BlueskyTokenKey);
-            CurrentIdentity = await BuildIdentityAsync(await TryGetAsync(BlueskyHandleKey));
+            if (initialized) return;
+            string? stored = await storage.GetAsync(SessionKey);
+            AccountSession restored = stored is null ? new AccountSession() :
+                JsonSerializer.Deserialize<AccountSession>(stored)
+                    ?? throw new InvalidDataException("The active session is unreadable.");
+            if (SignedOut(WebAuthProvider.Bluesky)) restored = restored with { Bluesky = null, BlueskySignedOut = true };
+            if (SignedOut(WebAuthProvider.Mastodon)) restored = restored with { Mastodon = null, MastodonSignedOut = true };
+            await SaveAsync(restored);
             initialized = true;
-            RaiseIdentityChanged();
         }
-        finally
-        {
-            initializeMutex.Release();
-        }
+        finally { gate.Release(); }
     }
 
     public async Task<AttributionIdentity?> RefreshAsync(CancellationToken cancellationToken = default)
     {
-        // Pick up a session the user may have just established in the map or login web view.
-        await cookieBridge.CopyWebViewCookiesToAppAsync(cookieContainer, SiteUrls.BaseAddress);
+        await InitializeAsync();
+        AccountSession original;
+        long expected;
+        await gate.WaitAsync(cancellationToken);
+        try { original = session; expected = Generation; }
+        finally { gate.Release(); }
+        if (SignedOut(WebAuthProvider.Bluesky)) return CurrentIdentity;
 
-        string? handle = await GetBlueskyHandleAsync(cancellationToken);
-
-        if (handle is not null)
+        CredentialCheck check = original.Bluesky is null
+            ? new CredentialCheck(CredentialCheckState.Invalid)
+            : await CheckBlueskyAsync(original.Bluesky, cancellationToken);
+        if (check.State == CredentialCheckState.Invalid)
         {
-            await TrySetAsync(BlueskyHandleKey, handle);
-
-            // A bearer token outlives the web view's cookie, so the app keeps working after iOS
-            // evicts web site data.
-            if (blueskyToken is null)
+            check = await ExchangeCookieAsync(original.Bluesky?.AccountId, cancellationToken);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (expected != Generation || SignedOut(WebAuthProvider.Bluesky)) return CurrentIdentity;
+            if (check.State == CredentialCheckState.Unavailable)
             {
-                await TryExchangeForTokenAsync(cancellationToken);
+                logger.LogDebug("Account refresh is unavailable; preserving the saved identity.");
+                RefreshError = "Couldn't refresh the account. Your saved sign-in has been kept.";
+                RaiseChanged();
+                return CurrentIdentity;
             }
+            RefreshError = null;
+            await SaveAsync(session with { Bluesky = check.Credential });
+            return CurrentIdentity;
         }
-        else if (blueskyToken is not null)
-        {
-            // The stored token is no longer accepted.
-            blueskyToken = null;
-            SecureStorage.Default.Remove(BlueskyTokenKey);
-            SecureStorage.Default.Remove(BlueskyHandleKey);
-        }
-
-        CurrentIdentity = await BuildIdentityAsync(handle);
-        RaiseIdentityChanged();
-        return CurrentIdentity;
+        finally { gate.Release(); }
     }
 
-    public async Task SetMastodonAsync(string endpoint,
-        string accessToken,
-        CancellationToken cancellationToken = default)
+    private async Task<CredentialCheck> CheckBlueskyAsync(AccountCredential credential, CancellationToken token)
     {
-        if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(accessToken))
+        try
         {
+            using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, SiteUrls.BlueskyNativeMe);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.Token);
+            using HttpResponseMessage response = await native.SendAsync(request, token);
+            if (response.StatusCode == HttpStatusCode.Unauthorized) return new(CredentialCheckState.Invalid);
+            if (!response.IsSuccessStatusCode) return new(CredentialCheckState.Unavailable);
+            CredentialIdentity? identity = await response.Content.ReadFromJsonAsync<CredentialIdentity>(token);
+            if (identity is null || identity.AccountId != credential.AccountId || string.IsNullOrWhiteSpace(identity.DisplayName))
+                return new(CredentialCheckState.Unavailable);
+            return new(CredentialCheckState.Valid,
+                credential with { DisplayName = identity.DisplayName, ExpiresAt = identity.ExpiresAt });
+        }
+        catch (Exception ex) when (IsUnavailable(ex, token))
+        {
+            return new(CredentialCheckState.Unavailable);
+        }
+    }
+
+    private async Task<CredentialCheck> ExchangeCookieAsync(string? expectedDid, CancellationToken token)
+    {
+        try
+        {
+            await cookieBridge.CopyWebViewCookiesToAppAsync(cookieContainer, SiteUrls.BaseAddress);
+            token.ThrowIfCancellationRequested();
+            using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, SiteUrls.BlueskyToken);
+            using HttpResponseMessage response = await cookies.SendAsync(request, token);
+            if (response.StatusCode == HttpStatusCode.Unauthorized) return new(CredentialCheckState.Invalid);
+            if (!response.IsSuccessStatusCode) return new(CredentialCheckState.Unavailable);
+            TokenResponse? exchanged = await response.Content.ReadFromJsonAsync<TokenResponse>(token);
+            if (string.IsNullOrWhiteSpace(exchanged?.Token) || string.IsNullOrWhiteSpace(exchanged.Did) ||
+                string.IsNullOrWhiteSpace(exchanged.Handle) || exchanged.ExpiresInSeconds <= 0)
+                return new(CredentialCheckState.Unavailable);
+            if (expectedDid is not null && expectedDid != exchanged.Did)
+                return new(CredentialCheckState.Invalid);
+            return new(CredentialCheckState.Valid, new AccountCredential(exchanged.Did, exchanged.Handle,
+                exchanged.Token, ExpiresAt: DateTimeOffset.UtcNow.AddSeconds(exchanged.ExpiresInSeconds)));
+        }
+        catch (Exception ex) when (IsUnavailable(ex, token))
+        {
+            return new(CredentialCheckState.Unavailable);
+        }
+    }
+
+    public async Task SetMastodonAsync(string endpoint, string accessToken, CancellationToken cancellationToken = default,
+        long? expectedGeneration = null)
+    {
+        await InitializeAsync();
+        long expected;
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (SignedOut(WebAuthProvider.Mastodon) ||
+                expectedGeneration.HasValue && expectedGeneration.Value != Generation) return;
+            expected = Interlocked.Increment(ref generation);
+        }
+        finally { gate.Release(); }
+        using HttpResponseMessage response = await native.PostAsJsonAsync(SiteUrls.MastodonNativeIdentity,
+            new { serverUrl = endpoint, accessToken }, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        MastodonResponse identity = await response.Content.ReadFromJsonAsync<MastodonResponse>(cancellationToken)
+            ?? throw new InvalidDataException("The Mastodon account could not be verified.");
+        if (string.IsNullOrWhiteSpace(identity.Id) || string.IsNullOrWhiteSpace(identity.Server) ||
+            string.IsNullOrWhiteSpace(identity.Username))
+            throw new InvalidDataException("The verified Mastodon account is incomplete.");
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (expected != Generation || SignedOut(WebAuthProvider.Mastodon)) return;
+            await SaveAsync(session with
+            {
+                Mastodon = new AccountCredential(identity.Id, identity.Username,
+                accessToken, identity.Server)
+            });
+        }
+        finally { gate.Release(); }
+    }
+
+    public Task SignOutMastodonAsync(CancellationToken cancellationToken = default) =>
+        SignOutAsync(WebAuthProvider.Mastodon, cancellationToken);
+    public Task SignOutBlueskyAsync(CancellationToken cancellationToken = default) =>
+        SignOutAsync(WebAuthProvider.Bluesky, cancellationToken);
+
+    private async Task SignOutAsync(WebAuthProvider provider, CancellationToken token)
+    {
+        await InitializeAsync();
+        await gate.WaitAsync(token);
+        try
+        {
+            webActions.QueueApplySignedOut(provider);
+            Interlocked.Increment(ref generation);
+            await SaveAsync(provider == WebAuthProvider.Bluesky
+                ? session with { Bluesky = null, BlueskySignedOut = true }
+                : session with { Mastodon = null, MastodonSignedOut = true });
+        }
+        finally { gate.Release(); }
+        if (provider == WebAuthProvider.Bluesky)
+        {
+            foreach (Cookie cookie in cookieContainer.GetCookies(SiteUrls.BaseAddress)) cookie.Expired = true;
+            await cookieBridge.ClearAsync(SiteUrls.BaseAddress);
+        }
+    }
+
+    public async Task<bool> AcknowledgeWebSignOutAsync(WebAuthAction action)
+    {
+        await InitializeAsync();
+        await gate.WaitAsync();
+        try
+        {
+            if (action.Kind != WebAuthActionKind.ApplySignedOut ||
+                !webActions.GetPendingActions().Contains(action)) return false;
+            AccountCredential? active = action.Provider == WebAuthProvider.Bluesky ? session.Bluesky : session.Mastodon;
+            if (active is not null)
+                throw new IOException("Native sign-out is unfinished; browser acknowledgement was retained.");
+            if (action.Provider == WebAuthProvider.Bluesky)
+            {
+                foreach (Cookie cookie in cookieContainer.GetCookies(SiteUrls.BaseAddress)) cookie.Expired = true;
+                await cookieBridge.ClearAsync(SiteUrls.BaseAddress);
+            }
+            return webActions.Acknowledge(action.Id);
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task<bool> BeginSignInAsync(WebAuthProvider provider)
+    {
+        await InitializeAsync();
+        await gate.WaitAsync();
+        try
+        {
+            if (webActions.HasPending(WebAuthActionKind.ApplySignedOut, provider)) return false;
+            await SaveAsync(provider == WebAuthProvider.Bluesky
+                ? session with { Bluesky = null, BlueskySignedOut = false }
+                : session with { Mastodon = null, MastodonSignedOut = false });
+            return true;
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task CaptureQueuedAsync(string reportId, bool attribute, long expected,
+        Func<QueuedAttribution, Task> persist, CancellationToken cancellationToken)
+    {
+        if (!attribute)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await persist(new QueuedAttribution(new ReportAttribution()));
             return;
         }
-
-        MastodonUsername? username = await ResolveMastodonUsernameAsync(endpoint, accessToken, cancellationToken);
-        if (username is null)
-        {
-            // Without a verified username the server would refuse to credit the report anyway, so
-            // storing the token would only produce a sign in that silently does nothing.
-            logger.LogWarning("Could not resolve the Mastodon username, so the account was not linked.");
-            return;
-        }
-
-        await TrySetAsync(MastodonEndpointKey, endpoint);
-        await TrySetAsync(MastodonUsernameKey, username.Username);
-        await TrySetAsync(MastodonFullUsernameKey, username.FullUsername);
-        await TrySetAsync(MastodonTokenKey, accessToken);
-        CurrentIdentity = await BuildIdentityAsync(CurrentIdentity?.BlueskyHandle);
-        RaiseIdentityChanged();
-    }
-
-    private async Task<MastodonUsername?> ResolveMastodonUsernameAsync(string endpoint,
-        string accessToken,
-        CancellationToken cancellationToken)
-    {
+        await InitializeAsync();
+        await gate.WaitAsync(cancellationToken);
         try
         {
-            using HttpResponseMessage response = await httpClient.PostAsJsonAsync(SiteUrls.MastodonUsername,
-                new { accessToken, serverUrl = endpoint },
-                cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                return null;
-            }
-
-            MastodonUsername? username =
-                await response.Content.ReadFromJsonAsync<MastodonUsername>(cancellationToken);
-
-            return string.IsNullOrWhiteSpace(username?.FullUsername) ? null : username;
+            if (attribute && (expected != Generation || session.Attribution.IsAnonymous))
+                throw new InvalidOperationException("The account changed before this report could be saved.");
+            string? reference = attribute ? await vault.RetainAsync(reportId, session) : null;
+            await persist(new QueuedAttribution(attribute ? session.Attribution : new ReportAttribution(), reference));
         }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Could not resolve the Mastodon username.");
-            return null;
-        }
+        finally { gate.Release(); }
     }
 
-    public async Task SignOutBlueskyAsync(CancellationToken cancellationToken = default)
+    // Kept for non-queue callers. Queued uploads never use active authentication.
+    public Task AuthenticateAsync(HttpRequestMessage request, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, SiteUrls.BlueskyLogout);
-            await AuthenticateAsync(request, cancellationToken);
-            await httpClient.SendAsync(request, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            // The local session is going away regardless, so a failure to tell the server is not
-            // worth blocking sign out over.
-            logger.LogWarning(ex, "Failed to tell the server about signing out of Bluesky.");
-        }
-
-        foreach (string key in new[] { BlueskyTokenKey, BlueskyHandleKey })
-        {
-            SecureStorage.Default.Remove(key);
-        }
-
-        blueskyToken = null;
-        ClearCookies();
-        await cookieBridge.ClearAsync(SiteUrls.BaseAddress);
-
-        // A linked Mastodon account is unaffected: it carries its own credentials and has no
-        // session of its own to sign out of here.
-        CurrentIdentity = await BuildIdentityAsync(null);
-        RaiseIdentityChanged();
+        if (session.Bluesky is { } bluesky)
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bluesky.Token);
+        return Task.CompletedTask;
     }
 
-    public async Task SignOutMastodonAsync(CancellationToken cancellationToken = default)
+    private async Task SaveAsync(AccountSession next)
     {
-        foreach (string key in new[]
+        await storage.SetAsync(SessionKey, JsonSerializer.Serialize(next));
+        if (session != next) Interlocked.Increment(ref generation);
+        session = next;
+        CurrentIdentity = next.Attribution.IsAnonymous ? null : new AttributionIdentity
         {
-            MastodonTokenKey, MastodonEndpointKey, MastodonUsernameKey, MastodonFullUsernameKey
-        })
-        {
-            SecureStorage.Default.Remove(key);
-        }
-
-        // A linked Bluesky account is unaffected: its cookie/token and secure storage are untouched.
-        CurrentIdentity = await BuildIdentityAsync(CurrentIdentity?.BlueskyHandle);
-        RaiseIdentityChanged();
-    }
-
-    public async Task AuthenticateAsync(HttpRequestMessage request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (blueskyToken is not null)
-        {
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", blueskyToken);
-            return;
-        }
-
-        // With no token the cookie is the only thing identifying the user, and it may have been
-        // created in the web view since the last request.
-        await cookieBridge.CopyWebViewCookiesToAppAsync(cookieContainer, SiteUrls.BaseAddress);
-    }
-
-    private async Task<string?> GetBlueskyHandleAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, SiteUrls.BlueskyMe);
-            if (blueskyToken is not null)
-            {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", blueskyToken);
-            }
-
-            using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                return null;
-            }
-
-            MeResponse? me = await response.Content.ReadFromJsonAsync<MeResponse>(cancellationToken);
-            return me is { LoggedIn: true } && !string.IsNullOrWhiteSpace(me.Handle) ? me.Handle : null;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Could not check the Bluesky session.");
-            return null;
-        }
-    }
-
-    private async Task TryExchangeForTokenAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            using HttpResponseMessage response = await httpClient.GetAsync(SiteUrls.BlueskyToken, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                return;
-            }
-
-            TokenResponse? token = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken);
-            if (token is null || string.IsNullOrWhiteSpace(token.Token))
-            {
-                return;
-            }
-
-            blueskyToken = token.Token;
-            await TrySetAsync(BlueskyTokenKey, token.Token);
-        }
-        catch (Exception ex)
-        {
-            // Without a token the cookie still works, so this is a durability problem rather than
-            // a broken sign in.
-            logger.LogWarning(ex, "Could not exchange the session for a bearer token.");
-        }
-    }
-
-    private async Task<AttributionIdentity?> BuildIdentityAsync(string? blueskyHandle)
-    {
-        string? mastodonToken = await TryGetAsync(MastodonTokenKey);
-        string? mastodonEndpoint = await TryGetAsync(MastodonEndpointKey);
-        string? mastodonUsername = await TryGetAsync(MastodonUsernameKey);
-        string? mastodonFullUsername = await TryGetAsync(MastodonFullUsernameKey);
-
-        AttributionIdentity identity = new AttributionIdentity()
-        {
-            BlueskyHandle = blueskyHandle,
-            MastodonAccessToken = mastodonToken,
-            MastodonEndpoint = mastodonEndpoint,
-            MastodonUsername = mastodonUsername,
-            MastodonFullUsername = mastodonFullUsername
+            BlueskyDid = next.Bluesky?.AccountId,
+            BlueskyHandle = next.Bluesky?.DisplayName,
+            MastodonAccountId = next.Mastodon?.AccountId,
+            MastodonUsername = next.Mastodon?.DisplayName,
+            MastodonEndpoint = next.Mastodon?.Server,
+            MastodonAccessToken = next.Mastodon?.Token,
+            MastodonFullUsername = next.Mastodon is { } mastodon
+                ? $"@{mastodon.DisplayName}@{new Uri(mastodon.Server!).Host}" : null
         };
-
-        return identity.CanAttribute ? identity : null;
+        RaiseChanged();
     }
 
-    private void ClearCookies()
-    {
-        foreach (Cookie cookie in cookieContainer.GetCookies(SiteUrls.BaseAddress).Cast<Cookie>())
-        {
-            cookie.Expired = true;
-        }
-    }
-
-    private void RaiseIdentityChanged() =>
-        MainThread.BeginInvokeOnMainThread(() => IdentityChanged?.Invoke(this, EventArgs.Empty));
-
-    private async Task<string?> TryGetAsync(string key)
-    {
-        try
-        {
-            return await SecureStorage.Default.GetAsync(key);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Could not read {Key} from secure storage.", key);
-            return null;
-        }
-    }
-
-    private async Task TrySetAsync(string key, string value)
-    {
-        try
-        {
-            await SecureStorage.Default.SetAsync(key, value);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Could not write {Key} to secure storage.", key);
-        }
-    }
-
-    private sealed record MeResponse(
-        [property: JsonPropertyName("loggedIn")] bool LoggedIn,
-        [property: JsonPropertyName("did")] string? Did,
-        [property: JsonPropertyName("handle")] string? Handle);
-
-    private sealed record TokenResponse(
-        [property: JsonPropertyName("token")] string Token,
-        [property: JsonPropertyName("expiresInSeconds")] int ExpiresInSeconds,
-        [property: JsonPropertyName("did")] string? Did,
-        [property: JsonPropertyName("handle")] string? Handle);
-
-    private sealed record MastodonUsername(
-        [property: JsonPropertyName("username")] string Username,
-        [property: JsonPropertyName("fullUsername")] string FullUsername);
+    private bool SignedOut(WebAuthProvider provider) =>
+        webActions.HasPending(WebAuthActionKind.ApplySignedOut, provider) ||
+        (provider == WebAuthProvider.Bluesky ? session.BlueskySignedOut : session.MastodonSignedOut);
+    private void RaiseChanged() => dispatcher.Dispatch(() => IdentityChanged?.Invoke(this, EventArgs.Empty));
+    private static bool IsUnavailable(Exception ex, CancellationToken token) =>
+        ex is HttpRequestException or JsonException || ex is OperationCanceledException && !token.IsCancellationRequested;
+    private sealed record TokenResponse(string Token, string Did, string Handle, int ExpiresInSeconds);
+    private sealed record MastodonResponse(string Id, string Server, string Username);
 }

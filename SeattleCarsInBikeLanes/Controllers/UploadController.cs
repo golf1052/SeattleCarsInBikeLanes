@@ -23,7 +23,7 @@ namespace SeattleCarsInBikeLanes.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class UploadController : ControllerBase
+    public partial class UploadController : ControllerBase
     {
         public const string InitialUploadPrefix = "initialupload/";
         public const string FinalizedUploadPrefix = "finalizedupload/";
@@ -121,7 +121,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         }
 
         [HttpPost("Initial")]
-        public async Task<IActionResult> UploadPhoto([FromForm]List<IFormFile> files)
+        public async Task<IActionResult> UploadPhoto([FromForm] List<IFormFile> files)
         {
             if (await deviceBlocklistProvider.IsBlocked(DeviceId))
             {
@@ -351,6 +351,10 @@ namespace SeattleCarsInBikeLanes.Controllers
         [HttpPost("Finalize")]
         public async Task<IActionResult> FinalizeUpload([FromBody] List<FinalizedPhotoUpload> uploads)
         {
+            if (Request.Headers.ContainsKey(ReportIdHeader))
+            {
+                return BadRequest("Mobile reports must use the mobile finalization endpoint.");
+            }
             if (await deviceBlocklistProvider.IsBlocked(DeviceId))
             {
                 logger.LogWarning("Rejected a finalize from blocked device {DeviceId}.", DeviceId);
@@ -392,27 +396,6 @@ namespace SeattleCarsInBikeLanes.Controllers
                 string error = "Number of cars must be at least 1.";
                 logger.LogError(error);
                 return BadRequest(error);
-            }
-
-            string? reportId = ReportId;
-            if (reportId is not null)
-            {
-                SubmissionClaimResult claim =
-                    await submissionClaimProvider.TryClaimAsync(reportId, DeviceId);
-                if (claim == SubmissionClaimResult.AlreadyCompleted)
-                {
-                    return NoContent();
-                }
-
-                if (claim == SubmissionClaimResult.InFlight)
-                {
-                    Response.Headers[ReportInFlightHeader] = "true";
-                    Response.Headers.RetryAfter =
-                        ((int)SubmissionClaimProvider.InFlightRetryAfter.TotalSeconds)
-                        .ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    return StatusCode(StatusCodes.Status429TooManyRequests,
-                        "This report is already being finalized. Try again shortly.");
-                }
             }
 
             if (string.IsNullOrWhiteSpace(metadata.PhotoCrossStreet))
@@ -528,7 +511,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                 // Taken from the header rather than the body so a client cannot pin its uploads on
                 // somebody else's device.
                 d.DeviceId = DeviceId;
-                d.ReportId = reportId;
+                d.ReportId = null;
 
                 string randomFileName = d.PhotoId;
                 BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");
@@ -539,11 +522,6 @@ namespace SeattleCarsInBikeLanes.Controllers
 
                 BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.json");
                 await metadataBlobClient.DeleteAsync();
-            }
-
-            if (reportId is not null)
-            {
-                await submissionClaimProvider.CompleteAsync(reportId, DeviceId);
             }
 
             try

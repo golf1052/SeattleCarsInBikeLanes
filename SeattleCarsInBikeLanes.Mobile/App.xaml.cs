@@ -83,12 +83,18 @@ public partial class App : Application
 			// for has to know who they are without waiting for them to visit a page that happens
 			// to refresh it.
 			await authService.InitializeAsync();
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex, "Failed to restore the active account.");
+		}
 
+		try
+		{
 			await uploadQueue.StartAsync();
 		}
 		catch (Exception ex)
 		{
-			// async void, so anything escaping here takes the app down on launch.
 			logger.LogError(ex, "Failed to start the upload queue.");
 		}
 

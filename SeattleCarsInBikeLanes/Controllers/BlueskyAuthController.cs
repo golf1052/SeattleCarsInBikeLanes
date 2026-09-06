@@ -252,6 +252,20 @@ namespace SeattleCarsInBikeLanes.Controllers
                 result.Principal.FindFirstValue(BlueskyAuthDefaults.HandleClaim)));
         }
 
+        [HttpGet("/api/BlueskyAuth/native-me")]
+        [AllowAnonymous]
+        public async Task<IActionResult> NativeMe()
+        {
+            AuthenticateResult result = await HttpContext.AuthenticateAsync(BlueskyAuthDefaults.BearerScheme);
+            string? did = result.Principal?.FindFirstValue(BlueskyAuthDefaults.DidClaim);
+            string? handle = result.Principal?.FindFirstValue(BlueskyAuthDefaults.HandleClaim);
+            if (!result.Succeeded || string.IsNullOrWhiteSpace(did) || string.IsNullOrWhiteSpace(handle))
+            {
+                return Unauthorized();
+            }
+            return Ok(new Core.Contracts.CredentialIdentity(did, handle, result.Properties?.ExpiresUtc));
+        }
+
         /// <summary>
         /// Issues a bearer token for the signed in identity, for clients that cannot use cookies.
         /// </summary>

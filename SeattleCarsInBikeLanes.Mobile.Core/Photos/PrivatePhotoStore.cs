@@ -93,7 +93,7 @@ public sealed class PrivatePhotoStore : IPrivatePhotoStore
         await writes.WaitAsync(cancellationToken);
         try
         {
-            Directory.CreateDirectory(directory);
+            DurableFile.CreateDirectory(directory);
             await using (FileStream output = new FileStream(
                 temporaryPath,
                 FileMode.CreateNew,
@@ -103,10 +103,11 @@ public sealed class PrivatePhotoStore : IPrivatePhotoStore
                 FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
                 await output.WriteAsync(jpeg, cancellationToken);
-                await output.FlushAsync(cancellationToken);
+                output.Flush(flushToDisk: true);
             }
 
             File.Move(temporaryPath, path);
+            DurableFile.SyncDirectory(directory);
         }
         catch
         {
@@ -154,8 +155,18 @@ public sealed class PrivatePhotoStore : IPrivatePhotoStore
         {
             byte[] original = await File.ReadAllBytesAsync(path, cancellationToken);
             byte[] updated = content.SetUploadState(original, state);
-            await File.WriteAllBytesAsync(temporaryPath, updated, cancellationToken);
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+            await DurableFile.WriteAsync(temporaryPath, updated, cancellationToken);
             File.Move(temporaryPath, path, overwrite: true);
+            DurableFile.SyncDirectory(Path.GetDirectoryName(path)!);
+            byte[] persisted = await File.ReadAllBytesAsync(path, cancellationToken);
+            if (!persisted.AsSpan().SequenceEqual(updated))
+            {
+                throw new IOException("The private photo metadata could not be verified.");
+            }
             return true;
         }
         catch

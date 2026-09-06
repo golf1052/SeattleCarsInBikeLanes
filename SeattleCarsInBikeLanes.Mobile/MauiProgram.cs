@@ -6,6 +6,7 @@ using SeattleCarsInBikeLanes.Mobile.Core.Metadata;
 using SeattleCarsInBikeLanes.Mobile.Core.Navigation;
 using SeattleCarsInBikeLanes.Mobile.Core.Permissions;
 using SeattleCarsInBikeLanes.Mobile.Core.Photos;
+using SeattleCarsInBikeLanes.Mobile.Core.Upload;
 using SeattleCarsInBikeLanes.Mobile.Services;
 using SeattleCarsInBikeLanes.Mobile.ViewModels;
 using SeattleCarsInBikeLanes.Mobile.Views;
@@ -104,9 +105,16 @@ public static class MauiProgram
 		services.AddSingleton<ILaunchPermissionGateway, MauiLaunchPermissionGateway>();
 		services.AddSingleton<LaunchPermissionCoordinator>();
 		services.AddSingleton<WebAuthActionCoordinator>();
+		services.AddSingleton<IWebAuthActionStore>(_ => new WebAuthActionStore(
+			Path.Combine(FileSystem.AppDataDirectory, "pending-web-signouts.json")));
+		services.AddSingleton<ISecureValueStore, SecureValueStore>();
+		services.AddSingleton<IClientDispatcher, ClientDispatcher>();
+		services.AddSingleton<IQueueRuntime, QueueRuntime>();
+		services.AddSingleton<QueuedCredentialVault>();
+		services.AddSingleton<NativeReportClient>();
 
-		// One cookie container, shared, so the session copied out of the web view is visible to
-		// every request the app makes.
+		// Active sign-in exchanges WebView cookies on this client. Queued reports use the separate
+		// NativeReportClient, which never sends these cookies.
 		services.AddSingleton<CookieContainer>();
 		services.AddSingleton(serviceProvider => new HttpClient(new HttpClientHandler()
 		{
@@ -134,9 +142,16 @@ public static class MauiProgram
 		services.AddSingleton<IDeviceIdentityService, DeviceIdentityService>();
 		services.AddSingleton<ICaptureService, CaptureService>();
 		services.AddSingleton<IPhotoCatalog, PhotoCatalog>();
-		services.AddSingleton<IAuthService, AuthService>();
+		services.AddSingleton<IAuthService>(sp => new AuthService(
+			sp.GetRequiredService<HttpClient>(), sp.GetRequiredService<NativeReportClient>(),
+			sp.GetRequiredService<CookieContainer>(), sp.GetRequiredService<IWebViewCookieBridge>(),
+			sp.GetRequiredService<ISecureValueStore>(), sp.GetRequiredService<QueuedCredentialVault>(),
+			sp.GetRequiredService<WebAuthActionCoordinator>(), sp.GetRequiredService<IClientDispatcher>(),
+			sp.GetRequiredService<ILogger<AuthService>>()));
 		services.AddSingleton<IMastodonSessionCapture, MastodonSessionCapture>();
-		services.AddSingleton<IUploadService, UploadService>();
+		services.AddSingleton<IUploadService>(sp => new UploadService(
+			sp.GetRequiredService<NativeReportClient>(), sp.GetRequiredService<IDeviceIdentityService>(),
+			sp.GetRequiredService<IImageResizer>(), sp.GetRequiredService<ILogger<UploadService>>()));
 
 		// A singleton because a report outlives the page that created it. Everything about the
 		// queue would be pointless if it died with the report sheet.

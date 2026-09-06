@@ -167,7 +167,11 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         }
 
         PHFetchResult result = PHAsset.FetchAssetsUsingLocalIdentifiers(ids.ToArray(), null);
-        IReadOnlyList<PhotoAsset> assets = ToPhotoAssets(result);
+        PHAssetCollection? album = FindAlbum();
+        HashSet<string> owned = album is null ? [] : PHAsset.FetchAssets(album, null)
+            .OfType<PHAsset>().Select(asset => asset.LocalIdentifier).ToHashSet(StringComparer.Ordinal);
+        IReadOnlyList<PhotoAsset> assets = ToPhotoAssets(result)
+            .Select(asset => asset with { IsAppOwned = owned.Contains(asset.Id) }).ToArray();
 
         // Fetching by identifier does not preserve the order that was asked for, and silently drops
         // anything the user has since deleted.
@@ -264,13 +268,14 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
             return Task.FromResult(XmpUploadState.NotUploaded);
         }
 
-        PHAssetResource? resource = PHAssetResource.GetAssetResources(asset)
-            .FirstOrDefault(r => r.ResourceType == PHAssetResourceType.Photo)
-            ?? PHAssetResource.GetAssetResources(asset).FirstOrDefault();
+        PHAssetResource? resource = SeattleCarsInBikeLanes.Mobile.Core.Photos.PhotoRenditionPolicy.SelectCurrent(
+            PHAssetResource.GetAssetResources(asset),
+            r => r.ResourceType == PHAssetResourceType.FullSizePhoto,
+            r => r.ResourceType == PHAssetResourceType.Photo);
 
         if (resource is null)
         {
-            return Task.FromResult(XmpUploadState.NotUploaded);
+            throw new IOException("The current photo resource is unavailable.");
         }
 
         TaskCompletionSource<XmpUploadState> completion = new TaskCompletionSource<XmpUploadState>();
@@ -290,7 +295,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
             NetworkAccessAllowed = true
         };
 
-        void Finish(XmpUploadState state)
+        void Finish(XmpUploadState state, Exception? error = null)
         {
             int idToCancel = 0;
             lock (bufferLock)
@@ -301,6 +306,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
                 }
 
                 finished = true;
+                buffer.Dispose();
 
                 if (requestId != 0)
                 {
@@ -317,7 +323,18 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
                 PHAssetResourceManager.DefaultManager.CancelDataRequest(idToCancel);
             }
 
-            completion.TrySetResult(state);
+            if (error is OperationCanceledException)
+            {
+                completion.TrySetCanceled(cancellationToken);
+            }
+            else if (error is not null)
+            {
+                completion.TrySetException(error);
+            }
+            else
+            {
+                completion.TrySetResult(state);
+            }
         }
 
         int startedRequestId = PHAssetResourceManager.DefaultManager.RequestData(resource, options, data =>
@@ -360,8 +377,8 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
                     id, error.LocalizedDescription);
             }
 
-            // Reaching the end without finding a packet means the photo was never stamped.
-            Finish(XmpUploadState.NotUploaded);
+            Finish(XmpUploadState.NotUploaded, error is null ? null :
+                new IOException("The current photo resource could not be read."));
         });
 
         bool cancelNow;
@@ -378,12 +395,30 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
             PHAssetResourceManager.DefaultManager.CancelDataRequest(startedRequestId);
         }
 
-        return completion.Task;
+        return AwaitReadAsync();
+
+        async Task<XmpUploadState> AwaitReadAsync()
+        {
+            using CancellationTokenRegistration registration = cancellationToken.Register(() =>
+                Finish(default, new OperationCanceledException(cancellationToken)));
+            return await completion.Task;
+        }
     }
 
     public async Task<bool> WriteUploadStateAsync(string id,
         XmpUploadState state,
         CancellationToken cancellationToken = default)
+    {
+        await metadataWrites.WaitAsync(cancellationToken);
+        try { return await WriteUploadStateCoreAsync(id, state, cancellationToken); }
+        finally { metadataWrites.Release(); }
+    }
+
+    private static readonly SemaphoreSlim metadataWrites = new SemaphoreSlim(1, 1);
+
+    private async Task<bool> WriteUploadStateCoreAsync(string id,
+        XmpUploadState state,
+        CancellationToken cancellationToken)
     {
         PHAsset? asset = FindAsset(id);
         if (asset is null)
@@ -391,7 +426,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
             return false;
         }
 
-        PHContentEditingInput? input = await RequestContentEditingInputAsync(asset);
+        using PHContentEditingInput? input = await RequestContentEditingInputAsync(asset);
         if (input?.FullSizeImageUrl is null)
         {
             logger.LogWarning("Could not open {Id} for editing, so its upload state was not written.", id);
@@ -403,13 +438,14 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
             byte[] original = File.ReadAllBytes(input.FullSizeImageUrl.Path!);
             byte[] updated = JpegXmpEditor.SetUploadState(original, state);
 
-            PHContentEditingOutput output = new PHContentEditingOutput(input)
+            using PHContentEditingOutput output = new PHContentEditingOutput(input)
             {
                 AdjustmentData = new PHAdjustmentData(AdjustmentFormatIdentifier,
                     AdjustmentFormatVersion,
                     NSData.FromString(state.Uploaded ? "uploaded" : "notUploaded"))
             };
 
+            cancellationToken.ThrowIfCancellationRequested();
             File.WriteAllBytes(output.RenderedContentUrl.Path!, updated);
 
             TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>();
@@ -428,7 +464,12 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
                 completion.TrySetResult(success);
             });
 
-            return await completion.Task;
+            return await completion.Task &&
+                await ReadUploadStateAsync(id, cancellationToken) == state;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -585,9 +626,8 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         {
             NetworkAccessAllowed = true,
 
-            // Returning true means an earlier edit of ours is replaced rather than stacked on, so
-            // repeated writes do not accumulate adjustments.
-            CanHandleAdjustmentData = _ => true
+            CanHandleAdjustmentData = _ =>
+                SeattleCarsInBikeLanes.Mobile.Core.Photos.PhotoRenditionPolicy.CanReconstructAdjustments
         };
 
         asset.RequestContentEditingInput(options, (input, _) => completion.TrySetResult(input));

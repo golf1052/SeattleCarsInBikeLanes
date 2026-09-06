@@ -18,13 +18,19 @@ public static class WebAuthNotification
     }
 
     public static bool TryGetSignedOutProvider(Uri target, out WebAuthProvider provider)
+        => TryGetProvider(target, SignedOutPath, out provider);
+
+    public static bool TryGetSignInProvider(Uri target, out WebAuthProvider provider)
+        => TryGetProvider(target, "/sign-in-started", out provider);
+
+    private static bool TryGetProvider(Uri target, string path, out WebAuthProvider provider)
     {
         ArgumentNullException.ThrowIfNull(target);
 
         provider = default;
         if (!IsNotificationScheme(target) ||
             !target.Host.Equals(Host, StringComparison.OrdinalIgnoreCase) ||
-            !target.AbsolutePath.Equals(SignedOutPath, StringComparison.Ordinal))
+            !target.AbsolutePath.Equals(path, StringComparison.Ordinal))
         {
             return false;
         }

@@ -80,4 +80,13 @@
         openSignIn: openSignIn,
         applySignedOut: applySignedOut
     });
+
+    for (const provider of ['bluesky', 'mastodon']) {
+        const modal = document.getElementById(getProviderConfig(provider).modalId);
+        modal?.addEventListener('shown.bs.modal', function() {
+            if (nativeNotificationsEnabled) {
+                window.location.href = `cibl-mobile://auth/sign-in-started?provider=${provider}`;
+            }
+        });
+    }
 })();

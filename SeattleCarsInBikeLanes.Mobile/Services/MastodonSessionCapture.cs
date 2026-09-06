@@ -41,6 +41,8 @@ public sealed class MastodonSessionCapture : IMastodonSessionCapture
     {
         ArgumentNullException.ThrowIfNull(webView);
 
+        await authService.InitializeAsync();
+        long generation = authService.Generation;
         string? raw = await webView.EvaluateJavaScriptAsync(ReadMastodonScript);
         if (string.IsNullOrWhiteSpace(raw))
         {
@@ -67,7 +69,7 @@ public sealed class MastodonSessionCapture : IMastodonSessionCapture
                 return;
             }
 
-            await authService.SetMastodonAsync(session.Endpoint, session.Token);
+            await authService.SetMastodonAsync(session.Endpoint, session.Token, expectedGeneration: generation);
         }
         catch (JsonException ex)
         {

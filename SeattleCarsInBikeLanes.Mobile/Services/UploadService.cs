@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using SeattleCarsInBikeLanes.Core.Contracts;
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
 using SeattleCarsInBikeLanes.Mobile.Core.Upload;
@@ -106,11 +107,13 @@ public interface IUploadService
     /// <summary>
     /// Submits the report the prepared photos belong to.
     /// </summary>
-    Task FinalizeAsync(UploadPreparation preparation,
+    Task<SubmissionReceipt> FinalizeAsync(UploadPreparation preparation,
         ReportDraft draft,
-        AttributionIdentity? identity,
+        QueuedAttribution attribution,
+        AccountSession? credentials,
         string reportId,
         CancellationToken cancellationToken = default);
+    Task<SubmissionReceipt?> GetReceiptAsync(string reportId, CancellationToken cancellationToken = default);
 }
 
 /// <inheritdoc />
@@ -132,19 +135,16 @@ public sealed class UploadService : IUploadService
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 
     private readonly HttpClient httpClient;
-    private readonly IAuthService authService;
     private readonly IDeviceIdentityService deviceIdentity;
     private readonly IImageResizer imageResizer;
     private readonly ILogger<UploadService> logger;
 
     public UploadService(HttpClient httpClient,
-        IAuthService authService,
         IDeviceIdentityService deviceIdentity,
         IImageResizer imageResizer,
         ILogger<UploadService> logger)
     {
         this.httpClient = httpClient;
-        this.authService = authService;
         this.deviceIdentity = deviceIdentity;
         this.imageResizer = imageResizer;
         this.logger = logger;
@@ -223,9 +223,10 @@ public sealed class UploadService : IUploadService
         return new UploadPreparation(uploaded);
     }
 
-    public async Task FinalizeAsync(UploadPreparation preparation,
+    public async Task<SubmissionReceipt> FinalizeAsync(UploadPreparation preparation,
         ReportDraft draft,
-        AttributionIdentity? identity,
+        QueuedAttribution attribution,
+        AccountSession? credentials,
         string reportId,
         CancellationToken cancellationToken = default)
     {
@@ -233,23 +234,66 @@ public sealed class UploadService : IUploadService
         ArgumentNullException.ThrowIfNull(draft);
         ArgumentException.ThrowIfNullOrWhiteSpace(reportId);
 
+        if (!attribution.Intent.IsAnonymous && credentials?.Attribution != attribution.Intent)
+        {
+            throw new InvalidOperationException("The retained credentials do not match the queued account.");
+        }
+        AttributionIdentity? identity = credentials is null || attribution.Intent.IsAnonymous ? null : new AttributionIdentity
+        {
+            BlueskyDid = credentials.Bluesky?.AccountId,
+            BlueskyHandle = credentials.Bluesky?.DisplayName,
+            MastodonAccountId = credentials.Mastodon?.AccountId,
+            MastodonEndpoint = credentials.Mastodon?.Server,
+            MastodonUsername = credentials.Mastodon?.DisplayName,
+            MastodonAccessToken = credentials.Mastodon?.Token,
+            MastodonFullUsername = credentials.Mastodon is { } mastodon
+                ? $"@{mastodon.DisplayName}@{new Uri(mastodon.Server!).Host}" : null
+        };
         List<FinalizedPhotoUpload> body = FinalizeRequestBuilder.Build(preparation.Photos, draft, identity);
 
         using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, SiteUrls.UploadFinalize)
         {
-            Content = JsonContent.Create(body, options: JsonOptions)
+            Content = JsonContent.Create(new MobileFinalizeRequest(body, attribution.Intent), options: JsonOptions)
         };
 
         await PrepareRequestAsync(request, cancellationToken);
+        if (!attribution.Intent.IsAnonymous && credentials?.Bluesky is { } bluesky)
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bluesky.Token);
+        }
         request.Headers.TryAddWithoutValidation(ReportIdHeader, reportId);
 
         using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
         await ThrowIfFailedAsync(response, cancellationToken);
+        SubmissionReceipt receipt = await response.Content.ReadFromJsonAsync<SubmissionReceipt>(JsonOptions, cancellationToken)
+            ?? throw new UploadException("The site did not return a submission receipt.");
+        ValidateReceipt(receipt, reportId);
+        return receipt;
+    }
+
+    public async Task<SubmissionReceipt?> GetReceiptAsync(string reportId, CancellationToken cancellationToken = default)
+    {
+        using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, SiteUrls.ReportStatus(reportId));
+        await PrepareRequestAsync(request, cancellationToken);
+        using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        await ThrowIfFailedAsync(response, cancellationToken);
+        SubmissionReceipt receipt = await response.Content.ReadFromJsonAsync<SubmissionReceipt>(JsonOptions, cancellationToken)
+            ?? throw new UploadException("The site did not return a submission receipt.");
+        ValidateReceipt(receipt, reportId);
+        return receipt;
+    }
+
+    private static void ValidateReceipt(SubmissionReceipt receipt, string reportId)
+    {
+        if (receipt.ReportId != reportId || string.IsNullOrWhiteSpace(receipt.SubmissionId) ||
+            receipt.SubmittedAt == default || receipt.Attribution is null)
+            throw new UploadException("The site returned an invalid submission receipt.");
     }
 
     private async Task PrepareRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        await authService.AuthenticateAsync(request, cancellationToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Anonymous");
         request.Headers.TryAddWithoutValidation("X-Device-Id", await deviceIdentity.GetDeviceIdAsync());
     }
 
@@ -261,6 +305,14 @@ public sealed class UploadService : IUploadService
         }
 
         string body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            MobileUploadError? error = null;
+            try { error = JsonSerializer.Deserialize<MobileUploadError>(body, JsonOptions); }
+            catch (JsonException) { }
+            if (error?.Code == MobileUploadErrors.CredentialRejected)
+                throw new QueuedCredentialRejectedException();
+        }
 
         // The server sends its reasons as plain text, and they are written for users.
         string message = string.IsNullOrWhiteSpace(body)

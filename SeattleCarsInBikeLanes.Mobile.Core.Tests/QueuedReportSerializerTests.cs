@@ -101,9 +101,6 @@ public class QueuedReportSerializerTests
     [Fact]
     public void DoesNotWriteTheAccessToken()
     {
-        // The finalize body carries the user's Mastodon token, and a queue file outlives the
-        // process. Only the wish to be credited is kept; the credential is read back from secure
-        // storage when the report is actually sent.
         QueuedReportPayload payload = new QueuedReportPayload()
         {
             Photos = new List<QueuedPhoto>()
@@ -116,7 +113,7 @@ public class QueuedReportSerializerTests
         string json = QueuedReportSerializer.Serialize(payload);
 
         Assert.DoesNotContain("token", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("mastodon", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("accessToken", json, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

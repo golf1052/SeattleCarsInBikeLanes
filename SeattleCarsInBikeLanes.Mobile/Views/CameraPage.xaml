@@ -463,6 +463,7 @@
 
                             <Button Grid.Column="2"
                                     Text="Discard"
+                                    IsVisible="{Binding CanDiscard}"
                                     TextColor="White"
                                     FontSize="12"
                                     Padding="10,4"

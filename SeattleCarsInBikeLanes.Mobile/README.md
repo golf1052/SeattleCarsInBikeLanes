@@ -285,6 +285,70 @@ light/dark mode on both platforms, including captured and imported photos.
 build pointed at a test backend rather than sending fabricated production reports.
 No app-data reset or migration is needed.
 
+### Durable submission and recovery
+
+For app-owned captures and private photos (including private imported copies), embedded
+XMP in the current rendition is the durable submission history: uploaded flag,
+canonical submission ID, and server submission timestamp. Read-only imported library
+references keep their existing submitted-state index; the app never rewrites their
+originals. Explicitly picking an older owned capture retains a reference in the roll,
+but does not make that index authoritative for its submission state.
+
+The queue persists a server receipt before local acknowledgement. A report labelled
+**Sent; saving photo status** has already reached the server. Retry finishes only its
+XMP/index acknowledgement; it does not submit again or require an account. Its photos
+remain reserved until every acknowledgement is durable. Sent/uncertain reports cannot
+be discarded as though they were unsent. Uncertain network outcomes first reconcile
+the existing report ID; a status lookup outage never permits a new independent report.
+
+iOS stamps the rendered current photo rather than reconstructing earlier adjustment
+recipes, and reads the edited resource back. Android keeps the MediaStore asset ID
+unchanged: before truncating, it durably saves original/staged JPEGs and a journal in
+the app's no-backup directory. Interrupted edits are recovered before app access.
+Even matching recovered bytes are synchronized before journal/backup retirement.
+Recovery conflicts or unavailable targets are quarantined, keeping their recovery
+copies and queue operation without blocking unrelated photos. Do not uninstall or
+clear app data to troubleshoot recovery: that destroys those private recovery copies.
+The in-place MediaStore write is not atomic to other applications; an external edit
+or reused/deleted URI is not overwritten blindly.
+
+### Queued attribution and sign-out
+
+A report freezes the account/provider selection displayed at submission. Credentials
+for already-queued reports are intentionally retained in secure storage after active
+sign-out or switching accounts. They cannot sign the old account back into Settings
+or the website. New reports use the current identity; queued reports never adopt a
+newly linked account.
+
+If retained credentials expire or are revoked before acceptance, the entire report
+automatically falls back to anonymous, without a prompt or reauthentication.
+Temporary verification failures retry instead. Native uploads use explicit queued
+credentials on a cookie-free, non-redirecting client; anonymous finalization strips
+all attribution even if unrelated authentication is present. Once accepted, the
+server's original attribution is preserved through recovery.
+
+The secure vault stores snapshots and their report references together. Successful
+receipt persistence, anonymous fallback, safe discard, and failed enqueue release
+unneeded references. Startup reconciles orphan references only after loading the
+durable queue successfully; cleanup failures are logged and retried on restart.
+Queue JSON and pending browser-clear records contain no tokens.
+
+Provider sign-out is persisted before active credentials are cleared. Browser clear
+actions survive restart and are acknowledged only after native sign-out completes.
+A durable signed-out flag blocks later stale browser capture until an explicit
+sign-in action. Bluesky Settings validates the native bearer, independently of web
+cookies; transient failures retain the saved account. These bearers are this site's
+protected identity tickets, not live Bluesky OAuth refresh tokens.
+
+The new mobile protocol requires the matching server update (`FinalizeMobile` and
+report receipt lookup). Queue schema v2 and active-session v2 do not migrate old
+author-only prerelease queue/login state. Imported-library references are preserved.
+
+Host fault-injection tests and Release compilation do not replace native PhotoKit,
+MediaStore/power-loss, locked-device secure storage, or WebView lifecycle exercise.
+Use the smoke matrix above with a test backend before release. No production test
+uploads are needed for automated coverage.
+
 ### Sentry metrics parity
 
 Use the development Sentry environment during device testing. Exercise a cold

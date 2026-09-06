@@ -5,6 +5,7 @@ using Android.Graphics;
 using Android.Provider;
 using SeattleCarsInBikeLanes.Mobile.Core.Metadata;
 using SeattleCarsInBikeLanes.Mobile.Core.Models;
+using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 using SeattleCarsInBikeLanes.Mobile.Services;
 using AndroidSize = global::Android.Util.Size;
 using AndroidUri = Android.Net.Uri;
@@ -32,6 +33,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
     private readonly Context context;
     private readonly ContentResolver resolver;
     private readonly ILogger<PhotoLibraryService> logger;
+    private readonly PhotoMutationRecovery recovery;
 
     public PhotoLibraryService(ILogger<PhotoLibraryService> logger)
     {
@@ -39,6 +41,9 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         context = global::Android.App.Application.Context;
         resolver = context.ContentResolver
             ?? throw new InvalidOperationException("Android did not provide a content resolver.");
+        recovery = new PhotoMutationRecovery(
+            System.IO.Path.Combine(context.NoBackupFilesDir!.AbsolutePath, "photo-recovery"), new RecoveryTarget(this),
+            (id, error) => logger.LogWarning(error, "Photo {Id} is quarantined pending recovery.", id));
     }
 
     public bool SupportsWritingUploadState => true;
@@ -118,6 +123,10 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
 
     public Task<IReadOnlyList<PhotoAsset>> GetCapturedPhotosAsync(int limit,
         CancellationToken cancellationToken = default) =>
+        recovery.WithRecoveredAccessAsync(() => GetCapturedPhotosCoreAsync(limit, cancellationToken), cancellationToken);
+
+    private Task<IReadOnlyList<PhotoAsset>> GetCapturedPhotosCoreAsync(int limit,
+        CancellationToken cancellationToken = default) =>
         Task.Run<IReadOnlyList<PhotoAsset>>(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -170,6 +179,11 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
                         CapturedPhotoCollection, mediaId);
                     AndroidUri documentUri = ToDocumentUri(mediaStoreUri);
                     DateTimeOffset? createdAt = ReadMediaStoreDate(cursor, takenColumn, addedColumn);
+                    if (recovery.IsBlocked(mediaStoreUri.ToString()!))
+                    {
+                        assets.Add(new PhotoAsset(documentUri.ToString()!, createdAt, null, IsAvailable: false, IsAppOwned: true));
+                        continue;
+                    }
                     GeoPosition? location = ReadExif(mediaStoreUri).Location;
                     assets.Add(new PhotoAsset(documentUri.ToString()!, createdAt, location));
                 }
@@ -187,6 +201,10 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         }, cancellationToken);
 
     public Task<IReadOnlyList<PhotoAsset>> GetPhotosAsync(IReadOnlyList<string> ids,
+        CancellationToken cancellationToken = default) =>
+        recovery.WithRecoveredAccessAsync(() => GetPhotosCoreAsync(ids, cancellationToken), cancellationToken);
+
+    private Task<IReadOnlyList<PhotoAsset>> GetPhotosCoreAsync(IReadOnlyList<string> ids,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(ids);
@@ -203,6 +221,12 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
                 }
 
                 AndroidUri readableUri = GetReadableUri(uri);
+                bool owned = GetAppOwnedPhotoStatus(uri) == AppOwnedPhotoStatus.AppOwned;
+                if (recovery.IsBlocked(ToMediaStoreUri(uri).ToString()!))
+                {
+                    assets.Add(new PhotoAsset(id, null, null, IsAvailable: false, IsAppOwned: owned));
+                    continue;
+                }
                 if (!CanOpen(readableUri))
                 {
                     continue;
@@ -212,7 +236,7 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
                 DateTimeOffset? createdAt = exif.TakenAt is DateTime takenAt
                     ? new DateTimeOffset(takenAt)
                     : ReadDateFromProvider(readableUri);
-                assets.Add(new PhotoAsset(id, createdAt, exif.Location));
+                assets.Add(new PhotoAsset(id, createdAt, exif.Location, IsAppOwned: owned));
             }
 
             return assets;
@@ -220,6 +244,11 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
     }
 
     public Task<byte[]?> GetThumbnailAsync(string id,
+        int pixelSize,
+        CancellationToken cancellationToken = default) =>
+        recovery.WithRecoveredAccessAsync(() => GetThumbnailCoreAsync(id, pixelSize, cancellationToken), cancellationToken, RecoveryId(id));
+
+    private Task<byte[]?> GetThumbnailCoreAsync(string id,
         int pixelSize,
         CancellationToken cancellationToken = default) =>
         Task.Run(() =>
@@ -265,7 +294,11 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
             }
         }, cancellationToken);
 
-    public async Task<byte[]?> GetPhotoDataAsync(string id,
+    public Task<byte[]?> GetPhotoDataAsync(string id,
+        CancellationToken cancellationToken = default) =>
+        recovery.WithRecoveredAccessAsync(() => GetPhotoDataCoreAsync(id, cancellationToken), cancellationToken, RecoveryId(id));
+
+    private async Task<byte[]?> GetPhotoDataCoreAsync(string id,
         CancellationToken cancellationToken = default)
     {
         if (!TryParseContentUri(id, out AndroidUri? uri))
@@ -297,6 +330,10 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
     }
 
     public Task<XmpUploadState> ReadUploadStateAsync(string id,
+        CancellationToken cancellationToken = default) =>
+        recovery.WithRecoveredAccessAsync(() => ReadUploadStateCoreAsync(id, cancellationToken), cancellationToken, RecoveryId(id));
+
+    private Task<XmpUploadState> ReadUploadStateCoreAsync(string id,
         CancellationToken cancellationToken = default) =>
         Task.Run(() =>
         {
@@ -333,54 +370,16 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
             return false;
         }
 
-        byte[]? original = null;
-        bool overwriteStarted = false;
-        AndroidUri writableUri = ToMediaStoreUri(uri);
-        try
+        await recovery.WriteAsync(ToMediaStoreUri(uri).ToString()!, original =>
         {
-            original = await GetPhotoDataAsync(id, cancellationToken);
-            if (original is null)
+            byte[] updated = JpegXmpEditor.SetUploadState(original, state);
+            if (JpegSegmentScanner.ReadUploadState(new MemoryStream(updated, writable: false)) != state)
             {
-                return false;
+                throw new IOException("The staged photo does not contain the requested submission state.");
             }
-
-            byte[] updated = await Task.Run(
-                () => JpegXmpEditor.SetUploadState(original, state),
-                cancellationToken);
-
-            cancellationToken.ThrowIfCancellationRequested();
-            await using Stream? output = resolver.OpenOutputStream(writableUri, "rwt");
-            if (output is null)
-            {
-                return false;
-            }
-
-            // Once the provider has truncated the asset, finish without cancellation so a cancelled
-            // background upload cannot leave the user's JPEG half-written.
-            overwriteStarted = true;
-            await output.WriteAsync(updated, CancellationToken.None);
-            await output.FlushAsync(CancellationToken.None);
-            return true;
-        }
-        catch (OperationCanceledException)
-        {
-            if (overwriteStarted && original is not null)
-            {
-                await RestoreOriginalAsync(writableUri, original);
-            }
-
-            throw;
-        }
-        catch (Exception ex)
-        {
-            if (overwriteStarted && original is not null)
-            {
-                await RestoreOriginalAsync(writableUri, original);
-            }
-
-            logger.LogError(ex, "Failed to write upload state to captured photo {Id}.", id);
-            return false;
-        }
+            return updated;
+        }, cancellationToken);
+        return true;
     }
 
     public async Task<IReadOnlyList<PickedPhoto>> PickPhotosAsync(int limit,
@@ -455,7 +454,16 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         }, cancellationToken);
     }
 
-    public async Task<bool> DeletePhotosAsync(IReadOnlyList<string> ids,
+    public Task<bool> DeletePhotosAsync(IReadOnlyList<string> ids,
+        CancellationToken cancellationToken = default) =>
+        recovery.WithRecoveredAccessAsync(() =>
+        {
+            if (ids.Any(id => recovery.IsBlocked(RecoveryId(id))))
+                throw new IOException("A selected photo has unfinished recovery.");
+            return DeletePhotosCoreAsync(ids, cancellationToken);
+        }, cancellationToken);
+
+    private async Task<bool> DeletePhotosCoreAsync(IReadOnlyList<string> ids,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(ids);
@@ -737,22 +745,89 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         }
     }
 
-    private async Task RestoreOriginalAsync(AndroidUri uri, byte[] original)
+    private sealed class RecoveryTarget(PhotoLibraryService library) : IRecoverablePhotoTarget
     {
-        try
+        public Task<string> GetIdentityAsync(string id, CancellationToken token)
         {
-            await using Stream? output = resolver.OpenOutputStream(uri, "rwt");
-            if (output is not null)
+            token.ThrowIfCancellationRequested();
+            try
             {
-                await output.WriteAsync(original, CancellationToken.None);
-                await output.FlushAsync(CancellationToken.None);
+                AndroidUri uri = AndroidUri.Parse(id)!;
+                if (library.GetAppOwnedPhotoStatus(uri) != AppOwnedPhotoStatus.AppOwned)
+                {
+                    throw new IOException("The recovery target is unavailable or no longer app-owned.");
+                }
+                string[] columns = [ImageColumns.Id, ImageColumns.OwnerPackageName, ImageColumns.DisplayName, ImageColumns.DateAdded];
+                using var cursor = library.resolver.Query(uri, columns, null, null, null)
+                    ?? throw new IOException("Cannot verify the recovery target.");
+                if (!cursor.MoveToFirst())
+                    throw new IOException("The recovery target no longer exists.");
+                return Task.FromResult(System.Text.Json.JsonSerializer.Serialize(columns.Select(column =>
+                    cursor.GetString(cursor.GetColumnIndexOrThrow(column))).ToArray()));
+            }
+            catch (Exception ex) when (IsNativeStorageError(ex))
+            {
+                throw new IOException("Cannot verify the photo recovery target.", ex);
             }
         }
-        catch (Exception ex)
+
+        public async Task<byte[]> ReadAsync(string id, CancellationToken token)
         {
-            logger.LogError(ex, "Failed to restore {Id} after an interrupted metadata update.", uri);
+            try
+            {
+                await using Stream input = library.resolver.OpenInputStream(AndroidUri.Parse(id)!)
+                    ?? throw new IOException("Cannot read the recovery target.");
+                using MemoryStream result = new MemoryStream();
+                await input.CopyToAsync(result, token);
+                return result.ToArray();
+            }
+            catch (Exception ex) when (IsNativeStorageError(ex))
+            {
+                throw new IOException("Cannot read the photo recovery target.", ex);
+            }
         }
+
+        public Task WriteAndSyncAsync(string id, byte[] bytes, CancellationToken token) =>
+            Task.Run(() =>
+            {
+                token.ThrowIfCancellationRequested();
+                try
+                {
+                    using ParcelFileDescriptor descriptor = library.resolver.OpenFileDescriptor(AndroidUri.Parse(id)!, "rwt")
+                        ?? throw new IOException("Cannot write the recovery target.");
+                    using Java.IO.FileOutputStream output = new Java.IO.FileOutputStream(descriptor.FileDescriptor);
+                    output.Write(bytes);
+                    output.Flush();
+                    descriptor.FileDescriptor!.Sync();
+                }
+                catch (Exception ex) when (IsNativeStorageError(ex))
+                {
+                    throw new IOException("Could not durably write the photo recovery target.", ex);
+                }
+            }, token);
+
+        public Task SynchronizeAsync(string id, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                using ParcelFileDescriptor descriptor = library.resolver.OpenFileDescriptor(AndroidUri.Parse(id)!, "rw")
+                    ?? throw new IOException("Cannot synchronize the recovery target.");
+                descriptor.FileDescriptor!.Sync();
+                return Task.CompletedTask;
+            }
+            catch (Exception ex) when (IsNativeStorageError(ex))
+            {
+                throw new IOException("Could not synchronize the recovery target.", ex);
+            }
+        }
+
+        private static bool IsNativeStorageError(Exception ex) =>
+            ex is Java.IO.IOException or Java.Lang.SecurityException;
     }
+
+    private static string RecoveryId(string id) =>
+        TryParseContentUri(id, out AndroidUri? uri) ? ToMediaStoreUri(uri).ToString()! : id;
 
     private enum AppOwnedPhotoStatus
     {

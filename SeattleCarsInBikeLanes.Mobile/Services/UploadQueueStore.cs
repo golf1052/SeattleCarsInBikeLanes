@@ -75,9 +75,8 @@ public interface IUploadQueueStore
     /// Puts anything left mid flight back in the queue.
     /// </summary>
     /// <remarks>
-    /// Run at startup. A report recorded as uploading is one whose process went away while it was
-    /// being sent, and it restarts from the beginning rather than from the finalize call, because
-    /// the server throws away the blobs from an unfinished upload after ten minutes.
+    /// Only resets scheduling state. The payload's network-attempt/receipt phase is preserved so
+    /// restart reconciles uncertain acceptance or resumes local-only acknowledgement.
     /// </remarks>
     Task ResetInterruptedAsync();
 }
@@ -87,7 +86,7 @@ public sealed class UploadQueueStore : IUploadQueueStore, IAsyncDisposable
 {
     // The app is still pre-release, so older development schemas are intentionally discarded rather
     // than migrated. Once a public build exists, version changes must preserve queued reports.
-    internal const int SchemaVersion = 1;
+    internal const int SchemaVersion = 2;
 
     private static readonly HashSet<string> ExpectedColumns = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -129,7 +128,8 @@ public sealed class UploadQueueStore : IUploadQueueStore, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(record);
 
         SQLiteAsyncConnection db = await GetConnectionAsync();
-        await db.UpdateAsync(record);
+        if (await db.UpdateAsync(record) != 1)
+            throw new IOException("The queued report could not be updated.");
     }
 
     public async Task RemoveAsync(string id)

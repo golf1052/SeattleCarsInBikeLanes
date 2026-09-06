@@ -4,6 +4,10 @@ namespace SeattleCarsInBikeLanes.Storage.Models
 {
     public class InitialPhotoUploadMetadata : AbstractPhotoUploadMetadata
     {
+        public InitialPhotoUploadMetadata()
+        {
+        }
+
         public InitialPhotoUpload ToContract(string uri)
         {
             return new InitialPhotoUpload()

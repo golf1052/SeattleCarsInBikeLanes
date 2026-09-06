@@ -54,16 +54,19 @@ public sealed partial class PhotoItemViewModel : ObservableObject, IReportedPhot
     [NotifyPropertyChangedFor(nameof(QueueBadge))]
     [NotifyPropertyChangedFor(nameof(QueueBadgeColor))]
     public partial UploadQueueState? QueueState { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(QueueBadge))]
+    public partial bool IsSavingSubmissionState { get; set; }
 
     /// <summary>
     /// Whether the photo is already spoken for by a report on its way out.
     /// </summary>
-    public bool IsQueued => QueueState is UploadQueueState.Pending or UploadQueueState.Uploading;
+    public bool IsQueued => QueueState is not null;
 
     /// <summary>
     /// The short label the tile carries while its report is on its way.
     /// </summary>
-    public string? QueueBadge => QueueState switch
+    public string? QueueBadge => IsSavingSubmissionState ? "Saving status" : QueueState switch
     {
         UploadQueueState.Uploading => "Sending",
         UploadQueueState.Pending => "Queued",
@@ -100,7 +103,7 @@ public sealed partial class FailedReportViewModel : ObservableObject
         this.uploadQueue = uploadQueue;
 
         Id = report.Id;
-        Title = $"Report of {report.Description} wasn't sent";
+        Title = report.Receipt is not null ? "Sent; saving photo status" : $"Report of {report.Description} wasn't sent";
         Error = report.LastError ?? "The report couldn't be sent.";
     }
 
@@ -124,6 +127,7 @@ public sealed partial class FailedReportViewModel : ObservableObject
     /// than a generic apology: "Photo not taken in Seattle" tells somebody exactly what happened.
     /// </remarks>
     public string Error { get; }
+    public bool CanDiscard => uploadQueue.Reports.FirstOrDefault(report => report.Id == Id)?.CanDiscard == true;
 
     /// <summary>
     /// Puts the report back in the queue.
@@ -1069,18 +1073,20 @@ public sealed partial class CameraViewModel : ObservableObject
 
         IReadOnlyList<QueuedReport> queued = uploadQueue.Reports;
 
-        Dictionary<string, UploadQueueState> byPhoto = new Dictionary<string, UploadQueueState>(StringComparer.Ordinal);
+        Dictionary<string, QueuedReport> byPhoto = new Dictionary<string, QueuedReport>(StringComparer.Ordinal);
         foreach (QueuedReport report in queued)
         {
             foreach (ReportPhoto photo in report.Photos)
             {
-                byPhoto[photo.Id] = report.State;
+                byPhoto[photo.Id] = report;
             }
         }
 
         foreach (PhotoItemViewModel item in AllPhotos)
         {
-            item.QueueState = byPhoto.TryGetValue(item.Id, out UploadQueueState state) ? state : null;
+            byPhoto.TryGetValue(item.Id, out QueuedReport? report);
+            item.QueueState = report?.State;
+            item.IsSavingSubmissionState = report?.Receipt is not null;
         }
 
         FailedReports.Clear();
@@ -1089,19 +1095,25 @@ public sealed partial class CameraViewModel : ObservableObject
             FailedReports.Add(new FailedReportViewModel(report, uploadQueue));
         }
 
-        int sending = queued.Count(report => report.State == UploadQueueState.Uploading);
-        int waiting = queued.Count(report => report.State == UploadQueueState.Pending);
+        int sending = queued.Count(report => report.Receipt is null && report.State == UploadQueueState.Uploading);
+        int waiting = queued.Count(report => report.Receipt is null && report.State == UploadQueueState.Pending);
 
         QueueSummary = (sending, waiting) switch
         {
             (0, 0) => null,
-            (> 0, 0) => "Sending your report…",
-            (> 0, _) => $"Sending your report… {waiting} more waiting.",
+            ( > 0, 0) => "Sending your report…",
+            ( > 0, _) => $"Sending your report… {waiting} more waiting.",
             (0, 1) => "1 report waiting to send.",
             _ => $"{waiting} reports waiting to send."
         };
+        int local = queued.Count(report => report.Receipt is not null);
+        if (local > 0)
+        {
+            QueueSummary = $"{local} sent report(s): saving photo status. {QueueSummary}".Trim();
+        }
 
         OnPropertyChanged(nameof(CanReport));
+        OnPropertyChanged(nameof(CanDelete));
     }
 
     private async void ReloadAfterCompletion()

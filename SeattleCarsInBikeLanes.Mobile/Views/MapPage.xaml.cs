@@ -60,6 +60,20 @@ public partial class MapPage : ContentPage
             {
                 await ApplyWebSignOutAsync(provider);
             }
+            else if (IsSiteUri(currentDocumentUri) &&
+                WebAuthNotification.TryGetSignInProvider(target, out provider))
+            {
+                try
+                {
+                    await authService.BeginSignInAsync(provider);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Could not begin native sign-in for {Provider}.", provider);
+                    await DisplayAlertAsync("Sign in incomplete",
+                        "The app could not update its saved account state. Try again.", "OK");
+                }
+            }
 
             return;
         }
@@ -155,6 +169,8 @@ public partial class MapPage : ContentPage
                     string? result;
                     try
                     {
+                        if (action.Kind == WebAuthActionKind.OpenSignIn &&
+                            !await authService.BeginSignInAsync(action.Provider)) return;
                         result = await Web.EvaluateJavaScriptAsync(WebAuthJavaScript.Build(action));
                     }
                     catch (Exception ex)
@@ -175,7 +191,19 @@ public partial class MapPage : ContentPage
                         return;
                     }
 
-                    if (!webAuthActions.Acknowledge(action.Id))
+                    bool acknowledged;
+                    try
+                    {
+                        acknowledged = action.Kind == WebAuthActionKind.ApplySignedOut
+                            ? await authService.AcknowledgeWebSignOutAsync(action)
+                            : webAuthActions.Acknowledge(action.Id);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        logger.LogWarning(ex, "Browser sign-out acknowledgement remains pending.");
+                        return;
+                    }
+                    if (!acknowledged)
                     {
                         return;
                     }

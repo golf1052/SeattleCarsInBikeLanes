@@ -7,7 +7,8 @@ namespace SeattleCarsInBikeLanes.Mobile.Services;
 /// A photo in the device's photo library.
 /// </summary>
 /// <param name="Id">The Photos framework local identifier.</param>
-public sealed record PhotoAsset(string Id, DateTimeOffset? CreatedAt, GeoPosition? Location);
+public sealed record PhotoAsset(string Id, DateTimeOffset? CreatedAt, GeoPosition? Location,
+    bool IsAvailable = true, bool IsAppOwned = false);
 
 /// <summary>
 /// A result returned by the system photo picker.

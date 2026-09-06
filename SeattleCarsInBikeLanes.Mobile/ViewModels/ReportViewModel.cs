@@ -19,6 +19,7 @@ public sealed partial class ReportViewModel : ObservableObject
     private readonly ILogger<ReportViewModel> logger;
 
     private IReadOnlyList<ReportPhoto> photos = Array.Empty<ReportPhoto>();
+    private long attributionGeneration;
 
     public ReportViewModel(IUploadService uploadService,
         IUploadQueue uploadQueue,
@@ -101,11 +102,7 @@ public sealed partial class ReportViewModel : ObservableObject
 
         SetLocation(first?.Location, userSpecified: false);
 
-        AttributionIdentity? identity = authService.CurrentIdentity;
-        CanAttribute = identity?.CanAttribute == true;
-        BlueskyAttributionName = identity?.HasBluesky == true ? identity.BlueskyHandle : null;
-        MastodonAttributionName =
-            identity?.HasMastodon == true ? identity.MastodonFullUsername : null;
+        ApplyIdentity();
 
         // Somebody who has asked to be credited should not have to say so on every report.
         Attribute = CanAttribute && AppPreferences.AttributeByDefault;
@@ -210,7 +207,7 @@ public sealed partial class ReportViewModel : ObservableObject
 
         try
         {
-            if (!await uploadQueue.EnqueueAsync(photos, draft, cancellationToken))
+            if (!await uploadQueue.EnqueueAsync(photos, draft, cancellationToken, attributionGeneration))
             {
                 ErrorMessage = "One of these photos has already been reported or is waiting to send.";
                 return false;
@@ -243,4 +240,24 @@ public sealed partial class ReportViewModel : ObservableObject
         Attribute = Attribute && CanAttribute,
         CrossStreet = CrossStreet
     };
+
+    private void ApplyIdentity()
+    {
+        AttributionIdentity? identity = authService.CurrentIdentity;
+        attributionGeneration = authService.Generation;
+        CanAttribute = identity?.CanAttribute == true;
+        BlueskyAttributionName = identity?.HasBluesky == true ? identity.BlueskyHandle : null;
+        MastodonAttributionName = identity?.HasMastodon == true ? identity.MastodonFullUsername : null;
+        if (!CanAttribute) Attribute = false;
+    }
+
+    public void StartIdentityUpdates()
+    {
+        authService.IdentityChanged -= IdentityChanged;
+        authService.IdentityChanged += IdentityChanged;
+        ApplyIdentity();
+    }
+
+    public void StopIdentityUpdates() => authService.IdentityChanged -= IdentityChanged;
+    private void IdentityChanged(object? sender, EventArgs e) => ApplyIdentity();
 }

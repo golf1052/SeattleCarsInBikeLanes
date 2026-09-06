@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SeattleCarsInBikeLanes.Mobile.Core.Photos;
+using SeattleCarsInBikeLanes.Core.Contracts;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Upload;
 
@@ -32,14 +33,16 @@ public sealed class QueuedPhoto
 /// Everything needed to send a report, once the user has walked away from it.
 /// </summary>
 /// <remarks>
-/// This is deliberately not the whole report. The Mastodon access token that attribution needs
-/// travels inside the finalize body, and writing a credential into a queue file that outlives the
-/// process is not a trade worth making for a report that might sit there for an hour. Only the
-/// user's wish to be credited is kept, and the credentials are read from secure storage when the
-/// report is sent.
+/// Account intent and secure-storage references survive account changes, but tokens never enter
+/// this payload. A server receipt remains here only until embedded XMP (or the imported-library
+/// index) durably acknowledges it; it is not a permanent photo-history index.
 /// </remarks>
 public sealed class QueuedReportPayload
 {
+    public QueuedAttribution Attribution { get; set; } = new QueuedAttribution(new ReportAttribution());
+    public SubmissionReceipt? Receipt { get; set; }
+    public bool NetworkAttempted { get; set; }
+    public bool AnonymousFallback { get; set; }
     [JsonPropertyName("photos")]
     public List<QueuedPhoto> Photos { get; set; } = new List<QueuedPhoto>();
 
