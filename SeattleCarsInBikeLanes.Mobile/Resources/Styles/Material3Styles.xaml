@@ -113,6 +113,59 @@
         <Setter Property="FontSize" Value="14" />
     </Style>
 
+    <Style x:Key="CameraPhotoRollSurface" TargetType="Grid">
+        <Setter Property="BackgroundColor" Value="{DynamicResource M3Surface}" />
+    </Style>
+
+    <Style x:Key="CameraPhotoRollSectionLabel" TargetType="Label">
+        <Setter Property="TextColor" Value="{DynamicResource M3OnSurface}" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource M3SurfaceContainer}" />
+        <Setter Property="FontFamily" Value="OpenSansRegular" />
+    </Style>
+
+    <Style x:Key="CameraPhotoRollSection" TargetType="Grid">
+        <Setter Property="BackgroundColor" Value="{DynamicResource M3SurfaceContainer}" />
+    </Style>
+
+    <Style x:Key="CameraPhotoRollTextLabel" TargetType="Label">
+        <Setter Property="TextColor" Value="{DynamicResource M3OnSurface}" />
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="FontFamily" Value="OpenSansRegular" />
+    </Style>
+
+    <Style x:Key="CameraPhotoRollSelectionBorder" TargetType="Border">
+        <Setter Property="Stroke" Value="{DynamicResource M3Primary}" />
+        <Setter Property="BackgroundColor" Value="Transparent" />
+    </Style>
+
+    <Style x:Key="CameraPageStyle" TargetType="ContentPage">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="BackgroundColor" Value="Black" />
+        <Style.Triggers>
+            <DataTrigger TargetType="ContentPage" Binding="{Binding IsRollVisible}" Value="True">
+                <Setter Property="BackgroundColor" Value="{DynamicResource M3Surface}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="CameraStatusPanelStyle" TargetType="VerticalStackLayout">
+        <Setter Property="BackgroundColor" Value="Black" />
+        <Style.Triggers>
+            <DataTrigger TargetType="VerticalStackLayout" Binding="{Binding IsRollVisible}" Value="True">
+                <Setter Property="BackgroundColor" Value="{DynamicResource M3Surface}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="CameraControlRailStyle" TargetType="Grid">
+        <Setter Property="BackgroundColor" Value="Black" />
+        <Style.Triggers>
+            <DataTrigger TargetType="Grid" Binding="{Binding IsRollVisible}" Value="True">
+                <Setter Property="BackgroundColor" Value="{DynamicResource M3Surface}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
     <Style TargetType="Picker">
         <Setter Property="TextColor" Value="{DynamicResource M3OnSurface}" />
         <Setter Property="TitleColor" Value="{DynamicResource M3OnSurfaceVariant}" />

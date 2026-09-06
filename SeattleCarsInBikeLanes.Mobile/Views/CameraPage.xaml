@@ -5,7 +5,7 @@
              x:Class="SeattleCarsInBikeLanes.Mobile.Views.CameraPage"
              x:DataType="viewmodels:CameraViewModel"
              Shell.NavBarIsVisible="False"
-             BackgroundColor="Black">
+             Style="{StaticResource CameraPageStyle}">
 
     <ContentPage.Resources>
         <!-- Shared so a photo looks and behaves the same whichever of the two sections it is in. -->
@@ -14,9 +14,8 @@
                 <Image Source="{Binding Thumbnail}" Aspect="AspectFill" HeightRequest="110" />
 
                 <Border IsVisible="{Binding IsSelected}"
-                        Stroke="{StaticResource Primary}"
-                        StrokeThickness="3"
-                        BackgroundColor="Transparent" />
+                        Style="{StaticResource CameraPhotoRollSelectionBorder}"
+                        StrokeThickness="3" />
 
                 <!-- The checkmark is how the user tells an already reported photo from one that
                      still needs sending. -->
@@ -285,7 +284,7 @@
 
             <!-- Sits over the preview so the camera never has to be torn down and restarted. -->
             <Grid Grid.Row="0"
-                  BackgroundColor="Black"
+                  Style="{StaticResource CameraPhotoRollSurface}"
                   RowDefinitions="Auto, Auto, Auto, *, Auto, Auto"
                   HorizontalOptions="Fill"
                   VerticalOptions="Fill"
@@ -296,11 +295,10 @@
                  taken this week. -->
             <Label Grid.Row="0"
                    Text="{Binding RecentHeader}"
-                   TextColor="White"
+                   Style="{StaticResource CameraPhotoRollSectionLabel}"
                    FontSize="14"
                    FontAttributes="Bold"
                    Padding="14,10"
-                   BackgroundColor="#1AFFFFFF"
                    IsVisible="{Binding HasRecentPhotos}" />
 
             <CollectionView x:Name="RecentPhotoRoll"
@@ -320,10 +318,9 @@
                  from. -->
             <Label Grid.Row="2"
                    Text="Earlier"
-                   TextColor="White"
+                   Style="{StaticResource CameraPhotoRollSectionLabel}"
                    FontSize="14"
                    Padding="14,10"
-                   BackgroundColor="#1AFFFFFF"
                    IsVisible="{Binding HasEarlierPhotos}" />
 
             <CollectionView x:Name="PhotoRoll"
@@ -339,7 +336,7 @@
                     <!-- Hidden when the just taken section is holding everything, where saying
                          there is nothing waiting would flatly contradict the photos on screen. -->
                     <Label Text="Nothing waiting to be reported. Take a photo, or import from your library."
-                           TextColor="White"
+                           Style="{StaticResource CameraPhotoRollTextLabel}"
                            HorizontalTextAlignment="Center"
                            VerticalTextAlignment="Center"
                            Margin="24"
@@ -353,19 +350,19 @@
                   ColumnDefinitions="Auto, *"
                   ColumnSpacing="8"
                   Padding="14,10"
-                  BackgroundColor="#1AFFFFFF"
+                  Style="{StaticResource CameraPhotoRollSection}"
                   IsVisible="{Binding HasReportedPhotos}">
 
                 <Label Grid.Column="0"
                        Text="{Binding ReportedToggleGlyph}"
                        FontFamily="FluentIcons"
                        FontSize="16"
-                       TextColor="White"
+                       Style="{StaticResource CameraPhotoRollTextLabel}"
                        VerticalOptions="Center" />
 
                 <Label Grid.Column="1"
                        Text="{Binding ReportedHeader}"
-                       TextColor="White"
+                       Style="{StaticResource CameraPhotoRollTextLabel}"
                        FontSize="14"
                        VerticalOptions="Center" />
 
@@ -392,6 +389,7 @@
         <VerticalStackLayout x:Name="CameraStatusPanel"
                              Grid.Row="1"
                              Grid.Column="1"
+                             Style="{StaticResource CameraStatusPanelStyle}"
                              Padding="12"
                              Spacing="8">
 
@@ -493,6 +491,7 @@
         <Grid x:Name="CameraControlRail"
               Grid.Row="2"
               Grid.Column="1"
+              Style="{StaticResource CameraControlRailStyle}"
               RowDefinitions="*, Auto, *"
               ColumnDefinitions="*, Auto, *"
               Padding="16,8,16,16"
@@ -546,6 +545,11 @@
                         HeightRequest="52"
                         CornerRadius="8"
                         SemanticProperties.Description="Import photos">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsRollVisible}" Value="True">
+                            <Setter Property="BackgroundColor" Value="#CC000000" />
+                        </DataTrigger>
+                    </Button.Triggers>
                     <Button.ImageSource>
                         <!-- image library icon -->
                         <FontImageSource FontFamily="FluentIcons" Glyph="&#xF422;" Color="White" Size="20" />

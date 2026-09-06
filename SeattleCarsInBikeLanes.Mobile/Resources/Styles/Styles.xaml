@@ -189,24 +189,77 @@
 
     <Style x:Key="SupportingTextLabel" TargetType="Label">
         <Setter Property="FontSize" Value="12" />
-        <Setter Property="TextColor" Value="Gray" />
+        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Gray600}, Dark={StaticResource Gray300}}" />
         <Setter Property="BackgroundColor" Value="Transparent" />
         <Setter Property="FontFamily" Value="OpenSansRegular" />
     </Style>
 
     <Style x:Key="ErrorBorder" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="#FFF4F4" />
-        <Setter Property="Stroke" Value="#D13438" />
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource ErrorContainer}, Dark={StaticResource ErrorContainerDark}}" />
+        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Error}, Dark={StaticResource ErrorDark}}" />
         <Setter Property="StrokeShape" Value="Rectangle" />
         <Setter Property="StrokeThickness" Value="1" />
         <Setter Property="Padding" Value="12" />
     </Style>
 
     <Style x:Key="ErrorTextLabel" TargetType="Label">
-        <Setter Property="TextColor" Value="#A4262C" />
+        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource OnErrorContainer}, Dark={StaticResource OnErrorContainerDark}}" />
         <Setter Property="BackgroundColor" Value="Transparent" />
         <Setter Property="FontFamily" Value="OpenSansRegular" />
         <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <Style x:Key="CameraPhotoRollSurface" TargetType="Grid">
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}" />
+    </Style>
+
+    <Style x:Key="CameraPhotoRollSectionLabel" TargetType="Label">
+        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}" />
+        <Setter Property="FontFamily" Value="OpenSansRegular" />
+    </Style>
+
+    <Style x:Key="CameraPhotoRollSection" TargetType="Grid">
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}" />
+    </Style>
+
+    <Style x:Key="CameraPhotoRollTextLabel" TargetType="Label">
+        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="FontFamily" Value="OpenSansRegular" />
+    </Style>
+
+    <Style x:Key="CameraPhotoRollSelectionBorder" TargetType="Border">
+        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+        <Setter Property="BackgroundColor" Value="Transparent" />
+    </Style>
+
+    <Style x:Key="CameraPageStyle" TargetType="ContentPage">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="BackgroundColor" Value="{StaticResource Black}" />
+        <Style.Triggers>
+            <DataTrigger TargetType="ContentPage" Binding="{Binding IsRollVisible}" Value="True">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="CameraStatusPanelStyle" TargetType="VerticalStackLayout">
+        <Setter Property="BackgroundColor" Value="{StaticResource Black}" />
+        <Style.Triggers>
+            <DataTrigger TargetType="VerticalStackLayout" Binding="{Binding IsRollVisible}" Value="True">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="CameraControlRailStyle" TargetType="Grid">
+        <Setter Property="BackgroundColor" Value="{StaticResource Black}" />
+        <Style.Triggers>
+            <DataTrigger TargetType="Grid" Binding="{Binding IsRollVisible}" Value="True">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}" />
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
     <Style TargetType="Span">
@@ -442,8 +495,8 @@
 
     <Style TargetType="NavigationPage">
         <Setter Property="BarBackgroundColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}" />
-        <Setter Property="BarTextColor" Value="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource White}}" />
-        <Setter Property="IconColor" Value="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource White}}" />
+        <Setter Property="BarTextColor" Value="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+        <Setter Property="IconColor" Value="{AppThemeBinding Light={StaticResource Gray600}, Dark={StaticResource Gray300}}" />
     </Style>
 
     <Style TargetType="TabbedPage">
