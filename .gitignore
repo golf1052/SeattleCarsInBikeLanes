@@ -398,3 +398,34 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Mobile app signing and publishing secrets. This repo is public, so anything that
+# could be used to publish the app as us must never be committed. *.pfx is covered above.
+*.keystore
+*.jks
+*.p12
+*.p8
+*.cer
+*.der
+*.certSigningRequest
+*.mobileprovision
+*.provisionprofile
+
+# Firebase / Google Play service configuration and credentials
+google-services.json
+GoogleService-Info.plist
+play-store-*.json
+*service-account*.json
+
+# fastlane credentials and local state
+fastlane/Appfile
+fastlane/.env*
+fastlane/report.xml
+fastlane/README.md
+
+# Local environment files
+.env
+.env.*
+
+# Local mobile build properties
+SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.local.props

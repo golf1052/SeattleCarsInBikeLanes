@@ -1,0 +1,65 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <!-- Deliberately references Mobile.Core rather than the web project. Shared wire contracts arrive
+       transitively through Core, while these tests remain free of Magick.NET and the three sibling
+       repositories the site depends on. -->
+  <ItemGroup>
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\AuthService.cs" Link="Services\AuthService.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\UploadQueue.cs" Link="Services\UploadQueue.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\UploadService.cs" Link="Services\UploadService.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IQueueRuntime.cs" Link="Services\IQueueRuntime.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IDeviceIdentityService.cs" Link="Services\IDeviceIdentityService.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IBackgroundWorkScope.cs" Link="Services\IBackgroundWorkScope.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IWebViewCookieBridge.cs" Link="Services\IWebViewCookieBridge.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\SiteUrls.cs" Link="Services\SiteUrls.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\UploadQueueStore.cs"
+             Link="Services\UploadQueueStore.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\PhotoCatalog.cs"
+             Link="Services\PhotoCatalog.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\ImportedPhotoStore.cs"
+             Link="Services\ImportedPhotoStore.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IPhotoLibraryService.cs"
+             Link="Services\IPhotoLibraryService.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Services\IImageResizer.cs"
+             Link="Services\IImageResizer.cs" />
+    <Compile Include="..\SeattleCarsInBikeLanes.Mobile\Platforms\iOS\BackgroundTaskLifetime.cs"
+             Link="Platforms\iOS\BackgroundTaskLifetime.cs" />
+
+    <ProjectReference Include="..\SeattleCarsInBikeLanes.Mobile.Core\SeattleCarsInBikeLanes.Mobile.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="TestFiles\blank.jpg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
+    <PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.11" />
+    <!-- sqlite-net-pcl pins 2.1.11, whose Android native library has a published advisory.
+         2.1.12 is a native-only patch and keeps the managed API unchanged. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

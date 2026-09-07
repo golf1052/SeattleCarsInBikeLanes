@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+		<integer>2</integer>
+	</array>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>XSAppIconAssets</key>
+	<string>Assets.xcassets/appicon.appiconset</string>
+	<key>UILaunchStoryboardName</key>
+	<string>BikeLaunchScreen</string>
+
+	<!-- Reports are sent from a queue rather than while the user waits, so the app has to be able
+	     to finish sending one after they have put their phone away. The processing mode covers the
+	     scheduled wake for reports that had no signal at the time; the short lived task taken
+	     around an upload in flight needs no declaration. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
+	</array>
+
+	<!-- iOS refuses to register a background task identifier that is not listed here. Must match
+	     BackgroundUploadTask.Identifier. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.golf1052.SeattleCarsInBikeLanes.Mobile.uploadqueue</string>
+	</array>
+
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos of cars parked in bike lanes so you can report them without leaving the app.</string>
+
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Saves photos you take to your "Cars in Bike Lanes" album. If you decline, they stay privately inside the app instead.</string>
+
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Shows photos saved in your "Cars in Bike Lanes" album. You can still import individual photos with the system picker if you decline.</string>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Records where a photo was taken so your report shows the right location on the map.</string>
+
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>TemporaryFullAccuracyUsageDescription</key>
+		<string>Records where a photo was taken so your report shows the right location on the map.</string>
+	</dict>
+
+</dict>
+</plist>

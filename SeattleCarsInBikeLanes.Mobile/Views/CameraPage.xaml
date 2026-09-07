@@ -1,0 +1,644 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewmodels="clr-namespace:SeattleCarsInBikeLanes.Mobile.ViewModels"
+             xmlns:photos="clr-namespace:SeattleCarsInBikeLanes.Mobile.Core.Photos;assembly=SeattleCarsInBikeLanes.Mobile.Core"
+             x:Class="SeattleCarsInBikeLanes.Mobile.Views.CameraPage"
+             x:DataType="viewmodels:CameraViewModel"
+             Shell.NavBarIsVisible="False"
+             Style="{StaticResource CameraPageStyle}">
+
+    <ContentPage.Resources>
+        <!-- Shared so a photo looks and behaves the same in every section. -->
+        <DataTemplate x:Key="PhotoRollItemTemplate" x:DataType="viewmodels:PhotoItemViewModel">
+            <Grid>
+                <Image Source="{Binding Thumbnail}" Aspect="AspectFill" HeightRequest="{x:Static photos:PhotoRollLayout.ThumbnailHeight}" />
+
+                <Border IsVisible="{Binding IsSelected}"
+                        Style="{StaticResource CameraPhotoRollSelectionBorder}"
+                        StrokeThickness="3" />
+
+                <!-- The checkmark is how the user tells an already reported photo from one that
+                     still needs sending. -->
+                <Label Text="&#xF295;"
+                       FontFamily="FluentIcons"
+                       FontSize="18"
+                       TextColor="White"
+                       BackgroundColor="#CC107C10"
+                       Padding="4,2"
+                       HorizontalOptions="End"
+                       VerticalOptions="Start"
+                       IsVisible="{Binding Submitted}" />
+
+                <!-- A queued photo has not reached the site, so it does not carry the checkmark.
+                     Without a badge of its own it would look untouched and invite the user to
+                     report the same thing twice. -->
+                <Label Text="{Binding QueueBadge}"
+                       FontSize="10"
+                       TextColor="White"
+                       BackgroundColor="{Binding QueueBadgeColor}"
+                       Padding="4,2"
+                       HorizontalOptions="End"
+                       VerticalOptions="Start"
+                       IsVisible="{Binding QueueBadge, Converter={StaticResource IsNotNullConverter}}" />
+
+                <Label Text="Imported"
+                       FontSize="10"
+                       TextColor="White"
+                       BackgroundColor="#99000000"
+                       Padding="4,2"
+                       HorizontalOptions="Start"
+                       VerticalOptions="End"
+                       IsVisible="{Binding IsImported}" />
+
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="PhotoTapped" />
+                </Grid.GestureRecognizers>
+            </Grid>
+        </DataTemplate>
+    </ContentPage.Resources>
+
+    <Grid x:Name="CameraLayout"
+          RowDefinitions="*, Auto, Auto"
+          ColumnDefinitions="Auto, *, Auto"
+          SafeAreaEdges="Container">
+
+        <VisualStateManager.VisualStateGroups>
+           <VisualStateGroup x:Name="CameraControlLayoutStates">
+               <VisualState x:Name="Portrait">
+                   <VisualState.Setters>
+                       <Setter TargetName="CameraBody" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBody" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Row" Value="2" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Padding" Value="16,8,16,16" />
+                       <Setter TargetName="CameraControlRail" Property="RowSpacing" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="ColumnSpacing" Value="12" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumWidthRequest" Value="-1" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumHeightRequest" Value="72" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Column" Value="0" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="HorizontalOptions" Value="Start" />
+                       <Setter TargetName="LatestThumbnailButton" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="CaptureControls" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Row" Value="2" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="ZoomPill" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="ZoomPill" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="ZoomPill" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="VerticalOptions" Value="Start" />
+                       <Setter TargetName="ZoomPill" Property="TranslationX" Value="0" />
+                       <Setter TargetName="ZoomPill" Property="TranslationY" Value="-44" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Column" Value="2" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="StackLayout.Orientation" Value="Horizontal" />
+                       <Setter TargetName="CameraActionButtons" Property="HorizontalOptions" Value="End" />
+                       <Setter TargetName="CameraActionButtons" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.ColumnSpan" Value="1" />
+                   </VisualState.Setters>
+               </VisualState>
+
+               <VisualState x:Name="LandscapeRailLeft">
+                   <VisualState.Setters>
+                       <Setter TargetName="CameraBody" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBody" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Column" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Padding" Value="16,16,8,16" />
+                       <Setter TargetName="CameraControlRail" Property="RowSpacing" Value="12" />
+                       <Setter TargetName="CameraControlRail" Property="ColumnSpacing" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumWidthRequest" Value="72" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumHeightRequest" Value="-1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="LatestThumbnailButton" Property="VerticalOptions" Value="Start" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="CaptureControls" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Column" Value="0" />
+                       <Setter TargetName="ZoomPill" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="ZoomPill" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="ZoomPill" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="TranslationX" Value="70" />
+                       <Setter TargetName="ZoomPill" Property="TranslationY" Value="0" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Row" Value="2" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="StackLayout.Orientation" Value="Vertical" />
+                       <Setter TargetName="CameraActionButtons" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="CameraActionButtons" Property="VerticalOptions" Value="End" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Column" Value="0" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.ColumnSpan" Value="3" />
+                   </VisualState.Setters>
+               </VisualState>
+
+               <VisualState x:Name="LandscapeRailRight">
+                   <VisualState.Setters>
+                       <Setter TargetName="CameraBody" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBody" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraBody" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraStatusPanel" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.Column" Value="2" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="CameraControlRail" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraControlRail" Property="Padding" Value="8,16,16,16" />
+                       <Setter TargetName="CameraControlRail" Property="RowSpacing" Value="12" />
+                       <Setter TargetName="CameraControlRail" Property="ColumnSpacing" Value="0" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumWidthRequest" Value="72" />
+                       <Setter TargetName="CameraControlRail" Property="MinimumHeightRequest" Value="-1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="LatestThumbnailButton" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="LatestThumbnailButton" Property="VerticalOptions" Value="Start" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Row" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CaptureControls" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="CaptureControls" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="ZoomPill" Property="Grid.Column" Value="2" />
+                       <Setter TargetName="ZoomPill" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="ZoomPill" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="ZoomPill" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="VerticalOptions" Value="Center" />
+                       <Setter TargetName="ZoomPill" Property="TranslationX" Value="-70" />
+                       <Setter TargetName="ZoomPill" Property="TranslationY" Value="0" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Row" Value="2" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.Column" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.RowSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="Grid.ColumnSpan" Value="1" />
+                       <Setter TargetName="CameraActionButtons" Property="StackLayout.Orientation" Value="Vertical" />
+                       <Setter TargetName="CameraActionButtons" Property="HorizontalOptions" Value="Center" />
+                       <Setter TargetName="CameraActionButtons" Property="VerticalOptions" Value="End" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Row" Value="0" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.Column" Value="0" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.RowSpan" Value="3" />
+                       <Setter TargetName="CameraBusyIndicator" Property="Grid.ColumnSpan" Value="3" />
+                   </VisualState.Setters>
+               </VisualState>
+           </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <Grid x:Name="CameraBody"
+             Grid.Row="0"
+             Grid.Column="1"
+             HorizontalOptions="Fill"
+             VerticalOptions="Fill">
+            <!-- The camera view is added here once a camera is known to exist. Putting it in the XAML
+                 unconditionally means its handler connects on load, and the toolkit throws from an
+                 async void when the device has no camera, which takes the whole app down on launch. -->
+            <Grid x:Name="CameraHost"
+                  Grid.Row="0"
+                  HorizontalOptions="Fill"
+                  VerticalOptions="Fill" />
+
+            <!-- Touch on the preview lives on its own layer rather than on the camera view itself,
+                 because the preview is a native view and a MAUI gesture landing on it is not
+                 something to rely on. The background has to be an explicit transparent rather than
+                 left unset or iOS will not hit test it at all. Declared before the roll so the roll
+                 covers it. -->
+            <Grid x:Name="PreviewOverlay"
+                  Grid.Row="0"
+                  BackgroundColor="Transparent"
+                  HorizontalOptions="Fill"
+                  VerticalOptions="Fill"
+                  IsVisible="{Binding IsPreviewInteractive}">
+
+            <Grid.GestureRecognizers>
+                <PinchGestureRecognizer PinchUpdated="CameraPinchUpdated" />
+                <TapGestureRecognizer Tapped="PreviewTapped" />
+            </Grid.GestureRecognizers>
+
+            <!-- Moved to the tap with a translation, so it is anchored to the top left corner and
+                 kept out of hit testing to leave the next tap alone. -->
+            <Border x:Name="FocusReticle"
+                    WidthRequest="72"
+                    HeightRequest="72"
+                    HorizontalOptions="Start"
+                    VerticalOptions="Start"
+                    BackgroundColor="Transparent"
+                    Stroke="#FFD60A"
+                    StrokeThickness="1.5"
+                    StrokeShape="RoundRectangle 6"
+                    InputTransparent="True"
+                    IsVisible="False" />
+
+            </Grid>
+
+            <!-- A successful capture is available before its metadata, library save, and thumbnail
+                 are. Flash the live preview at that boundary so the user gets immediate confirmation
+                 without putting another wait in the capture path. -->
+            <Grid x:Name="ShutterFlashOverlay"
+                  Grid.Row="0"
+                  BackgroundColor="White"
+                  Opacity="0"
+                  HorizontalOptions="Fill"
+                  VerticalOptions="Fill"
+                  InputTransparent="True" />
+
+            <!-- Sits over the preview so the camera never has to be torn down and restarted. -->
+            <Grid Grid.Row="0"
+                  Style="{StaticResource CameraPhotoRollSurface}"
+                  RowDefinitions="Auto, Auto, Auto, *, Auto, Auto"
+                  HorizontalOptions="Fill"
+                  VerticalOptions="Fill"
+                  IsVisible="{Binding IsRollVisible}">
+
+            <!-- Pinned above the roll rather than left in it. The photo the user has just taken is
+                 the one they came here to report, and it looks like every other photo they have
+                 taken this week. -->
+            <Label Grid.Row="0"
+                   Text="{Binding RecentHeader}"
+                   Style="{StaticResource CameraPhotoRollSectionLabel}"
+                   FontSize="14"
+                   FontAttributes="Bold"
+                   Padding="14,10"
+                   IsVisible="{Binding HasRecentPhotos}" />
+
+            <CollectionView x:Name="RecentPhotoRoll"
+                            Grid.Row="1"
+                            ItemsSource="{Binding RecentPhotos}"
+                            SelectionMode="None"
+                            ItemTemplate="{StaticResource PhotoRollItemTemplate}"
+                            Margin="8,8,8,4"
+                            HeightRequest="{Binding RecentRollHeight}"
+                            IsVisible="{Binding HasRecentPhotos}">
+                <CollectionView.ItemsLayout>
+                    <GridItemsLayout Orientation="Vertical"
+                                     Span="{x:Static photos:PhotoRollLayout.Columns}"
+                                     HorizontalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}"
+                                     VerticalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}" />
+                </CollectionView.ItemsLayout>
+            </CollectionView>
+
+            <!-- Only worth saying when there is a just taken section above to tell these apart
+                 from. -->
+            <Label Grid.Row="2"
+                   Text="Earlier"
+                   Style="{StaticResource CameraPhotoRollSectionLabel}"
+                   FontSize="14"
+                   Padding="14,10"
+                   IsVisible="{Binding HasEarlierPhotos}" />
+
+            <CollectionView x:Name="PhotoRoll"
+                            Grid.Row="3"
+                            ItemsSource="{Binding PendingPhotos}"
+                            SelectionMode="None"
+                            ItemTemplate="{StaticResource PhotoRollItemTemplate}"
+                            Margin="8">
+                <CollectionView.ItemsLayout>
+                    <GridItemsLayout Orientation="Vertical"
+                                     Span="{x:Static photos:PhotoRollLayout.Columns}"
+                                     HorizontalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}"
+                                     VerticalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}" />
+                </CollectionView.ItemsLayout>
+                <CollectionView.EmptyView>
+                    <!-- Hidden when the just taken section is holding everything, where saying
+                         there is nothing waiting would flatly contradict the photos on screen. -->
+                    <Label Text="Nothing waiting to be reported. Take a photo, or import from your library."
+                           Style="{StaticResource CameraPhotoRollTextLabel}"
+                           HorizontalTextAlignment="Center"
+                           VerticalTextAlignment="Center"
+                           Margin="24"
+                           IsVisible="{Binding HasRecentPhotos, Converter={StaticResource InvertedBoolConverter}}" />
+                </CollectionView.EmptyView>
+            </CollectionView>
+
+            <!-- Reported photos are folded away by default so the handful still waiting on the
+                 user is not buried under everything they have ever sent. -->
+            <Grid Grid.Row="4"
+                  ColumnDefinitions="Auto, *"
+                  ColumnSpacing="8"
+                  Padding="14,10"
+                  Style="{StaticResource CameraPhotoRollSection}"
+                  IsVisible="{Binding HasReportedPhotos}">
+
+                <Label Grid.Column="0"
+                       Text="{Binding ReportedToggleGlyph}"
+                       FontFamily="FluentIcons"
+                       FontSize="16"
+                       Style="{StaticResource CameraPhotoRollTextLabel}"
+                       VerticalOptions="Center" />
+
+                <Label Grid.Column="1"
+                       Text="{Binding ReportedHeader}"
+                       Style="{StaticResource CameraPhotoRollTextLabel}"
+                       FontSize="14"
+                       VerticalOptions="Center" />
+
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding ToggleReportedPhotosCommand}" />
+                </Grid.GestureRecognizers>
+            </Grid>
+
+            <CollectionView x:Name="ReportedPhotoRoll"
+                            Grid.Row="5"
+                            ItemsSource="{Binding ReportedGroups}"
+                            IsGrouped="True"
+                            SelectionMode="None"
+                            ItemTemplate="{StaticResource PhotoRollItemTemplate}"
+                            Margin="8,4"
+                            HeightRequest="{Binding ReportedRollHeight}"
+                            IsVisible="{Binding AreReportedPhotosExpanded}">
+                <CollectionView.ItemsLayout>
+                    <GridItemsLayout Orientation="Vertical"
+                                     Span="{x:Static photos:PhotoRollLayout.Columns}"
+                                     HorizontalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}"
+                                     VerticalItemSpacing="{x:Static photos:PhotoRollLayout.ThumbnailSpacing}" />
+                </CollectionView.ItemsLayout>
+                <CollectionView.GroupHeaderTemplate>
+                    <DataTemplate x:DataType="viewmodels:ReportedPhotoGroupViewModel">
+                        <Label Text="{Binding Header}"
+                               Style="{StaticResource CameraPhotoRollSectionLabel}"
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               Padding="8,6"
+                               MinimumHeightRequest="{x:Static photos:PhotoRollLayout.ReportHeaderHeight}"
+                               LineBreakMode="WordWrap"
+                               SemanticProperties.HeadingLevel="Level2" />
+                    </DataTemplate>
+                </CollectionView.GroupHeaderTemplate>
+                <CollectionView.GroupFooterTemplate>
+                    <DataTemplate x:DataType="viewmodels:ReportedPhotoGroupViewModel">
+                        <Grid HeightRequest="{x:Static photos:PhotoRollLayout.ReportFooterHeight}" />
+                    </DataTemplate>
+                </CollectionView.GroupFooterTemplate>
+            </CollectionView>
+            </Grid>
+        </Grid>
+
+        <VerticalStackLayout x:Name="CameraStatusPanel"
+                             Grid.Row="1"
+                             Grid.Column="1"
+                             Style="{StaticResource CameraStatusPanelStyle}"
+                             Padding="12"
+                             Spacing="8">
+
+            <!-- Stands in for the confirmation the report sheet used to show. It says what is true
+                 now rather than what was true when the user tapped submit, and it clears itself
+                 when the report lands. -->
+            <Label Text="{Binding QueueSummary}"
+                   TextColor="White"
+                   BackgroundColor="#CC1F4E7A"
+                   Padding="10"
+                   IsVisible="{Binding HasQueueSummary}" />
+
+            <!-- The site refuses reports for reasons the user has to see and can often act on, so
+                 a report the app gave up on is put in front of them with both ways out. A bindable
+                 layout rather than a CollectionView because this sits in an auto sized row, where a
+                 CollectionView has nothing to measure itself against and collapses to nothing. -->
+            <VerticalStackLayout BindableLayout.ItemsSource="{Binding FailedReports}"
+                                 Spacing="4"
+                                 IsVisible="{Binding HasFailedReports}">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate x:DataType="viewmodels:FailedReportViewModel">
+                        <Grid ColumnDefinitions="*, Auto, Auto"
+                              ColumnSpacing="8"
+                              Padding="10"
+                              BackgroundColor="#CC7A1F1F">
+
+                            <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                <Label Text="{Binding Title}"
+                                       TextColor="White"
+                                       FontSize="13"
+                                       FontAttributes="Bold" />
+                                <Label Text="{Binding Error}" TextColor="White" FontSize="12" />
+                            </VerticalStackLayout>
+
+                            <Button Grid.Column="1"
+                                    Text="Retry"
+                                    TextColor="White"
+                                    FontSize="12"
+                                    Padding="10,4"
+                                    HeightRequest="34"
+                                    VerticalOptions="Center"
+                                    Command="{Binding RetryCommand}" />
+
+                            <Button Grid.Column="2"
+                                    Text="Discard"
+                                    IsVisible="{Binding CanDiscard}"
+                                    TextColor="White"
+                                    FontSize="12"
+                                    Padding="10,4"
+                                    HeightRequest="34"
+                                    BackgroundColor="#66000000"
+                                    VerticalOptions="Center"
+                                    Command="{Binding DiscardCommand}" />
+                        </Grid>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+
+            <Label Text="{Binding StatusMessage}"
+                   TextColor="White"
+                   BackgroundColor="#CC7A1F1F"
+                   Padding="10"
+                   IsVisible="{Binding StatusMessage, Converter={StaticResource IsNotNullConverter}}" />
+
+            <Label Text="{Binding PhotoAccessMessage}"
+                   TextColor="White"
+                   BackgroundColor="#CC7A5A1F"
+                   Padding="10"
+                   IsVisible="{Binding PhotoAccessMessage, Converter={StaticResource IsNotNullConverter}}" />
+
+            <Label Text="No camera is available, or camera access was not granted. You can still import photos from your library."
+                   TextColor="White"
+                   BackgroundColor="#CC7A5A1F"
+                   Padding="10"
+                   IsVisible="{Binding HasNoCamera}" />
+
+            <Grid ColumnDefinitions="*, Auto" ColumnSpacing="8">
+                <Button Grid.Column="0"
+                        Text="Report selected photos"
+                        Clicked="ReportClicked"
+                        IsVisible="{Binding CanReport}" />
+
+                <Button Grid.Column="1"
+                        BackgroundColor="#CC7A1F1F"
+                        WidthRequest="52"
+                        HeightRequest="44"
+                        Clicked="DeleteClicked"
+                        IsVisible="{Binding CanDelete}"
+                        SemanticProperties.Description="Delete selected photos">
+                    <Button.ImageSource>
+                        <!-- trash can icon -->
+                        <FontImageSource FontFamily="FluentIcons" Glyph="&#xF34C;" Color="White" Size="20" />
+                    </Button.ImageSource>
+                </Button>
+            </Grid>
+        </VerticalStackLayout>
+
+        <!-- The minimum height is the shutter's, so the row does not shrink onto the shorter
+             buttons either side of it when the roll takes the shutter away. -->
+        <Grid x:Name="CameraControlRail"
+              Grid.Row="2"
+              Grid.Column="1"
+              Style="{StaticResource CameraControlRailStyle}"
+              RowDefinitions="*, Auto, *"
+              ColumnDefinitions="*, Auto, *"
+              Padding="16,8,16,16"
+              ColumnSpacing="12"
+              MinimumHeightRequest="72">
+
+            <!-- Doubles as the roll toggle and as a peek at the most recent shot. -->
+            <ImageButton x:Name="LatestThumbnailButton"
+                         Grid.Row="1"
+                         Grid.Column="0"
+                         Source="{Binding LatestThumbnail}"
+                         Aspect="AspectFill"
+                         WidthRequest="52"
+                         HeightRequest="52"
+                         CornerRadius="8"
+                         BackgroundColor="#33FFFFFF"
+                         HorizontalOptions="Start"
+                         Command="{Binding ToggleRollCommand}" />
+
+            <!-- Gives the layout code a stable shutter-sized anchor in either rail orientation. -->
+            <Grid x:Name="CaptureControls"
+                  Grid.Row="1"
+                  Grid.Column="1"
+                  WidthRequest="72"
+                  HeightRequest="72">
+
+                <!-- Leaves with the preview. The roll covers the preview rather than replacing it,
+                     so a shutter left behind would still be live and could take an unseen photo. -->
+                <Button x:Name="CaptureButton"
+                        WidthRequest="72"
+                        HeightRequest="72"
+                        CornerRadius="36"
+                        BackgroundColor="White"
+                        BorderColor="#88FFFFFF"
+                        BorderWidth="4"
+                        Clicked="CaptureClicked"
+                        IsVisible="{Binding IsPreviewInteractive}"
+                        SemanticProperties.Description="Take a photo" />
+            </Grid>
+
+            <StackLayout x:Name="CameraActionButtons"
+                         Grid.Row="1"
+                         Grid.Column="2"
+                         Orientation="Horizontal"
+                         HorizontalOptions="End"
+                         VerticalOptions="Center"
+                         Spacing="8">
+                <Button Command="{Binding ImportCommand}"
+                        BackgroundColor="#33FFFFFF"
+                        WidthRequest="52"
+                        HeightRequest="52"
+                        CornerRadius="8"
+                        SemanticProperties.Description="Import photos">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsRollVisible}" Value="True">
+                            <Setter Property="BackgroundColor" Value="#CC000000" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                    <Button.ImageSource>
+                        <!-- image library icon -->
+                        <FontImageSource FontFamily="FluentIcons" Glyph="&#xF422;" Color="White" Size="20" />
+                    </Button.ImageSource>
+                </Button>
+
+                <!-- Goes with the shutter: there is nothing to switch when the preview is covered. -->
+                <Button x:Name="SwitchCameraButton"
+                        BackgroundColor="#33FFFFFF"
+                        WidthRequest="52"
+                        HeightRequest="52"
+                        CornerRadius="8"
+                        Clicked="SwitchCameraClicked"
+                        IsVisible="{Binding IsPreviewInteractive}"
+                        SemanticProperties.Description="Switch camera">
+                    <Button.ImageSource>
+                        <!-- camera flip icon -->
+                        <FontImageSource FontFamily="FluentIcons" Glyph="&#xF13F;" Color="White" Size="20" />
+                    </Button.ImageSource>
+                </Button>
+            </StackLayout>
+        </Grid>
+
+        <!-- Positioned relative to the shutter by the orientation layout. Keeping it at the page
+             level lets the translated portion remain hit-testable outside the control rail. -->
+        <Border x:Name="ZoomPill"
+                Grid.Row="2"
+                Grid.Column="1"
+                ZIndex="1"
+                HorizontalOptions="Center"
+                VerticalOptions="Start"
+                Padding="14,6"
+                MinimumWidthRequest="52"
+                MinimumHeightRequest="36"
+                BackgroundColor="#66000000"
+                Stroke="#44FFFFFF"
+                StrokeThickness="1"
+                StrokeShape="RoundRectangle 18"
+                IsVisible="{Binding CanZoom}"
+                SemanticProperties.Description="Zoom level, tap to change">
+
+            <Label Text="{Binding ZoomLabel}"
+                   TextColor="White"
+                   FontSize="14"
+                   FontAttributes="Bold"
+                   HorizontalTextAlignment="Center"
+                   VerticalTextAlignment="Center" />
+
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding CycleZoomCommand}" />
+            </Border.GestureRecognizers>
+        </Border>
+
+        <ActivityIndicator x:Name="CameraBusyIndicator"
+                           Grid.Column="1"
+                           Grid.RowSpan="3"
+                           IsRunning="{Binding IsBusy}"
+                           IsVisible="{Binding IsBusy}"
+                           Color="White"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+    </Grid>
+</ContentPage>

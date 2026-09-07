@@ -115,3 +115,60 @@ let privateKey = sessionRequest.result.value.dpopKey.keyPair.privateKey;
 1. `dotnet build -c Release`
 2. `dotnet pack -c Release`
 3. `dotnet nuget push <path to .nupkg> -k <NuGet API key>`
+
+# Mobile App
+
+## Identifier
+
+com.golf1052.SeattleCarsInBikeLanes.Mobile
+
+## Mobile platform parity
+
+Mobile features must be delivered for iOS and Android together. A mobile change is complete only when:
+
+- equivalent user outcomes work on both platforms, using platform-native APIs where their UX differs;
+- both `net10.0-ios` and `net10.0-android` compile;
+- shared behavior has automated coverage and each platform-specific path has been exercised on a simulator or device;
+- equivalent Sentry telemetry uses the same metric names, units, and bounded attributes on both platforms, with `platform` identifying `ios` or `android`; and
+- any intentional platform exception is documented in the mobile README and in the pull request.
+
+Do not register a placeholder or no-op implementation for one mobile platform as a way to ship the other. If an operating-system limitation prevents exact behavior, implement the closest safe equivalent and document the difference.
+
+## Mobile moderation recovery
+
+Mobile finalization stores one complete, conditionally created report bundle under
+`mobilereports/<report-id>.json`. Its canonical identity/attribution is the first
+accepted version, regardless of later preparation IDs or credentials. There are no
+separately visible partial mobile JPEG/JSON commits. Existing website reports retain
+the `finalizedupload/` layout.
+
+Each bundle supports at most four prepared JPEGs of 8 MiB each (32 MiB total);
+serialized reads/writes are capped at 48 MiB. Base64 adds about one third to blob
+size. The server buffers one bounded bundle while finalizing/reading it; concurrent
+requests multiply that cost. Moderation previews use an authenticated photo endpoint,
+not base64 images retained in the pending-list response. Provider identity replies
+are independently bounded to 64 KiB, including unknown-length responses.
+
+Publication and deletion acquire conditional, durable ownership of a mobile bundle
+before operating. Compaction is restricted to the owner and happens only after
+publication dependencies have completed, or for an explicitly requested deletion.
+It removes the photos but preserves a permanent compact receipt. Do not age-prune
+these receipts: delayed client retries must not recreate moderated reports.
+
+An owned report remains visible in `/AdminPage` with a warning and disabled
+Upload/Delete buttons. Ownership has no automatic stale takeover: a killed worker
+may already have created external posts. Mobile finalization is idempotent, but the
+existing external social publication workflow is not an exactly-once transaction.
+
+For an interrupted moderation operation, an operator must first stop/confirm the
+owning server work is no longer running, save a backup/version of the bundle, and
+inspect its `Moderation` operation ID/kind/time. Reconcile Imgur, social posts, the
+reported-items database and feed before changing the blob. If no external effects
+occurred, conditionally clear only `Moderation` against the inspected blob ETag to
+return the intact report to pending. If publication or deletion is confirmed complete,
+conditionally replace it with the same `Receipt` and `DeviceId`, `Photos: []`,
+`Retired: true`, and `Moderation: null`. If effects are uncertain or partial, retain
+the bundle and ownership while completing reconciliation; do not clear ownership,
+delete the blob, or blindly press Upload again. A changed ETag requires reinspection,
+not an unconditional overwrite. None of these operator operations is performed by
+the automated regression tests.

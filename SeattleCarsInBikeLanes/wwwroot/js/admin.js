@@ -29,11 +29,41 @@ function createTextInputRow(label, name, value, userSpecified) {
     return row;
 }
 
-function createSubmitButton(buttonClass, text) {
+function createSubmitButton(buttonClass, text, moderationStatus) {
     const button = createElementWithClass('button', `btn ${buttonClass}`);
     button.setAttribute('type', 'submit');
     button.append(text);
+    button.disabled = !!moderationStatus;
     return button;
+}
+
+// Shown rather than edited. The device id is set by the server from the request header, so an
+// editable field would only invite changing something that gets overwritten anyway.
+function createDeviceIdRow(deviceId, moderationStatus) {
+    const row = createElementWithClass('div', 'row');
+    if (!deviceId) {
+        row.hidden = true;
+        return row;
+    }
+
+    const labelDiv = createElementWithClass('div', 'col-auto');
+    const labelElement = createElementWithClass('div', 'form-label');
+    labelElement.append('Device ID:');
+    labelDiv.appendChild(labelElement);
+    row.appendChild(labelDiv);
+
+    const valueDiv = createElementWithClass('div', 'col-12');
+    const value = createElementWithClass('code', 'user-select-all');
+    value.append(deviceId);
+    value.setAttribute('title', 'Add this to blockeddevices.json to block the device.');
+    valueDiv.appendChild(value);
+    row.appendChild(valueDiv);
+    if (moderationStatus) {
+        const warning = createElementWithClass('div', 'alert alert-warning');
+        warning.textContent = moderationStatus;
+        row.appendChild(warning);
+    }
+    return row;
 }
 
 function createPictureCarousel(key, metadatas) {
@@ -162,6 +192,7 @@ function createDesktopCard(key, metadatas) {
     const mastodonAttributionRow = createTextInputRow('Mastodon Attribution:', 'mastodonSubmittedBy', metadata.mastodonSubmittedBy);
     const blueskyAttributionRow = createTextInputRow('Bluesky Attribution:', 'blueskySubmittedBy', metadata.blueskySubmittedBy);
     const twitterLinkRow = createTextInputRow('Twitter Link:', 'twitterLink', '');
+    const deviceIdRow = createDeviceIdRow(metadata.deviceId, metadata.moderationStatus);
 
     const copyButton = createElementWithClass('button', 'btn btn-light me-4');
     copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
@@ -187,13 +218,13 @@ function createDesktopCard(key, metadatas) {
             `${submissionString}`;
         navigator.clipboard.writeText(copyString);
     });
-    const uploadButton = createSubmitButton('btn-success', 'Upload');
+    const uploadButton = createSubmitButton('btn-success', 'Upload', metadata.moderationStatus);
     uploadButton.className = 'btn btn-success me-4';
-    const deleteButton = createSubmitButton('btn-danger', 'Delete');
+    const deleteButton = createSubmitButton('btn-danger', 'Delete', metadata.moderationStatus);
     const buttonDiv = createElementWithClass('div', 'text-center');
     buttonDiv.append(copyButton, uploadButton, deleteButton);
 
-    form.append(numberOfCarsRow, dateRow, timeRow, locationRow, gpsRow, twitterAttributionRow, mastodonAttributionRow, blueskyAttributionRow, twitterLinkRow, buttonDiv);
+    form.append(numberOfCarsRow, dateRow, timeRow, locationRow, gpsRow, twitterAttributionRow, mastodonAttributionRow, blueskyAttributionRow, twitterLinkRow, deviceIdRow, buttonDiv);
 
     form.addEventListener('submit', (event) => {
         event.preventDefault();
@@ -404,4 +435,3 @@ getBlueskySession()
     blueskyAccessJwt = response.accessJwt;
     displayPendingPhotos();
 });
-

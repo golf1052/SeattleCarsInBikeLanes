@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect id="background" width="512" height="512" fill="#ECF1F9"/>
+  <g id="streets" fill="none" stroke="#D4DFEE" stroke-width="17">
+    <path d="M-25 367 537 187M-25 506 537 326M97-30l170 572M294-30l170 572"/>
+  </g>
+</svg>

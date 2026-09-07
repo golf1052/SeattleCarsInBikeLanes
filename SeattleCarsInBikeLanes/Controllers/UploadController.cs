@@ -14,6 +14,7 @@ using LinqToTwitter.OAuth;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Cosmos.Spatial;
+using SeattleCarsInBikeLanes.Core.Contracts;
 using SeattleCarsInBikeLanes.Models;
 using SeattleCarsInBikeLanes.Providers;
 using SeattleCarsInBikeLanes.Storage.Models;
@@ -22,10 +23,27 @@ namespace SeattleCarsInBikeLanes.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class UploadController : ControllerBase
+    public partial class UploadController : ControllerBase
     {
         public const string InitialUploadPrefix = "initialupload/";
         public const string FinalizedUploadPrefix = "finalizedupload/";
+
+        /// <summary>
+        /// The header the mobile app identifies itself with.
+        /// </summary>
+        public const string DeviceIdHeader = "X-Device-Id";
+
+        /// <summary>
+        /// The stable queued report identifier used to make finalization idempotent.
+        /// </summary>
+        public const string ReportIdHeader = "X-Report-Id";
+
+        public const string ReportInFlightHeader = "X-Report-In-Flight";
+
+        /// <summary>
+        /// The most photos a single report can have.
+        /// </summary>
+        public const int MaxPhotosPerReport = 4;
 
         private readonly BoundingBox SeattleBoundingBox = new BoundingBox(
             new Position(-122.436522, 47.495082),
@@ -37,6 +55,8 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly BlobContainerClient blobContainerClient;
         private readonly MastodonClientProvider mastodonClientProvider;
         private readonly SlackbotProvider slackbotProvider;
+        private readonly DeviceBlocklistProvider deviceBlocklistProvider;
+        private readonly SubmissionClaimProvider submissionClaimProvider;
         private readonly HelperMethods helperMethods;
 
         public UploadController(ILogger<UploadController> logger,
@@ -46,6 +66,8 @@ namespace SeattleCarsInBikeLanes.Controllers
             BlobContainerClient blobContainerClient,
             MastodonClientProvider mastodonClientProvider,
             SlackbotProvider slackbotProvider,
+            DeviceBlocklistProvider deviceBlocklistProvider,
+            SubmissionClaimProvider submissionClaimProvider,
             HelperMethods helperMethods)
         {
             this.logger = logger;
@@ -55,12 +77,58 @@ namespace SeattleCarsInBikeLanes.Controllers
             this.blobContainerClient = blobContainerClient;
             this.mastodonClientProvider = mastodonClientProvider;
             this.slackbotProvider = slackbotProvider;
+            this.deviceBlocklistProvider = deviceBlocklistProvider;
+            this.submissionClaimProvider = submissionClaimProvider;
             this.helperMethods = helperMethods;
         }
 
-        [HttpPost("Initial")]
-        public async Task<IActionResult> UploadPhoto([FromForm]List<IFormFile> files)
+        /// <summary>
+        /// The device the request came from, or null when it came from the website.
+        /// </summary>
+        private string? DeviceId
         {
+            get
+            {
+                string? deviceId = Request.Headers[DeviceIdHeader].FirstOrDefault();
+                return string.IsNullOrWhiteSpace(deviceId) ? null : deviceId.Trim();
+            }
+        }
+
+        private string? ReportId
+        {
+            get
+            {
+                string? reportId = Request.Headers[ReportIdHeader].FirstOrDefault()?.Trim();
+                return SubmissionClaimProvider.IsValidReportId(reportId) ? reportId : null;
+            }
+        }
+
+        /// <summary>
+        /// The limits the mobile app has to respect, so it does not have to hard code them.
+        /// </summary>
+        [HttpGet("Limits")]
+        public IActionResult GetLimits()
+        {
+            // Min is the south west corner and Max the north east, matching how the box is built.
+            return Ok(new UploadLimits()
+            {
+                MaxPhotosPerReport = MaxPhotosPerReport,
+                SouthLatitude = SeattleBoundingBox.Min.Latitude,
+                WestLongitude = SeattleBoundingBox.Min.Longitude,
+                NorthLatitude = SeattleBoundingBox.Max.Latitude,
+                EastLongitude = SeattleBoundingBox.Max.Longitude
+            });
+        }
+
+        [HttpPost("Initial")]
+        public async Task<IActionResult> UploadPhoto([FromForm] List<IFormFile> files)
+        {
+            if (await deviceBlocklistProvider.IsBlocked(DeviceId))
+            {
+                logger.LogWarning("Rejected an upload from blocked device {DeviceId}.", DeviceId);
+                return StatusCode(StatusCodes.Status403Forbidden, "This device can't submit reports.");
+            }
+
             if (Request.ContentLength == 0 || files == null || files.Count == 0)
             {
                 string error = "Error: No photo uploaded.";
@@ -68,17 +136,17 @@ namespace SeattleCarsInBikeLanes.Controllers
                 return BadRequest(error);
             }
 
-            if (files.Count > 4)
+            if (files.Count > MaxPhotosPerReport)
             {
-                string error = "Cannot upload more than 4 images on a report";
+                string error = $"Cannot upload more than {MaxPhotosPerReport} images on a report";
                 logger.LogError(error);
                 return BadRequest(error);
             }
 
             string submissionId = helperMethods.GetRandomFileName();
 
-            List<Task<InitialPhotoUploadWithSasUriMetadata>> metadataTasks = new List<Task<InitialPhotoUploadWithSasUriMetadata>>();
-            List<InitialPhotoUploadWithSasUriMetadata> metadata = new List<InitialPhotoUploadWithSasUriMetadata>();
+            List<Task<InitialPhotoUpload>> metadataTasks = new List<Task<InitialPhotoUpload>>();
+            List<InitialPhotoUpload> metadata = new List<InitialPhotoUpload>();
             Dictionary<int, string> exceptions = new Dictionary<int, string>();
             for (int i = 0; i < files.Count; i++)
             {
@@ -134,7 +202,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             return Ok(metadata);
         }
 
-        private async Task<InitialPhotoUploadWithSasUriMetadata> ProcessInitialUpload(IFormFile file, string submissionId, int index)
+        private async Task<InitialPhotoUpload> ProcessInitialUpload(IFormFile file, string submissionId, int index)
         {
             string tempFile = Path.GetTempFileName();
             try
@@ -262,7 +330,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                 fileStream3.Dispose();
 
                 Uri sasUri = await photoBlobClient.GenerateUserDelegationReadOnlySasUri(DateTimeOffset.UtcNow.AddMinutes(10));
-                return InitialPhotoUploadWithSasUriMetadata.FromMetadata(sasUri.ToString(), metadata);
+                return metadata.ToContract(sasUri.ToString());
             }
             catch (BikeLaneException ex)
             {
@@ -281,15 +349,27 @@ namespace SeattleCarsInBikeLanes.Controllers
         }
 
         [HttpPost("Finalize")]
-        public async Task<IActionResult> FinalizeUpload([FromBody] List<FinalizedPhotoUploadMetadata> data)
+        public async Task<IActionResult> FinalizeUpload([FromBody] List<FinalizedPhotoUpload> uploads)
         {
-            if (data.Count == 0)
+            if (Request.Headers.ContainsKey(ReportIdHeader))
+            {
+                return BadRequest("Mobile reports must use the mobile finalization endpoint.");
+            }
+            if (await deviceBlocklistProvider.IsBlocked(DeviceId))
+            {
+                logger.LogWarning("Rejected a finalize from blocked device {DeviceId}.", DeviceId);
+                return StatusCode(StatusCodes.Status403Forbidden, "This device can't submit reports.");
+            }
+
+            if (uploads.Count == 0)
             {
                 string error = "Expected at least 1 metadata object";
                 logger.LogError(error);
                 return BadRequest(error);
             }
 
+            List<FinalizedPhotoUploadMetadata> data =
+                uploads.Select(FinalizedPhotoUploadMetadata.FromContract).ToList();
             FinalizedPhotoUploadMetadata metadata = data[0];
             if (!metadata.PhotoDateTime.HasValue)
             {
@@ -311,10 +391,17 @@ namespace SeattleCarsInBikeLanes.Controllers
                 return BadRequest(error);
             }
 
+            if (metadata.NumberOfCars == null || metadata.NumberOfCars < 1)
+            {
+                string error = "Number of cars must be at least 1.";
+                logger.LogError(error);
+                return BadRequest(error);
+            }
+
             if (string.IsNullOrWhiteSpace(metadata.PhotoCrossStreet))
             {
-                ReverseSearchCrossStreetAddressResultItem? crossStreetItem = null;
-                crossStreetItem = await helperMethods.ReverseSearchCrossStreet(photoLocation, mapsSearchClient);
+                ReverseSearchCrossStreetAddressResultItem? crossStreetItem =
+                    await helperMethods.ReverseSearchCrossStreet(photoLocation, mapsSearchClient);
                 if (crossStreetItem == null)
                 {
                     logger.LogWarning($"Couldn't find cross street for {metadata.PhotoLatitude}, {metadata.PhotoLongitude}");
@@ -326,13 +413,6 @@ namespace SeattleCarsInBikeLanes.Controllers
                         d.PhotoCrossStreet = crossStreetItem.Address.StreetName;
                     }
                 }
-            }
-
-            if (metadata.NumberOfCars == null || metadata.NumberOfCars < 1)
-            {
-                string error = "Number of cars must be at least 1.";
-                logger.LogError(error);
-                return BadRequest(error);
             }
 
             if (metadata.Attribute != null && metadata.Attribute.Value)
@@ -428,6 +508,11 @@ namespace SeattleCarsInBikeLanes.Controllers
                 d.MastodonAccessToken = null;
                 d.ThreadsAccessToken = null;
 
+                // Taken from the header rather than the body so a client cannot pin its uploads on
+                // somebody else's device.
+                d.DeviceId = DeviceId;
+                d.ReportId = null;
+
                 string randomFileName = d.PhotoId;
                 BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{InitialUploadPrefix}{randomFileName}.jpeg");
                 await photoBlobClient.Move($"{FinalizedUploadPrefix}{randomFileName}.jpeg");
@@ -439,9 +524,18 @@ namespace SeattleCarsInBikeLanes.Controllers
                 await metadataBlobClient.DeleteAsync();
             }
 
-            // Ping me on Slack about the new submission
-            await slackbotProvider.SendSlackMessage($"New submission. {metadata.NumberOfCars} {helperMethods.GetCarsString(metadata.NumberOfCars.Value)} " +
-                $"@ {metadata.PhotoCrossStreet} submitted {DateTime.Now:s}");
+            try
+            {
+                // Slack is a notification, not part of committing the report. A Slack outage must
+                // not make the app resend photos that are already in the moderation queue.
+                string deviceSuffix = string.IsNullOrWhiteSpace(DeviceId) ? string.Empty : $" from device {DeviceId}";
+                await slackbotProvider.SendSlackMessage($"New submission. {metadata.NumberOfCars} {helperMethods.GetCarsString(metadata.NumberOfCars.Value)} " +
+                    $"@ {metadata.PhotoCrossStreet} submitted {DateTime.Now:s}{deviceSuffix}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "The report was finalized but its Slack notification failed.");
+            }
 
             return NoContent();
         }
@@ -606,70 +700,5 @@ namespace SeattleCarsInBikeLanes.Controllers
             }
         }
 
-        public class InitialPhotoUploadWithSasUriMetadata : InitialPhotoUploadMetadata
-        {
-            public string Uri { get; set; }
-            
-            public InitialPhotoUploadWithSasUriMetadata(string uri,
-                string photoId,
-                string submissionId,
-                int photoNumber,
-                DateTime photoDateTime,
-                string photoLatitude,
-                string photoLongitude,
-                string photoCrossStreet,
-                List<ImageTag> tags) :
-                base(photoId,
-                    submissionId,
-                    photoNumber,
-                    photoDateTime,
-                    photoLatitude,
-                    photoLongitude,
-                    photoCrossStreet,
-                    tags)
-            {
-                Uri = uri;
-            }
-
-            public InitialPhotoUploadWithSasUriMetadata(string uri,
-                string photoId,
-                string submissionId,
-                int photoNumber,
-                List<ImageTag> tags) :
-                base(photoId,
-                    submissionId,
-                    photoNumber,
-                    tags)
-            {
-                Uri = uri;
-            }
-
-            public static InitialPhotoUploadWithSasUriMetadata FromMetadata(string uri, InitialPhotoUploadMetadata metadata)
-            {
-                if (metadata.PhotoDateTime.HasValue &&
-                    !string.IsNullOrWhiteSpace(metadata.PhotoLatitude) &&
-                    !string.IsNullOrWhiteSpace(metadata.PhotoLongitude) &&
-                    !string.IsNullOrWhiteSpace(metadata.PhotoCrossStreet))
-                {
-                    return new InitialPhotoUploadWithSasUriMetadata(uri,
-                        metadata.PhotoId,
-                        metadata.SubmissionId,
-                        metadata.PhotoNumber,
-                        metadata.PhotoDateTime.Value,
-                        metadata.PhotoLatitude,
-                        metadata.PhotoLongitude,
-                        metadata.PhotoCrossStreet,
-                        metadata.Tags);
-                }
-                else
-                {
-                    return new InitialPhotoUploadWithSasUriMetadata(uri,
-                        metadata.PhotoId,
-                        metadata.SubmissionId,
-                        metadata.PhotoNumber,
-                        metadata.Tags);
-                }
-            }
-        }
     }
 }

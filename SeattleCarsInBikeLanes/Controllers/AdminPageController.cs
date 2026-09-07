@@ -27,6 +27,7 @@ using LinqToTwitter.OAuth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using SeattleCarsInBikeLanes.Core.Contracts;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.Database.Models;
 using SeattleCarsInBikeLanes.Providers;
@@ -52,6 +53,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         private readonly BlueskyClientProvider blueskyClientProvider;
         private readonly BlueskyOAuthProvider blueskyOAuthProvider;
         private readonly ThreadsClient threadsClient;
+        private readonly SubmissionClaimProvider mobileReports;
 
         public AdminPageController(ILogger<AdminPageController> logger,
             HelperMethods helperMethods,
@@ -65,7 +67,8 @@ namespace SeattleCarsInBikeLanes.Controllers
             FeedProvider feedProvider,
             BlueskyClientProvider blueskyClientProvider,
             BlueskyOAuthProvider blueskyOAuthProvider,
-            ThreadsClient threadsClient)
+            ThreadsClient threadsClient,
+            SubmissionClaimProvider mobileReports)
         {
             this.logger = logger;
             this.helperMethods = helperMethods;
@@ -79,6 +82,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             this.blueskyClientProvider = blueskyClientProvider;
             this.blueskyOAuthProvider = blueskyOAuthProvider;
             this.threadsClient = threadsClient;
+            this.mobileReports = mobileReports;
 
             SingleUserAuthorizer auth = new SingleUserAuthorizer()
             {
@@ -140,11 +144,37 @@ namespace SeattleCarsInBikeLanes.Controllers
                 submissions[metadata.SubmissionId].Add(metadata);
             }
 
+            await foreach (SubmissionReport report in mobileReports.GetPendingAsync(HttpContext.RequestAborted))
+            {
+                List<FinalizedPhotoUploadWithSasUriMetadata> photos = [];
+                foreach (SubmissionPhoto photo in report.Photos)
+                {
+                    var metadata = JsonConvert.DeserializeObject<FinalizedPhotoUploadWithSasUriMetadata>(
+                        JsonConvert.SerializeObject(photo.Metadata))!;
+                    metadata.Uri = $"/api/AdminPage/MobilePhoto/{report.Receipt.ReportId}/{metadata.PhotoNumber}";
+                    metadata.ModerationStatus = report.Moderation is { } operation
+                        ? $"Report reserved for {operation.Kind} since {operation.StartedAt:O}. If interrupted, reconcile external posts and the mobilereports blob before retrying. See CONTRIBUTING.md: Mobile moderation recovery."
+                        : null;
+                    photos.Add(metadata);
+                }
+                submissions.Add(report.Receipt.SubmissionId, photos);
+            }
+
             foreach (var submission in submissions)
             {
                 submission.Value.Sort((a, b) => a.PhotoNumber.CompareTo(b.PhotoNumber));
             }
             return submissions;
+        }
+
+        [HttpGet("/api/AdminPage/MobilePhoto/{reportId}/{photoNumber:int}")]
+        public async Task<IActionResult> GetMobilePhoto(string reportId, int photoNumber,
+            CancellationToken cancellationToken)
+        {
+            SubmissionReport report = await mobileReports.GetForModerationAsync(reportId, cancellationToken);
+            return photoNumber < 0 || photoNumber >= report.Photos.Count
+                ? NotFound()
+                : File(report.Photos[photoNumber].Jpeg, "image/jpeg");
         }
 
         [HttpPost("/api/AdminPage/UploadTweet")]
@@ -158,285 +188,310 @@ namespace SeattleCarsInBikeLanes.Controllers
                 return BadRequest(errorString);
             }
             FinalizedPhotoUploadMetadata metadata = data[0];
+            SubmissionReport? mobileReport = await GetMobileModerationReportAsync(data, "publishing");
+            bool externalEffectsStarted = false;
+            try
+            {
 
-            MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
-            AtProtoClient blueskyClient;
-            if (string.IsNullOrWhiteSpace(metadata.BlueskyAdminDid) || string.IsNullOrWhiteSpace(metadata.BlueskyAccessJwt))
-            {
-                blueskyClient = await blueskyClientProvider.GetClient();
-            }
-            else
-            {
-                blueskyClient = blueskyClientProvider.GetClient(metadata.BlueskyAdminDid, metadata.BlueskyAccessJwt);
-            }
-
-            if (metadata.NumberOfCars == 1)
-            {
-                carsString = "car";
-            }
-            else
-            {
-                carsString = "cars";
-            }
-
-            // Handles can be reassigned between a report being submitted and being published, and
-            // that gap is often days. The DID is permanent, so re-resolve the current handle from
-            // it rather than attributing the post to a handle that may now belong to someone else.
-            if (!string.IsNullOrWhiteSpace(metadata.BlueskyUserDid))
-            {
-                string? currentHandle = await blueskyOAuthProvider.ResolveHandleFromDid(metadata.BlueskyUserDid);
-                if (!string.IsNullOrWhiteSpace(currentHandle) && currentHandle != metadata.BlueskyHandle)
+                MastodonClient mastodonClient = mastodonClientProvider.GetServerClient();
+                AtProtoClient blueskyClient;
+                if (string.IsNullOrWhiteSpace(metadata.BlueskyAdminDid) || string.IsNullOrWhiteSpace(metadata.BlueskyAccessJwt))
                 {
-                    logger.LogInformation("Bluesky handle for {Did} changed from {OldHandle} to {NewHandle} since submission.",
-                        metadata.BlueskyUserDid, metadata.BlueskyHandle, currentHandle);
-
-                    foreach (var d in data)
-                    {
-                        d.BlueskyHandle = currentHandle;
-                    }
-                }
-            }
-
-            string postBody = $"{metadata.NumberOfCars} {carsString}\n" +
-                $"Date: {metadata.PhotoDateTime!.Value.ToString("M/d/yyyy")}\n" +
-                $"Time: {metadata.PhotoDateTime!.Value.ToString("h:mm tt")}\n" +
-                $"Location: {metadata.PhotoCrossStreet}\n" +
-                $"GPS: {metadata.PhotoLatitude}, {metadata.PhotoLongitude}";
-
-            string tootBody = postBody;
-            if (!string.IsNullOrWhiteSpace(metadata.MastodonSubmittedBy))
-            {
-                if (metadata.MastodonSubmittedBy.StartsWith("Submitted by"))
-                {
-                    tootBody += $"\n{metadata.MastodonSubmittedBy}";
-                }
-                else if (!string.IsNullOrWhiteSpace(metadata.TwitterSubmittedBy) &&
-                    metadata.TwitterSubmittedBy.StartsWith("Submitted by") &&
-                    !string.IsNullOrWhiteSpace(metadata.TwitterUsername))
-                {
-                    tootBody += $"\nSubmitted by {GetTwitterLinkFromTwitterUsername(metadata.TwitterUsername)}";
-                }
-                else if (!string.IsNullOrWhiteSpace(metadata.BlueskySubmittedBy) &&
-                    metadata.BlueskySubmittedBy.StartsWith("Submitted by") &&
-                    !string.IsNullOrWhiteSpace(metadata.BlueskyHandle))
-                {
-                    tootBody += $"\nSubmitted by {GetBlueskyLinkFromBlueskyHandle(metadata.BlueskyHandle)}";
-                }
-                else if (!string.IsNullOrWhiteSpace(metadata.ThreadsSubmittedBy) &&
-                    metadata.ThreadsSubmittedBy.StartsWith("Submitted by") &&
-                    !string.IsNullOrWhiteSpace(metadata.ThreadsUsername))
-                {
-                    tootBody += $"\nSubmitted by {GetThreadsLinkFromThreadsUsername(metadata.ThreadsUsername)}";
+                    blueskyClient = await blueskyClientProvider.GetClient();
                 }
                 else
                 {
-                    tootBody += $"\n{metadata.MastodonSubmittedBy}";
+                    blueskyClient = blueskyClientProvider.GetClient(metadata.BlueskyAdminDid, metadata.BlueskyAccessJwt);
                 }
-            }
-            else
-            {
-                tootBody += $"\nSubmission";
-            }
 
-            string skeetBody = postBody;
-            List<BskyFacet> facets = new List<BskyFacet>();
-            if (!string.IsNullOrWhiteSpace(metadata.BlueskySubmittedBy))
-            {
-                if (metadata.BlueskySubmittedBy.StartsWith("Submitted by"))
+                if (metadata.NumberOfCars == 1)
                 {
-                    string blueskyHandle = $"@{metadata.BlueskyHandle}";
-                    skeetBody += $"\nSubmitted by {blueskyHandle}";
-                    int handleStartIndex = skeetBody.IndexOf(blueskyHandle);
+                    carsString = "car";
+                }
+                else
+                {
+                    carsString = "cars";
+                }
 
-                    facets.Add(new BskyFacet()
+                // Handles can be reassigned between a report being submitted and being published, and
+                // that gap is often days. The DID is permanent, so re-resolve the current handle from
+                // it rather than attributing the post to a handle that may now belong to someone else.
+                if (!string.IsNullOrWhiteSpace(metadata.BlueskyUserDid))
+                {
+                    string? currentHandle = await blueskyOAuthProvider.ResolveHandleFromDid(metadata.BlueskyUserDid);
+                    if (!string.IsNullOrWhiteSpace(currentHandle) && currentHandle != metadata.BlueskyHandle)
                     {
-                        Index = new BskyByteSlice()
+                        logger.LogInformation("Bluesky handle for {Did} changed from {OldHandle} to {NewHandle} since submission.",
+                            metadata.BlueskyUserDid, metadata.BlueskyHandle, currentHandle);
+
+                        foreach (var d in data)
                         {
-                            ByteStart = handleStartIndex,
-                            ByteEnd = handleStartIndex + blueskyHandle.Length
-                        },
-                        Features = new List<BskyFeature>()
+                            d.BlueskyHandle = currentHandle;
+                        }
+                    }
+                }
+
+                string postBody = $"{metadata.NumberOfCars} {carsString}\n" +
+                    $"Date: {metadata.PhotoDateTime!.Value.ToString("M/d/yyyy")}\n" +
+                    $"Time: {metadata.PhotoDateTime!.Value.ToString("h:mm tt")}\n" +
+                    $"Location: {metadata.PhotoCrossStreet}\n" +
+                    $"GPS: {metadata.PhotoLatitude}, {metadata.PhotoLongitude}";
+
+                string tootBody = postBody;
+                if (!string.IsNullOrWhiteSpace(metadata.MastodonSubmittedBy))
+                {
+                    if (metadata.MastodonSubmittedBy.StartsWith("Submitted by"))
+                    {
+                        tootBody += $"\n{metadata.MastodonSubmittedBy}";
+                    }
+                    else if (!string.IsNullOrWhiteSpace(metadata.TwitterSubmittedBy) &&
+                        metadata.TwitterSubmittedBy.StartsWith("Submitted by") &&
+                        !string.IsNullOrWhiteSpace(metadata.TwitterUsername))
+                    {
+                        tootBody += $"\nSubmitted by {GetTwitterLinkFromTwitterUsername(metadata.TwitterUsername)}";
+                    }
+                    else if (!string.IsNullOrWhiteSpace(metadata.BlueskySubmittedBy) &&
+                        metadata.BlueskySubmittedBy.StartsWith("Submitted by") &&
+                        !string.IsNullOrWhiteSpace(metadata.BlueskyHandle))
+                    {
+                        tootBody += $"\nSubmitted by {GetBlueskyLinkFromBlueskyHandle(metadata.BlueskyHandle)}";
+                    }
+                    else if (!string.IsNullOrWhiteSpace(metadata.ThreadsSubmittedBy) &&
+                        metadata.ThreadsSubmittedBy.StartsWith("Submitted by") &&
+                        !string.IsNullOrWhiteSpace(metadata.ThreadsUsername))
+                    {
+                        tootBody += $"\nSubmitted by {GetThreadsLinkFromThreadsUsername(metadata.ThreadsUsername)}";
+                    }
+                    else
+                    {
+                        tootBody += $"\n{metadata.MastodonSubmittedBy}";
+                    }
+                }
+                else
+                {
+                    tootBody += $"\nSubmission";
+                }
+
+                string skeetBody = postBody;
+                List<BskyFacet> facets = new List<BskyFacet>();
+                if (!string.IsNullOrWhiteSpace(metadata.BlueskySubmittedBy))
+                {
+                    if (metadata.BlueskySubmittedBy.StartsWith("Submitted by"))
+                    {
+                        string blueskyHandle = $"@{metadata.BlueskyHandle}";
+                        skeetBody += $"\nSubmitted by {blueskyHandle}";
+                        int handleStartIndex = skeetBody.IndexOf(blueskyHandle);
+
+                        facets.Add(new BskyFacet()
+                        {
+                            Index = new BskyByteSlice()
+                            {
+                                ByteStart = handleStartIndex,
+                                ByteEnd = handleStartIndex + blueskyHandle.Length
+                            },
+                            Features = new List<BskyFeature>()
                         {
                             new BskyMention()
                             {
                                 Did = metadata.BlueskyUserDid!
                             }
                         }
-                    });
-                }
-                else if (!string.IsNullOrWhiteSpace(metadata.TwitterSubmittedBy) &&
-                    metadata.TwitterSubmittedBy.StartsWith("Submitted by") &&
-                    !string.IsNullOrWhiteSpace(metadata.TwitterUsername))
-                {
-                    string twitterLink = GetTwitterLinkFromTwitterUsername(metadata.TwitterUsername);
-                    skeetBody += $"\nSubmitted by {twitterLink}";
-                    int linkStartIndex = skeetBody.IndexOf(twitterLink);
-
-                    facets.Add(new BskyFacet()
+                        });
+                    }
+                    else if (!string.IsNullOrWhiteSpace(metadata.TwitterSubmittedBy) &&
+                        metadata.TwitterSubmittedBy.StartsWith("Submitted by") &&
+                        !string.IsNullOrWhiteSpace(metadata.TwitterUsername))
                     {
-                        Index = new BskyByteSlice()
+                        string twitterLink = GetTwitterLinkFromTwitterUsername(metadata.TwitterUsername);
+                        skeetBody += $"\nSubmitted by {twitterLink}";
+                        int linkStartIndex = skeetBody.IndexOf(twitterLink);
+
+                        facets.Add(new BskyFacet()
                         {
-                            ByteStart = linkStartIndex,
-                            ByteEnd = linkStartIndex + twitterLink.Length
-                        },
-                        Features = new List<BskyFeature>()
+                            Index = new BskyByteSlice()
+                            {
+                                ByteStart = linkStartIndex,
+                                ByteEnd = linkStartIndex + twitterLink.Length
+                            },
+                            Features = new List<BskyFeature>()
                         {
                             new BskyLink()
                             {
                                 Uri = twitterLink
                             }
                         }
-                    });
-                }
-                else if (!string.IsNullOrWhiteSpace(metadata.MastodonSubmittedBy) &&
-                    metadata.MastodonSubmittedBy.StartsWith("Submitted by") &&
-                    !string.IsNullOrWhiteSpace(metadata.MastodonEndpoint) &&
-                    !string.IsNullOrWhiteSpace(metadata.MastodonUsername))
-                {
-                    string mastodonLink = GetMastodonLinkFromMastodonHandle(metadata.MastodonEndpoint, metadata.MastodonUsername);
-                    skeetBody += $"\nSubmitted by {mastodonLink}";
-                    int linkStartIndex = skeetBody.IndexOf(mastodonLink);
-
-                    facets.Add(new BskyFacet()
+                        });
+                    }
+                    else if (!string.IsNullOrWhiteSpace(metadata.MastodonSubmittedBy) &&
+                        metadata.MastodonSubmittedBy.StartsWith("Submitted by") &&
+                        !string.IsNullOrWhiteSpace(metadata.MastodonEndpoint) &&
+                        !string.IsNullOrWhiteSpace(metadata.MastodonUsername))
                     {
-                        Index = new BskyByteSlice()
+                        string mastodonLink = GetMastodonLinkFromMastodonHandle(metadata.MastodonEndpoint, metadata.MastodonUsername);
+                        skeetBody += $"\nSubmitted by {mastodonLink}";
+                        int linkStartIndex = skeetBody.IndexOf(mastodonLink);
+
+                        facets.Add(new BskyFacet()
                         {
-                            ByteStart = linkStartIndex,
-                            ByteEnd = linkStartIndex + mastodonLink.Length
-                        },
-                        Features = new List<BskyFeature>()
+                            Index = new BskyByteSlice()
+                            {
+                                ByteStart = linkStartIndex,
+                                ByteEnd = linkStartIndex + mastodonLink.Length
+                            },
+                            Features = new List<BskyFeature>()
                         {
                             new BskyLink()
                             {
                                 Uri = mastodonLink
                             }
                         }
-                    });
-                }
-                else if (!string.IsNullOrWhiteSpace(metadata.ThreadsSubmittedBy) &&
-                    metadata.ThreadsSubmittedBy.StartsWith("Submitted by") &&
-                    !string.IsNullOrWhiteSpace(metadata.ThreadsUsername))
-                {
-                    string threadsLink = GetThreadsLinkFromThreadsUsername(metadata.ThreadsUsername);
-                    skeetBody += $"\nSubmitted by {threadsLink}";
-                    int linkStartIndex = skeetBody.IndexOf(threadsLink);
-
-                    facets.Add(new BskyFacet()
+                        });
+                    }
+                    else if (!string.IsNullOrWhiteSpace(metadata.ThreadsSubmittedBy) &&
+                        metadata.ThreadsSubmittedBy.StartsWith("Submitted by") &&
+                        !string.IsNullOrWhiteSpace(metadata.ThreadsUsername))
                     {
-                        Index = new BskyByteSlice()
+                        string threadsLink = GetThreadsLinkFromThreadsUsername(metadata.ThreadsUsername);
+                        skeetBody += $"\nSubmitted by {threadsLink}";
+                        int linkStartIndex = skeetBody.IndexOf(threadsLink);
+
+                        facets.Add(new BskyFacet()
                         {
-                            ByteStart = linkStartIndex,
-                            ByteEnd = linkStartIndex + threadsLink.Length
-                        },
-                        Features = new List<BskyFeature>()
+                            Index = new BskyByteSlice()
+                            {
+                                ByteStart = linkStartIndex,
+                                ByteEnd = linkStartIndex + threadsLink.Length
+                            },
+                            Features = new List<BskyFeature>()
                         {
                             new BskyLink()
                             {
                                 Uri = threadsLink
                             }
                         }
-                    });
+                        });
+                    }
+                    else
+                    {
+                        skeetBody += $"\n{metadata.BlueskySubmittedBy}";
+                    }
                 }
                 else
                 {
-                    skeetBody += $"\n{metadata.BlueskySubmittedBy}";
+                    skeetBody += $"\nSubmission";
                 }
-            }
-            else
-            {
-                skeetBody += $"\nSubmission";
-            }
 
-            string threadsBody = postBody;
-            if (!string.IsNullOrWhiteSpace(metadata.ThreadsSubmittedBy))
-            {
-                if (metadata.ThreadsSubmittedBy.StartsWith("Submitted by"))
+                string threadsBody = postBody;
+                if (!string.IsNullOrWhiteSpace(metadata.ThreadsSubmittedBy))
                 {
-                    threadsBody += $"\n{metadata.ThreadsSubmittedBy}";
+                    if (metadata.ThreadsSubmittedBy.StartsWith("Submitted by"))
+                    {
+                        threadsBody += $"\n{metadata.ThreadsSubmittedBy}";
+                    }
+                    else if (!string.IsNullOrWhiteSpace(metadata.TwitterSubmittedBy) &&
+                        metadata.TwitterSubmittedBy.StartsWith("Submitted by") &&
+                        !string.IsNullOrWhiteSpace(metadata.TwitterUsername))
+                    {
+                        threadsBody += $"\nSubmitted by {GetTwitterLinkFromTwitterUsername(metadata.TwitterUsername)}";
+                    }
+                    else if (!string.IsNullOrWhiteSpace(metadata.MastodonSubmittedBy) &&
+                        metadata.MastodonSubmittedBy.StartsWith("Submitted by") &&
+                        !string.IsNullOrWhiteSpace(metadata.MastodonEndpoint) &&
+                        !string.IsNullOrWhiteSpace(metadata.MastodonUsername))
+                    {
+                        threadsBody += $"\nSubmitted by {GetMastodonLinkFromMastodonHandle(metadata.MastodonEndpoint, metadata.MastodonUsername)}";
+                    }
+                    else if (!string.IsNullOrWhiteSpace(metadata.BlueskySubmittedBy) &&
+                        metadata.BlueskySubmittedBy.StartsWith("Submitted by") &&
+                        !string.IsNullOrWhiteSpace(metadata.BlueskyHandle))
+                    {
+                        threadsBody += $"\nSubmitted by {GetBlueskyLinkFromBlueskyHandle(metadata.BlueskyHandle)}";
+                    }
+                    else
+                    {
+                        threadsBody += $"\n{metadata.ThreadsSubmittedBy}";
+                    }
                 }
-                else if (!string.IsNullOrWhiteSpace(metadata.TwitterSubmittedBy) &&
-                    metadata.TwitterSubmittedBy.StartsWith("Submitted by") &&
-                    !string.IsNullOrWhiteSpace(metadata.TwitterUsername))
+
+                List<BlobClient> photoBlobClients = new List<BlobClient>();
+                List<IImage> imgurUploads = new List<IImage>();
+                List<Stream> pictureStreams = new List<Stream>();
+
+                foreach (var d in data)
                 {
-                    threadsBody += $"\nSubmitted by {GetTwitterLinkFromTwitterUsername(metadata.TwitterUsername)}";
+                    if (mobileReport is not null)
+                    {
+                        pictureStreams.Add(new MemoryStream(mobileReport.Photos[d.PhotoNumber].Jpeg, writable: false));
+                        continue;
+                    }
+                    BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{d.PhotoId}.jpeg");
+                    photoBlobClients.Add(photoBlobClient);
+                    var photoDownload = await photoBlobClient.DownloadContentAsync();
+                    var photoBytes = photoDownload.Value.Content.ToArray();
+                    pictureStreams.Add(new MemoryStream(photoBytes));
                 }
-                else if (!string.IsNullOrWhiteSpace(metadata.MastodonSubmittedBy) &&
-                    metadata.MastodonSubmittedBy.StartsWith("Submitted by") &&
-                    !string.IsNullOrWhiteSpace(metadata.MastodonEndpoint) &&
-                    !string.IsNullOrWhiteSpace(metadata.MastodonUsername))
+
+                ReportedItem newReportedItem = new ReportedItem()
                 {
-                    threadsBody += $"\nSubmitted by {GetMastodonLinkFromMastodonHandle(metadata.MastodonEndpoint, metadata.MastodonUsername)}";
-                }
-                else if (!string.IsNullOrWhiteSpace(metadata.BlueskySubmittedBy) &&
-                    metadata.BlueskySubmittedBy.StartsWith("Submitted by") &&
-                    !string.IsNullOrWhiteSpace(metadata.BlueskyHandle))
+                    TweetId = $"{Guid.NewGuid()}.0",
+                    CreatedAt = DateTime.UtcNow,
+                    NumberOfCars = metadata.NumberOfCars!.Value,
+                    Date = DateOnly.FromDateTime(metadata.PhotoDateTime.Value),
+                    Time = TimeOnly.FromDateTime(metadata.PhotoDateTime.Value),
+                    LocationString = metadata.PhotoCrossStreet!,
+                    Location = new Microsoft.Azure.Cosmos.Spatial.Point(double.Parse(metadata.PhotoLongitude!), double.Parse(metadata.PhotoLatitude!)),
+                    TwitterLink = metadata.TwitterLink,
+                    Latest = true
+                };
+
+                List<ReportedItem> reportedItems = new List<ReportedItem>() { newReportedItem };
+
+                externalEffectsStarted = true;
+                List<string> imgurLinks = await UploadImagesToImgur(reportedItems, pictureStreams);
+                newReportedItem.ImgurUrls.AddRange(imgurUploads.Select(i => i.Link));
+
+                Task mastodonUploadTask = UploadPostToMastodon(mastodonClient, reportedItems, pictureStreams, tootBody, postBody);
+                Task blueskyUploadTask = UploadPostToBluesky(blueskyClient, reportedItems, pictureStreams, skeetBody, facets, postBody);
+                Task threadsUploadTask = UploadPostToThreads(threadsClient, reportedItems, imgurLinks, threadsBody);
+                await Task.WhenAll(mastodonUploadTask, blueskyUploadTask, threadsUploadTask);
+
+                bool addedToDatabase = await reportedItemsDatabase.AddReportedItem(newReportedItem);
+                if (!addedToDatabase)
                 {
-                    threadsBody += $"\nSubmitted by {GetBlueskyLinkFromBlueskyHandle(metadata.BlueskyHandle)}";
+                    logger.LogError($"Failed to add tweet to database: {newReportedItem.TweetId}");
+                    if (mobileReport is not null)
+                    {
+                        throw new IOException("The published report could not be recorded; retaining its photos.");
+                    }
                 }
-                else
+
+                await feedProvider.AddReportedItemToFeed(newReportedItem);
+
+                if (mobileReport is not null)
                 {
-                    threadsBody += $"\n{metadata.ThreadsSubmittedBy}";
+                    await mobileReports.RetireAsync(mobileReport.Receipt.ReportId, mobileReport.Moderation!.Id);
                 }
+                else foreach (var d in data)
+                {
+                    BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{d.PhotoId}.json");
+                    await metadataBlobClient.DeleteAsync();
+                }
+
+                foreach (var photoBlobClient in photoBlobClients)
+                {
+                    await photoBlobClient.DeleteAsync();
+                }
+
+                helperMethods.DisposePictureStreams(pictureStreams);
+
+                return NoContent();
             }
-
-            List<BlobClient> photoBlobClients = new List<BlobClient>();
-            List<IImage> imgurUploads = new List<IImage>();
-            List<Stream> pictureStreams = new List<Stream>();
-
-            foreach (var d in data)
+            catch
             {
-                BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{d.PhotoId}.jpeg");
-                photoBlobClients.Add(photoBlobClient);
-                var photoDownload = await photoBlobClient.DownloadContentAsync();
-                var photoBytes = photoDownload.Value.Content.ToArray();
-                pictureStreams.Add(new MemoryStream(photoBytes));
+                if (mobileReport is not null && !externalEffectsStarted)
+                    await mobileReports.ReleaseModerationAsync(mobileReport.Receipt.ReportId, mobileReport.Moderation!.Id);
+                throw;
             }
-
-            ReportedItem newReportedItem = new ReportedItem()
-            {
-                TweetId = $"{Guid.NewGuid()}.0",
-                CreatedAt = DateTime.UtcNow,
-                NumberOfCars = metadata.NumberOfCars!.Value,
-                Date = DateOnly.FromDateTime(metadata.PhotoDateTime.Value),
-                Time = TimeOnly.FromDateTime(metadata.PhotoDateTime.Value),
-                LocationString = metadata.PhotoCrossStreet!,
-                Location = new Microsoft.Azure.Cosmos.Spatial.Point(double.Parse(metadata.PhotoLongitude!), double.Parse(metadata.PhotoLatitude!)),
-                TwitterLink = metadata.TwitterLink,
-                Latest = true
-            };
-
-            List<ReportedItem> reportedItems = new List<ReportedItem>() { newReportedItem };
-
-            List<string> imgurLinks = await UploadImagesToImgur(reportedItems, pictureStreams);
-            newReportedItem.ImgurUrls.AddRange(imgurUploads.Select(i => i.Link));
-
-            Task mastodonUploadTask = UploadPostToMastodon(mastodonClient, reportedItems, pictureStreams, tootBody, postBody);
-            Task blueskyUploadTask = UploadPostToBluesky(blueskyClient, reportedItems, pictureStreams, skeetBody, facets, postBody);
-            Task threadsUploadTask = UploadPostToThreads(threadsClient, reportedItems, imgurLinks, threadsBody);
-            await Task.WhenAll(mastodonUploadTask, blueskyUploadTask, threadsUploadTask);
-
-            bool addedToDatabase = await reportedItemsDatabase.AddReportedItem(newReportedItem);
-            if (!addedToDatabase)
-            {
-                logger.LogError($"Failed to add tweet to database: {newReportedItem.TweetId}");
-            }
-
-            await feedProvider.AddReportedItemToFeed(newReportedItem);
-
-            foreach (var d in data)
-            {
-                BlobClient metadataBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{d.PhotoId}.json");
-                await metadataBlobClient.DeleteAsync();
-            }
-
-            foreach (var photoBlobClient in photoBlobClients)
-            {
-                await photoBlobClient.DeleteAsync();
-            }
-
-            helperMethods.DisposePictureStreams(pictureStreams);
-
-            return NoContent();
         }
 
         [HttpDelete("/api/AdminPage/DeletePendingPhoto")]
@@ -447,6 +502,14 @@ namespace SeattleCarsInBikeLanes.Controllers
                 throw new Exception("Must pass at least 1 metadata object.");
             }
 
+            SubmissionReport? mobileReport = await GetMobileModerationReportAsync(data, "deleting");
+            if (mobileReport is not null)
+            {
+                await mobileReports.RetireAsync(mobileReport.Receipt.ReportId, mobileReport.Moderation!.Id);
+                Response.StatusCode = (int)HttpStatusCode.NoContent;
+                return;
+            }
+
             foreach (var metadata in data)
             {
                 BlobClient photoBlobClient = blobContainerClient.GetBlobClient($"{UploadController.FinalizedUploadPrefix}{metadata.PhotoId}.jpeg");
@@ -455,6 +518,31 @@ namespace SeattleCarsInBikeLanes.Controllers
                 await metadataBlobClient.DeleteAsync();
             }
             Response.StatusCode = (int)HttpStatusCode.NoContent;
+        }
+
+        private async Task<SubmissionReport?> GetMobileModerationReportAsync(List<FinalizedPhotoUploadMetadata> data, string operation)
+        {
+            if (data.All(photo => photo.ReportId is null))
+            {
+                // A canonical mobile key cannot be routed through the legacy blob layout.
+                if (data.Any(photo => photo.PhotoId.Length > 32 &&
+                    SubmissionClaimProvider.IsValidReportId(photo.PhotoId[..32])))
+                {
+                    throw new InvalidDataException("A mobile report requires its report ID.");
+                }
+                return null;
+            }
+            string id = data[0].ReportId ?? throw new InvalidDataException("Mixed report layouts.");
+            SubmissionReport report = await mobileReports.GetForModerationAsync(id);
+            if (data.Count != report.Photos.Count ||
+                data.Select(photo => photo.PhotoNumber).Distinct().Count() != data.Count ||
+                data.Any(photo => photo.ReportId != id || photo.SubmissionId != report.Receipt.SubmissionId ||
+                    photo.PhotoNumber < 0 || photo.PhotoNumber >= report.Photos.Count ||
+                    photo.PhotoId != report.Photos[photo.PhotoNumber].Metadata.PhotoId))
+            {
+                throw new InvalidDataException("Moderation requires the complete canonical mobile report.");
+            }
+            return await mobileReports.BeginModerationAsync(id, operation);
         }
 
         [HttpPost("/api/AdminPage/PostTweet")]
@@ -706,59 +794,59 @@ namespace SeattleCarsInBikeLanes.Controllers
                 switch (success.Posts[0].Embed)
                 {
                     case ViewRecordDef viewRecordDef:
-                    {
-                        switch (viewRecordDef.Record)
                         {
-                            case ViewRecord viewRecord:
+                            switch (viewRecordDef.Record)
                             {
-                                if (viewRecord.Embeds is null || viewRecord.Embeds.Count == 0)
-                                {
-                                    return BadRequest("No embeds found in skeet.");
-                                }
-                                switch (viewRecord.Embeds[0])
-                                {
-                                    case ViewImages viewImages:
+                                case ViewRecord viewRecord:
                                     {
-                                        imageLinks = viewImages.Images.Select(i => i.Fullsize).ToList();
-                                        break;
-                                    }
-                                    case ViewRecordWithMedia viewRecordWithMedia:
-                                    {
-                                        ViewImages? recordMediaImages = viewRecordWithMedia.Media as ViewImages;
-                                        if (recordMediaImages == null)
+                                        if (viewRecord.Embeds is null || viewRecord.Embeds.Count == 0)
                                         {
-                                            logger.LogError($"Media embedded in record is not a type ViewImages for post {request.PostUrl}");
-                                            return BadRequest("Media embedded in record is not a type ViewImages");
+                                            return BadRequest("No embeds found in skeet.");
                                         }
-                                        imageLinks = recordMediaImages.Images.Select(i => i.Fullsize).ToList();
+                                        switch (viewRecord.Embeds[0])
+                                        {
+                                            case ViewImages viewImages:
+                                                {
+                                                    imageLinks = viewImages.Images.Select(i => i.Fullsize).ToList();
+                                                    break;
+                                                }
+                                            case ViewRecordWithMedia viewRecordWithMedia:
+                                                {
+                                                    ViewImages? recordMediaImages = viewRecordWithMedia.Media as ViewImages;
+                                                    if (recordMediaImages == null)
+                                                    {
+                                                        logger.LogError($"Media embedded in record is not a type ViewImages for post {request.PostUrl}");
+                                                        return BadRequest("Media embedded in record is not a type ViewImages");
+                                                    }
+                                                    imageLinks = recordMediaImages.Images.Select(i => i.Fullsize).ToList();
+                                                    break;
+                                                }
+                                            default:
+                                                break;
+                                        }
                                         break;
                                     }
-                                    default:
-                                        break;
-                                }
-                                break;
+                                default:
+                                    break;
                             }
-                            default:
-                                break;
+                            break;
                         }
-                        break;
-                    }
                     case ViewImages viewImages:
-                    {
-                        imageLinks = viewImages.Images.Select(i => i.Fullsize).ToList();
-                        break;
-                    }
-                    case ViewRecordWithMedia viewRecordWithMedia:
-                    {
-                        ViewImages? recordMediaImages = viewRecordWithMedia.Media as ViewImages;
-                        if (recordMediaImages == null)
                         {
-                            logger.LogError($"Media embedded in record is not a type ViewImages for post {request.PostUrl}");
-                            return BadRequest("Media embedded in record is not a type ViewImages");
+                            imageLinks = viewImages.Images.Select(i => i.Fullsize).ToList();
+                            break;
                         }
-                        imageLinks = recordMediaImages.Images.Select(i => i.Fullsize).ToList();
-                        break;
-                    }
+                    case ViewRecordWithMedia viewRecordWithMedia:
+                        {
+                            ViewImages? recordMediaImages = viewRecordWithMedia.Media as ViewImages;
+                            if (recordMediaImages == null)
+                            {
+                                logger.LogError($"Media embedded in record is not a type ViewImages for post {request.PostUrl}");
+                                return BadRequest("Media embedded in record is not a type ViewImages");
+                            }
+                            imageLinks = recordMediaImages.Images.Select(i => i.Fullsize).ToList();
+                            break;
+                        }
                     default:
                         logger.LogError($"Unexpected Bluesky embed type {success.Posts[0].Embed!.Type} on post {request.PostUrl}");
                         break;
@@ -1823,6 +1911,7 @@ namespace SeattleCarsInBikeLanes.Controllers
 
         public class FinalizedPhotoUploadWithSasUriMetadata : FinalizedPhotoUploadMetadata
         {
+            public string? ModerationStatus { get; set; }
             public string? Uri { get; set; }
 
             // Here because of bug when trying to deserialize values types to nullable value type properties

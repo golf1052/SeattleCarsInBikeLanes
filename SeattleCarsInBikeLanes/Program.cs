@@ -21,6 +21,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Cosmos.Spatial;
+using Microsoft.Extensions.Caching.Memory;
 using SeattleCarsInBikeLanes.Database;
 using SeattleCarsInBikeLanes.GuessGame;
 using SeattleCarsInBikeLanes.Models;
@@ -164,6 +165,11 @@ namespace SeattleCarsInBikeLanes
             // Setup services
             var services = builder.Services;
             services.AddSingleton<HttpClient>();
+            services.AddSingleton(_ => new MastodonCredentialVerifier(new HttpClient(new HttpClientHandler
+            {
+                AllowAutoRedirect = false,
+                UseCookies = false
+            })));
             services.AddSingleton<HelperMethods>();
             services.AddSingleton<StatusResponse>();
             services.AddSingleton<DefaultAzureCredential>(c =>
@@ -295,6 +301,18 @@ namespace SeattleCarsInBikeLanes
             });
             services.AddSingleton(c =>
             {
+                return new DeviceBlocklistProvider(c.GetRequiredService<ILogger<DeviceBlocklistProvider>>(),
+                    c.GetRequiredService<BlobContainerClient>(),
+                    c.GetRequiredService<IMemoryCache>());
+            });
+            services.AddSingleton(c =>
+            {
+                return new SubmissionClaimProvider(
+                    c.GetRequiredService<ILogger<SubmissionClaimProvider>>(),
+                    c.GetRequiredService<BlobContainerClient>());
+            });
+            services.AddSingleton(c =>
+            {
                 return new BlueskyClientProvider(c.GetRequiredService<ILogger<BlueskyClientProvider>>(),
                     c.GetRequiredService<SecretClient>(),
                     c.GetRequiredService<HttpClient>());
@@ -356,5 +374,3 @@ namespace SeattleCarsInBikeLanes
         }
     }
 }
-
-

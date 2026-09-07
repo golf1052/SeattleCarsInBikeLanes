@@ -1,0 +1,839 @@
+using CoreLocation;
+using Foundation;
+using ImageIO;
+using Microsoft.Extensions.Logging;
+using Photos;
+using PhotosUI;
+using SeattleCarsInBikeLanes.Mobile.Core.Metadata;
+using SeattleCarsInBikeLanes.Mobile.Core.Models;
+using SeattleCarsInBikeLanes.Mobile.Services;
+using UIKit;
+using UniformTypeIdentifiers;
+
+namespace SeattleCarsInBikeLanes.Platforms.iOS;
+
+/// <summary>
+/// The Photos library, which is the app's only photo storage.
+/// </summary>
+public sealed class PhotoLibraryService : IPhotoLibraryService
+{
+    /// <summary>
+    /// The album captured photos are filed into.
+    /// </summary>
+    /// <remarks>
+    /// There is no API to ask for "assets this app created", so an album is how the app recognises
+    /// its own photos later. It also means the user can find and manage them in Photos.
+    /// </remarks>
+    public const string AlbumTitle = "Cars in Bike Lanes";
+
+    /// <summary>
+    /// Identifies edits this app made, so they can be told apart from another app's adjustments.
+    /// </summary>
+    private const string AdjustmentFormatIdentifier = "com.golf1052.SeattleCarsInBikeLanes.uploadState";
+
+    private const string AdjustmentFormatVersion = "1.0";
+
+    /// <summary>
+    /// How much of a photo to pull before giving up on finding its XMP.
+    /// </summary>
+    /// <remarks>
+    /// XMP lives near the front of a JPEG. This is a backstop for a file whose structure we cannot
+    /// make sense of, so a single odd photo cannot pull its whole multi megabyte self into memory.
+    /// </remarks>
+    private const int MaxUploadStateScanBytes = 1024 * 1024;
+
+    private readonly ILogger<PhotoLibraryService> logger;
+    private readonly object pickerDelegateGate = new object();
+    private readonly HashSet<PickerDelegate> activePickerDelegates = new HashSet<PickerDelegate>();
+
+    public PhotoLibraryService(ILogger<PhotoLibraryService> logger)
+    {
+        this.logger = logger;
+    }
+
+    public bool SupportsWritingUploadState => true;
+
+    public bool ConfirmsCapturedPhotoDeletion => true;
+
+    public Task<PhotoLibraryAccess> CheckAccessAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(MapAccess(
+            PHPhotoLibrary.GetAuthorizationStatus(PHAccessLevel.ReadWrite)));
+    }
+
+    public Task<PhotoLibraryAccess> RequestAccessAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        TaskCompletionSource<PhotoLibraryAccess> completion = new TaskCompletionSource<PhotoLibraryAccess>();
+
+        PHPhotoLibrary.RequestAuthorization(PHAccessLevel.ReadWrite, status =>
+        {
+            completion.TrySetResult(MapAccess(status));
+        });
+
+        return completion.Task;
+    }
+
+    private static PhotoLibraryAccess MapAccess(PHAuthorizationStatus status) => status switch
+    {
+        PHAuthorizationStatus.NotDetermined => PhotoLibraryAccess.NotDetermined,
+        PHAuthorizationStatus.Authorized => PhotoLibraryAccess.Granted,
+        PHAuthorizationStatus.Limited => PhotoLibraryAccess.Limited,
+        _ => PhotoLibraryAccess.Denied
+    };
+
+    public Task<string?> SaveCapturedPhotoAsync(byte[] jpeg, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(jpeg);
+
+        TaskCompletionSource<string?> completion = new TaskCompletionSource<string?>();
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                PHAssetCollection? album = await GetOrCreateAlbumAsync();
+                string? placeholderIdentifier = null;
+
+                PHPhotoLibrary.SharedPhotoLibrary.PerformChanges(() =>
+                {
+                    PHAssetCreationRequest creationRequest = PHAssetCreationRequest.CreationRequestForAsset();
+                    creationRequest.AddResource(PHAssetResourceType.Photo, NSData.FromArray(jpeg), null);
+
+                    PHObjectPlaceholder? placeholder = creationRequest.PlaceholderForCreatedAsset;
+                    placeholderIdentifier = placeholder?.LocalIdentifier;
+
+                    if (album is not null && placeholder is not null)
+                    {
+                        PHAssetCollectionChangeRequest? albumRequest =
+                            PHAssetCollectionChangeRequest.ChangeRequest(album);
+                        albumRequest?.AddAssets(new PHObject[] { placeholder });
+                    }
+                }, (success, error) =>
+                {
+                    if (!success)
+                    {
+                        logger.LogError("Failed to save a captured photo. {Error}", error?.LocalizedDescription);
+                        completion.TrySetResult(null);
+                        return;
+                    }
+
+                    completion.TrySetResult(placeholderIdentifier);
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to save a captured photo.");
+                completion.TrySetResult(null);
+            }
+        }, cancellationToken);
+
+        return completion.Task;
+    }
+
+    public async Task<IReadOnlyList<PhotoAsset>> GetCapturedPhotosAsync(int limit,
+        CancellationToken cancellationToken = default)
+    {
+        PHAssetCollection? album = await GetOrCreateAlbumAsync();
+        if (album is null)
+        {
+            return Array.Empty<PhotoAsset>();
+        }
+
+        PHFetchOptions options = new PHFetchOptions()
+        {
+            SortDescriptors = new[] { new NSSortDescriptor("creationDate", ascending: false) },
+            Predicate = NSPredicate.FromFormat("mediaType == %d", NSNumber.FromInt32((int)PHAssetMediaType.Image))
+        };
+
+        if (limit > 0)
+        {
+            options.FetchLimit = (nuint)limit;
+        }
+
+        PHFetchResult result = PHAsset.FetchAssets(album, options);
+        return ToPhotoAssets(result);
+    }
+
+    public Task<IReadOnlyList<PhotoAsset>> GetPhotosAsync(IReadOnlyList<string> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        if (ids.Count == 0)
+        {
+            return Task.FromResult<IReadOnlyList<PhotoAsset>>(Array.Empty<PhotoAsset>());
+        }
+
+        PHFetchResult result = PHAsset.FetchAssetsUsingLocalIdentifiers(ids.ToArray(), null);
+        PHAssetCollection? album = FindAlbum();
+        HashSet<string> owned = album is null ? [] : PHAsset.FetchAssets(album, null)
+            .OfType<PHAsset>().Select(asset => asset.LocalIdentifier).ToHashSet(StringComparer.Ordinal);
+        IReadOnlyList<PhotoAsset> assets = ToPhotoAssets(result)
+            .Select(asset => asset with { IsAppOwned = owned.Contains(asset.Id) }).ToArray();
+
+        // Fetching by identifier does not preserve the order that was asked for, and silently drops
+        // anything the user has since deleted.
+        Dictionary<string, PhotoAsset> byId = assets.ToDictionary(asset => asset.Id, StringComparer.Ordinal);
+        List<PhotoAsset> ordered = new List<PhotoAsset>(assets.Count);
+        foreach (string id in ids)
+        {
+            if (byId.TryGetValue(id, out PhotoAsset? asset))
+            {
+                ordered.Add(asset);
+            }
+        }
+
+        return Task.FromResult<IReadOnlyList<PhotoAsset>>(ordered);
+    }
+
+    public Task<byte[]?> GetThumbnailAsync(string id, int pixelSize, CancellationToken cancellationToken = default)
+    {
+        PHAsset? asset = FindAsset(id);
+        if (asset is null)
+        {
+            return Task.FromResult<byte[]?>(null);
+        }
+
+        TaskCompletionSource<byte[]?> completion = new TaskCompletionSource<byte[]?>();
+
+        PHImageRequestOptions options = new PHImageRequestOptions()
+        {
+            NetworkAccessAllowed = true,
+            DeliveryMode = PHImageRequestOptionsDeliveryMode.Opportunistic,
+            ResizeMode = PHImageRequestOptionsResizeMode.Fast
+        };
+
+        PHImageManager.DefaultManager.RequestImageForAsset(asset,
+            new CoreGraphics.CGSize(pixelSize, pixelSize),
+            PHImageContentMode.AspectFill,
+            options,
+            (image, info) =>
+            {
+                // Opportunistic delivery calls back more than once, first with a low quality
+                // placeholder. Only the last call is worth keeping, and TrySetResult ignores the
+                // rest.
+                bool isDegraded = info?[PHImageKeys.ResultIsDegraded] is NSNumber degraded && degraded.BoolValue;
+                if (isDegraded)
+                {
+                    return;
+                }
+
+                using NSData? jpeg = image?.AsJPEG(0.8f);
+                completion.TrySetResult(jpeg?.ToArray());
+            });
+
+        return completion.Task;
+    }
+
+    public Task<byte[]?> GetPhotoDataAsync(string id, CancellationToken cancellationToken = default)
+    {
+        PHAsset? asset = FindAsset(id);
+        if (asset is null)
+        {
+            return Task.FromResult<byte[]?>(null);
+        }
+
+        TaskCompletionSource<byte[]?> completion = new TaskCompletionSource<byte[]?>();
+
+        PHImageRequestOptions options = new PHImageRequestOptions()
+        {
+            NetworkAccessAllowed = true,
+            DeliveryMode = PHImageRequestOptionsDeliveryMode.HighQualityFormat,
+            Version = PHImageRequestOptionsVersion.Current
+        };
+
+        PHImageManager.DefaultManager.RequestImageDataAndOrientation(asset, options, (data, _, _, _) =>
+        {
+            completion.TrySetResult(data?.ToArray());
+        });
+
+        return completion.Task;
+    }
+
+    /// <summary>
+    /// Streams the front of the photo and stops as soon as the answer is known.
+    /// </summary>
+    /// <remarks>
+    /// The photo roll asks this for every visible photo. Pulling whole multi megabyte originals for
+    /// a single boolean would make scrolling unusable, so this cancels the transfer the moment the
+    /// scanner has seen enough.
+    /// </remarks>
+    public Task<XmpUploadState> ReadUploadStateAsync(string id, CancellationToken cancellationToken = default)
+    {
+        PHAsset? asset = FindAsset(id);
+        if (asset is null)
+        {
+            return Task.FromResult(XmpUploadState.NotUploaded);
+        }
+
+        PHAssetResource? resource = SeattleCarsInBikeLanes.Mobile.Core.Photos.PhotoRenditionPolicy.SelectCurrent(
+            PHAssetResource.GetAssetResources(asset),
+            r => r.ResourceType == PHAssetResourceType.FullSizePhoto,
+            r => r.ResourceType == PHAssetResourceType.Photo);
+
+        if (resource is null)
+        {
+            throw new IOException("The current photo resource is unavailable.");
+        }
+
+        TaskCompletionSource<XmpUploadState> completion = new TaskCompletionSource<XmpUploadState>();
+        MemoryStream buffer = new MemoryStream();
+        object bufferLock = new object();
+
+        // The data handler can run before RequestData has returned, so the request id may not exist
+        // yet at the moment we decide to stop. cancelPending records that a cancel is owed so it can
+        // be issued once the id is known. Everything here is touched from both PhotoKit's queue and
+        // this one, so it is all read and written under bufferLock.
+        int requestId = 0;
+        bool finished = false;
+        bool cancelPending = false;
+
+        PHAssetResourceRequestOptions options = new PHAssetResourceRequestOptions()
+        {
+            NetworkAccessAllowed = true
+        };
+
+        void Finish(XmpUploadState state, Exception? error = null)
+        {
+            int idToCancel = 0;
+            lock (bufferLock)
+            {
+                if (finished)
+                {
+                    return;
+                }
+
+                finished = true;
+                buffer.Dispose();
+
+                if (requestId != 0)
+                {
+                    idToCancel = requestId;
+                }
+                else
+                {
+                    cancelPending = true;
+                }
+            }
+
+            if (idToCancel != 0)
+            {
+                PHAssetResourceManager.DefaultManager.CancelDataRequest(idToCancel);
+            }
+
+            if (error is OperationCanceledException)
+            {
+                completion.TrySetCanceled(cancellationToken);
+            }
+            else if (error is not null)
+            {
+                completion.TrySetException(error);
+            }
+            else
+            {
+                completion.TrySetResult(state);
+            }
+        }
+
+        int startedRequestId = PHAssetResourceManager.DefaultManager.RequestData(resource, options, data =>
+        {
+            XmpUploadState? resolved = null;
+
+            lock (bufferLock)
+            {
+                if (finished)
+                {
+                    return;
+                }
+
+                byte[] chunk = data.ToArray();
+                buffer.Write(chunk, 0, chunk.Length);
+                buffer.Position = 0;
+
+                JpegScanOutcome outcome = JpegSegmentScanner.TryFindXmpPacket(buffer, out byte[]? packet);
+                buffer.Position = buffer.Length;
+
+                if (outcome == JpegScanOutcome.Found)
+                {
+                    resolved = CarsInBikeLanesXmp.Read(CarsInBikeLanesXmp.TryParse(packet!));
+                }
+                else if (outcome != JpegScanOutcome.Incomplete || buffer.Length >= MaxUploadStateScanBytes)
+                {
+                    resolved = XmpUploadState.NotUploaded;
+                }
+            }
+
+            if (resolved.HasValue)
+            {
+                Finish(resolved.Value);
+            }
+        }, error =>
+        {
+            if (error is not null)
+            {
+                logger.LogDebug("Reading the upload state for {Id} ended with {Error}.",
+                    id, error.LocalizedDescription);
+            }
+
+            Finish(XmpUploadState.NotUploaded, error is null ? null :
+                new IOException("The current photo resource could not be read."));
+        });
+
+        bool cancelNow;
+        lock (bufferLock)
+        {
+            requestId = startedRequestId;
+            cancelNow = cancelPending;
+        }
+
+        if (cancelNow)
+        {
+            // The scan finished from the very first chunk, which is the common case, so the rest of
+            // the transfer is only now cancellable.
+            PHAssetResourceManager.DefaultManager.CancelDataRequest(startedRequestId);
+        }
+
+        return AwaitReadAsync();
+
+        async Task<XmpUploadState> AwaitReadAsync()
+        {
+            using CancellationTokenRegistration registration = cancellationToken.Register(() =>
+                Finish(default, new OperationCanceledException(cancellationToken)));
+            return await completion.Task;
+        }
+    }
+
+    public async Task<bool> WriteUploadStateAsync(string id,
+        XmpUploadState state,
+        CancellationToken cancellationToken = default)
+    {
+        await metadataWrites.WaitAsync(cancellationToken);
+        try { return await WriteUploadStateCoreAsync(id, state, cancellationToken); }
+        finally { metadataWrites.Release(); }
+    }
+
+    private static readonly SemaphoreSlim metadataWrites = new SemaphoreSlim(1, 1);
+
+    private async Task<bool> WriteUploadStateCoreAsync(string id,
+        XmpUploadState state,
+        CancellationToken cancellationToken)
+    {
+        PHAsset? asset = FindAsset(id);
+        if (asset is null)
+        {
+            return false;
+        }
+
+        using PHContentEditingInput? input = await RequestContentEditingInputAsync(asset);
+        if (input?.FullSizeImageUrl is null)
+        {
+            logger.LogWarning("Could not open {Id} for editing, so its upload state was not written.", id);
+            return false;
+        }
+
+        try
+        {
+            byte[] original = File.ReadAllBytes(input.FullSizeImageUrl.Path!);
+            byte[] updated = JpegXmpEditor.SetUploadState(original, state);
+
+            using PHContentEditingOutput output = new PHContentEditingOutput(input)
+            {
+                AdjustmentData = new PHAdjustmentData(AdjustmentFormatIdentifier,
+                    AdjustmentFormatVersion,
+                    NSData.FromString(state.Uploaded ? "uploaded" : "notUploaded"))
+            };
+
+            cancellationToken.ThrowIfCancellationRequested();
+            File.WriteAllBytes(output.RenderedContentUrl.Path!, updated);
+
+            TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>();
+            PHPhotoLibrary.SharedPhotoLibrary.PerformChanges(() =>
+            {
+                PHAssetChangeRequest request = PHAssetChangeRequest.ChangeRequest(asset);
+                request.ContentEditingOutput = output;
+            }, (success, error) =>
+            {
+                if (!success)
+                {
+                    logger.LogWarning("Failed to write the upload state for {Id}. {Error}",
+                        id, error?.LocalizedDescription);
+                }
+
+                completion.TrySetResult(success);
+            });
+
+            return await completion.Task &&
+                await ReadUploadStateAsync(id, cancellationToken) == state;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to write the upload state for {Id}.", id);
+            return false;
+        }
+    }
+
+    public Task<IReadOnlyList<PickedPhoto>> PickPhotosAsync(
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        UIViewController? presenter = GetPresentingViewController();
+        if (presenter is null)
+        {
+            return Task.FromResult<IReadOnlyList<PickedPhoto>>(Array.Empty<PickedPhoto>());
+        }
+
+        bool copySelections =
+            PHPhotoLibrary.GetAuthorizationStatus(PHAccessLevel.ReadWrite) !=
+            PHAuthorizationStatus.Authorized;
+        PHPickerConfiguration configuration = new PHPickerConfiguration(PHPhotoLibrary.SharedPhotoLibrary)
+        {
+            Filter = PHPickerFilter.ImagesFilter,
+            SelectionLimit = limit
+        };
+
+        TaskCompletionSource<IReadOnlyList<PickedPhoto>> completion =
+            new TaskCompletionSource<IReadOnlyList<PickedPhoto>>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        PickerDelegate pickerDelegate = new PickerDelegate(
+            completion,
+            copySelections,
+            cancellationToken,
+            logger,
+            ReleasePickerDelegate);
+        PHPickerViewController picker = new PHPickerViewController(configuration)
+        {
+            Delegate = pickerDelegate
+        };
+
+        lock (pickerDelegateGate)
+        {
+            activePickerDelegates.Add(pickerDelegate);
+        }
+
+        try
+        {
+            presenter.PresentViewController(picker, animated: true, completionHandler: null);
+        }
+        catch
+        {
+            ReleasePickerDelegate(pickerDelegate);
+            throw;
+        }
+
+        return completion.Task;
+    }
+
+    private void ReleasePickerDelegate(PickerDelegate pickerDelegate)
+    {
+        lock (pickerDelegateGate)
+        {
+            activePickerDelegates.Remove(pickerDelegate);
+        }
+    }
+
+    public Task ReleasePhotoAccessAsync(IReadOnlyList<string> ids,
+        CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
+    /// <summary>
+    /// Deletes assets, letting PhotoKit put up its own confirmation.
+    /// </summary>
+    /// <remarks>
+    /// iOS always asks the user before an app deletes a photo, even one the app created, so the app
+    /// deliberately does not add a second confirmation of its own. Declining shows up here as a
+    /// failed change request, which is why nothing is removed from the roll until this says so.
+    /// </remarks>
+    public Task<bool> DeletePhotosAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        if (ids.Count == 0)
+        {
+            return Task.FromResult(true);
+        }
+
+        PHFetchResult assets = PHAsset.FetchAssetsUsingLocalIdentifiers(ids.ToArray(), null);
+        PHAsset[] found = assets.OfType<PHAsset>().ToArray();
+        if (found.Length == 0)
+        {
+            // Already gone, which is the state the caller was asking for.
+            return Task.FromResult(true);
+        }
+
+        TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>();
+
+        PHPhotoLibrary.SharedPhotoLibrary.PerformChanges(
+            () => PHAssetChangeRequest.DeleteAssets(found),
+            (success, error) =>
+            {
+                if (!success)
+                {
+                    logger.LogInformation("Deleting {Count} photo(s) did not go through. {Error}",
+                        ids.Count, error?.LocalizedDescription);
+                }
+
+                completion.TrySetResult(success);
+            });
+
+        return completion.Task;
+    }
+
+    private static IReadOnlyList<PhotoAsset> ToPhotoAssets(PHFetchResult result)
+    {
+        List<PhotoAsset> assets = new List<PhotoAsset>((int)result.Count);
+        foreach (PHAsset asset in result.OfType<PHAsset>())
+        {
+            DateTimeOffset? createdAt = asset.CreationDate is null
+                ? null
+                : (DateTimeOffset)(DateTime)asset.CreationDate;
+
+            GeoPosition? location = null;
+            if (asset.Location is CLLocation clLocation)
+            {
+                location = new GeoPosition(clLocation.Coordinate.Latitude, clLocation.Coordinate.Longitude);
+            }
+
+            assets.Add(new PhotoAsset(asset.LocalIdentifier, createdAt, location));
+        }
+
+        return assets;
+    }
+
+    private static PHAsset? FindAsset(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return null;
+        }
+
+        return PHAsset.FetchAssetsUsingLocalIdentifiers(new[] { id }, null).OfType<PHAsset>().FirstOrDefault();
+    }
+
+    private static Task<PHContentEditingInput?> RequestContentEditingInputAsync(PHAsset asset)
+    {
+        TaskCompletionSource<PHContentEditingInput?> completion =
+            new TaskCompletionSource<PHContentEditingInput?>();
+
+        PHContentEditingInputRequestOptions options = new PHContentEditingInputRequestOptions()
+        {
+            NetworkAccessAllowed = true,
+
+            CanHandleAdjustmentData = _ =>
+                SeattleCarsInBikeLanes.Mobile.Core.Photos.PhotoRenditionPolicy.CanReconstructAdjustments
+        };
+
+        asset.RequestContentEditingInput(options, (input, _) => completion.TrySetResult(input));
+        return completion.Task;
+    }
+
+    private async Task<PHAssetCollection?> GetOrCreateAlbumAsync()
+    {
+        PHAssetCollection? existing = FindAlbum();
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>();
+        PHPhotoLibrary.SharedPhotoLibrary.PerformChanges(
+            () => PHAssetCollectionChangeRequest.CreateAssetCollection(AlbumTitle),
+            (success, error) =>
+            {
+                if (!success)
+                {
+                    logger.LogError("Failed to create the {Album} album. {Error}",
+                        AlbumTitle, error?.LocalizedDescription);
+                }
+
+                completion.TrySetResult(success);
+            });
+
+        return await completion.Task ? FindAlbum() : null;
+    }
+
+    private static PHAssetCollection? FindAlbum()
+    {
+        PHFetchOptions options = new PHFetchOptions()
+        {
+            Predicate = NSPredicate.FromFormat("title = %@", new NSString(AlbumTitle))
+        };
+
+        return PHAssetCollection.FetchAssetCollections(PHAssetCollectionType.Album,
+            PHAssetCollectionSubtype.AlbumRegular,
+            options).OfType<PHAssetCollection>().FirstOrDefault();
+    }
+
+    private static UIViewController? GetPresentingViewController()
+    {
+        UIWindow? window = UIApplication.SharedApplication.ConnectedScenes
+            .OfType<UIWindowScene>()
+            .SelectMany(scene => scene.Windows)
+            .FirstOrDefault(w => w.IsKeyWindow);
+
+        UIViewController? controller = window?.RootViewController;
+        while (controller?.PresentedViewController is not null)
+        {
+            controller = controller.PresentedViewController;
+        }
+
+        return controller;
+    }
+
+    private sealed class PickerDelegate : PHPickerViewControllerDelegate
+    {
+        private readonly TaskCompletionSource<IReadOnlyList<PickedPhoto>> completion;
+        private readonly bool copySelections;
+        private readonly CancellationToken cancellationToken;
+        private readonly ILogger logger;
+        private readonly Action<PickerDelegate> release;
+
+        public PickerDelegate(
+            TaskCompletionSource<IReadOnlyList<PickedPhoto>> completion,
+            bool copySelections,
+            CancellationToken cancellationToken,
+            ILogger logger,
+            Action<PickerDelegate> release)
+        {
+            this.completion = completion;
+            this.copySelections = copySelections;
+            this.cancellationToken = cancellationToken;
+            this.logger = logger;
+            this.release = release;
+        }
+
+        public override void DidFinishPicking(PHPickerViewController picker, PHPickerResult[] results)
+        {
+            picker.DismissViewController(animated: true, completionHandler: null);
+            _ = CompleteAsync(results);
+        }
+
+        private async Task CompleteAsync(PHPickerResult[] results)
+        {
+            try
+            {
+                List<PickedPhoto> selected = new List<PickedPhoto>(results.Length);
+                foreach (PHPickerResult result in results)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (!copySelections && !string.IsNullOrWhiteSpace(result.AssetIdentifier))
+                    {
+                        selected.Add(new PickedPhoto(result.AssetIdentifier, null));
+                        continue;
+                    }
+
+                    byte[]? jpeg = await LoadJpegAsync(result.ItemProvider, cancellationToken);
+                    if (jpeg is not null)
+                    {
+                        selected.Add(new PickedPhoto(null, jpeg));
+                    }
+                }
+
+                completion.TrySetResult(selected);
+            }
+            catch (OperationCanceledException)
+            {
+                completion.TrySetCanceled(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to read photos returned by the iOS picker.");
+                completion.TrySetException(ex);
+            }
+            finally
+            {
+                release(this);
+            }
+        }
+
+        private static async Task<byte[]?> LoadJpegAsync(
+            NSItemProvider provider,
+            CancellationToken cancellationToken)
+        {
+            byte[]? jpeg = await LoadRepresentationAsync(
+                provider,
+                UTTypes.Jpeg.Identifier,
+                cancellationToken);
+            if (jpeg is not null)
+            {
+                return jpeg;
+            }
+
+            byte[]? image = await LoadRepresentationAsync(
+                provider,
+                UTTypes.Image.Identifier,
+                cancellationToken);
+            return image is null ? null : ConvertToJpeg(image);
+        }
+
+        private static Task<byte[]?> LoadRepresentationAsync(
+            NSItemProvider provider,
+            string typeIdentifier,
+            CancellationToken cancellationToken)
+        {
+            TaskCompletionSource<byte[]?> completion =
+                new TaskCompletionSource<byte[]?>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+
+            NSProgress progress = provider.LoadDataRepresentation(
+                typeIdentifier,
+                (data, error) =>
+                {
+                    if (error is not null || data is null)
+                    {
+                        completion.TrySetResult(null);
+                        return;
+                    }
+
+                    completion.TrySetResult(data.ToArray());
+                });
+
+            CancellationTokenRegistration registration = cancellationToken.Register(progress.Cancel);
+            return AwaitAndDisposeAsync(completion.Task, registration);
+        }
+
+        private static byte[]? ConvertToJpeg(byte[] image)
+        {
+            using NSData data = NSData.FromArray(image);
+            using CGImageSource? source = CGImageSource.FromData(data);
+            if (source is null || source.ImageCount == 0)
+            {
+                return null;
+            }
+
+            using NSMutableData output = new NSMutableData();
+            using CGImageDestination? destination =
+                CGImageDestination.Create(output, UTTypes.Jpeg.Identifier, imageCount: 1);
+            if (destination is null)
+            {
+                return null;
+            }
+
+            NSDictionary? properties = source.CopyProperties(new CGImageOptions(), 0);
+            destination.AddImage(source, 0, properties);
+            return destination.Close() ? output.ToArray() : null;
+        }
+
+        private static async Task<byte[]?> AwaitAndDisposeAsync(
+            Task<byte[]?> task,
+            CancellationTokenRegistration registration)
+        {
+            try
+            {
+                return await task;
+            }
+            finally
+            {
+                registration.Dispose();
+            }
+        }
+    }
+}

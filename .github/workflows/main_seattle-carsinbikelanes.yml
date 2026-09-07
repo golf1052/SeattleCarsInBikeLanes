@@ -4,6 +4,11 @@
 name: Build and deploy ASP.Net Core app to Azure Web App - seattle-carsinbikelanes
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/main_seattle-carsinbikelanes.yml"
+      - "SeattleCarsInBikeLanes/**"
+      - "SeattleCarsInBikeLanes.Tests/**"
   push:
     branches:
       - main
@@ -40,6 +45,7 @@ jobs:
           path: ${{env.DOTNET_ROOT}}/myapp
 
   deploy:
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     needs: build
     environment:
