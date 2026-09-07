@@ -2,6 +2,7 @@ using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Tests;
 
+// These simulate process interruption with recovery files intact, not OS crashes or power loss.
 public sealed class PhotoMutationRecoveryTests : IDisposable
 {
     private readonly string root = Path.Combine(Path.GetTempPath(), $"photo-recovery-{Guid.NewGuid():N}");
@@ -13,7 +14,7 @@ public sealed class PhotoMutationRecoveryTests : IDisposable
     [InlineData(1)]
     [InlineData(3)]
     [InlineData(5)]
-    public async Task InterruptedMutationRecoversWithRecreatedServices(int written)
+    public async Task ProcessInterruptedMutationRecoversWithRecreatedServices(int written)
     {
         Target target = new Target { FailAfter = written };
         target.BeforeWrite = () =>
@@ -22,6 +23,7 @@ public sealed class PhotoMutationRecoveryTests : IDisposable
             Assert.Equal(Original, File.ReadAllBytes(Path.Combine(operation, "original")));
             Assert.Equal(Updated, File.ReadAllBytes(Path.Combine(operation, "updated")));
             Assert.True(File.Exists(Path.Combine(operation, "journal")));
+            Assert.False(File.Exists(Path.Combine(operation, "journal.tmp")));
         };
         await Assert.ThrowsAsync<IOException>(() => new PhotoMutationRecovery(root, target)
             .WriteAsync("photo", _ => Updated, default));
@@ -73,10 +75,44 @@ public sealed class PhotoMutationRecoveryTests : IDisposable
         string blockedRoot = Path.Combine(root, "file");
         await File.WriteAllTextAsync(blockedRoot, "not a directory");
         Target target = new Target();
-        await Assert.ThrowsAsync<IOException>(() => new PhotoMutationRecovery(blockedRoot, target)
+        await Assert.ThrowsAnyAsync<IOException>(() => new PhotoMutationRecovery(blockedRoot, target)
             .WriteAsync("photo", _ => Updated, default));
         Assert.Equal(Original, target.Bytes);
         Assert.Equal(0, target.Writes);
+    }
+
+    [Fact]
+    public async Task UnpublishedJournalIsCleanedUpWithoutMutatingTarget()
+    {
+        string operation = Path.Combine(root, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(operation);
+        await DurableFile.WriteAsync(Path.Combine(operation, "original"), Original);
+        await DurableFile.WriteAsync(Path.Combine(operation, "updated"), Updated);
+        await DurableFile.WriteAsync(Path.Combine(operation, "journal.tmp"), [1]);
+        Target target = new Target();
+
+        byte[] read = await new PhotoMutationRecovery(root, target)
+            .WithRecoveredAccessAsync(() => target.ReadAsync("photo", default), default);
+
+        Assert.Equal(Original, read);
+        Assert.Equal(0, target.Writes);
+        Assert.Empty(Directory.GetDirectories(root));
+    }
+
+    [Fact]
+    public async Task ReadbackMismatchRetainsJournalAndRecoveryCopies()
+    {
+        Target target = new Target();
+        target.BeforeSync = () => target.Bytes = [9, 9];
+
+        await Assert.ThrowsAsync<IOException>(() => new PhotoMutationRecovery(root, target)
+            .WriteAsync("photo", _ => Updated, default));
+
+        string operation = Assert.Single(Directory.GetDirectories(root));
+        Assert.True(File.Exists(Path.Combine(operation, "journal")));
+        Assert.Equal(Original, await File.ReadAllBytesAsync(Path.Combine(operation, "original")));
+        Assert.Equal(Updated, await File.ReadAllBytesAsync(Path.Combine(operation, "updated")));
+        Assert.Equal(1, target.Syncs);
     }
 
     [Fact]
@@ -106,7 +142,11 @@ public sealed class PhotoMutationRecoveryTests : IDisposable
         target.FailSync = true;
         await Assert.ThrowsAsync<IOException>(() => new PhotoMutationRecovery(root, target)
             .WithRecoveredAccessAsync(() => Task.FromResult(true), default, "photo"));
-        Assert.Single(Directory.GetDirectories(root));
+        string operation = Assert.Single(Directory.GetDirectories(root));
+        Assert.True(File.Exists(Path.Combine(operation, "journal")));
+        Assert.Equal(Original, await File.ReadAllBytesAsync(Path.Combine(operation, "original")));
+        Assert.Equal(Updated, await File.ReadAllBytesAsync(Path.Combine(operation, "updated")));
+        Assert.Equal(1, target.Writes);
         target.FailSync = false;
         await new PhotoMutationRecovery(root, target).WithRecoveredAccessAsync(() => Task.FromResult(true), default, "photo");
         Assert.Empty(Directory.GetDirectories(root));
@@ -139,6 +179,7 @@ public sealed class PhotoMutationRecoveryTests : IDisposable
         public int Writes;
         public int Syncs;
         public bool FailSync;
+        public Action? BeforeSync;
         public Action? BeforeWrite;
         public Func<Task>? WriteGate;
         public Target() { }
@@ -149,6 +190,7 @@ public sealed class PhotoMutationRecoveryTests : IDisposable
         {
             Syncs++;
             if (FailSync) throw new IOException("sync failed");
+            BeforeSync?.Invoke();
             return Task.CompletedTask;
         }
         public async Task WriteAndSyncAsync(string id, byte[] bytes, CancellationToken token)

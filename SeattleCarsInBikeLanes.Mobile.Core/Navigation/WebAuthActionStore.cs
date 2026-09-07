@@ -1,5 +1,4 @@
 using System.Text.Json;
-using SeattleCarsInBikeLanes.Mobile.Core.Photos;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Navigation;
 
@@ -9,6 +8,13 @@ public interface IWebAuthActionStore
     void Write(IReadOnlyList<WebAuthAction> actions);
 }
 
+/// <summary>
+/// Saves pending browser actions by flushing a temporary file before replacing the stored record.
+/// </summary>
+/// <remarks>
+/// Directory metadata is not explicitly flushed, so an abrupt OS crash or power loss can lose
+/// the latest replacement. Atomic replacement is not a guarantee of durable persistence.
+/// </remarks>
 public sealed class WebAuthActionStore(string path) : IWebAuthActionStore
 {
     public IReadOnlyList<WebAuthAction> Read() => File.Exists(path)
@@ -27,6 +33,5 @@ public sealed class WebAuthActionStore(string path) : IWebAuthActionStore
             stream.Flush(flushToDisk: true);
         }
         File.Move(temporary, path, overwrite: true);
-        DurableFile.SyncDirectory(directory);
     }
 }

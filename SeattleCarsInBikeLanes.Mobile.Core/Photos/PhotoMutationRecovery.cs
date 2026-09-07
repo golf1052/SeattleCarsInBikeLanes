@@ -15,6 +15,11 @@ public interface IRecoverablePhotoTarget
 /// Serializes app access around an in-place library edit. The journal and two byte-complete copies
 /// precede truncation; they describe only an unfinished mutation, never permanent photo history.
 /// </summary>
+/// <remarks>
+/// Recovery handles process interruption and I/O failures while its files remain available.
+/// Backup and journal contents are flushed, but directory metadata is not explicitly flushed.
+/// An abrupt OS crash or power loss can lose recovery entries; see <see cref="DurableFile"/>.
+/// </remarks>
 public sealed class PhotoMutationRecovery(string root, IRecoverablePhotoTarget target,
     Action<string, Exception>? reportRecoveryFailure = null)
 {
@@ -47,19 +52,14 @@ public sealed class PhotoMutationRecovery(string root, IRecoverablePhotoTarget t
             byte[] original = await target.ReadAsync(id, token);
             byte[] updated = update(original);
             string operation = Guid.NewGuid().ToString("N");
-            Directory.CreateDirectory(root);
-            DurableFile.SyncDirectory(Path.GetDirectoryName(root)!);
             string directory = Path.Combine(root, operation);
             Directory.CreateDirectory(directory);
-            DurableFile.SyncDirectory(root);
             await DurableFile.WriteAsync(Path.Combine(directory, "original"), original, token);
             await DurableFile.WriteAsync(Path.Combine(directory, "updated"), updated, token);
             Journal journal = new Journal(id, identity, Hash(original), Hash(updated));
             await DurableFile.WriteAsync(Path.Combine(directory, "journal.tmp"),
                 JsonSerializer.SerializeToUtf8Bytes(journal), token);
-            DurableFile.SyncDirectory(directory);
             File.Move(Path.Combine(directory, "journal.tmp"), Path.Combine(directory, "journal"));
-            DurableFile.SyncDirectory(directory);
 
             if (await target.GetIdentityAsync(id, token) != identity ||
                 Hash(await target.ReadAsync(id, token)) != journal.OriginalHash)
@@ -89,10 +89,10 @@ public sealed class PhotoMutationRecovery(string root, IRecoverablePhotoTarget t
             string journalPath = Path.Combine(directory, "journal");
             if (!File.Exists(journalPath))
             {
-                // No published journal means the target was never opened destructively, or the
-                // verified journal was already retired. Neither case needs these orphan copies.
+                // For process interruption, no journal means mutation never began or was verified
+                // and retired. An OS crash can instead lose directory entries; that accepted gap
+                // cannot be distinguished here.
                 Directory.Delete(directory, recursive: true);
-                DurableFile.SyncDirectory(root);
                 continue;
             }
             Journal journal = JsonSerializer.Deserialize<Journal>(await File.ReadAllBytesAsync(journalPath, token))
@@ -142,7 +142,7 @@ public sealed class PhotoMutationRecovery(string root, IRecoverablePhotoTarget t
     private async Task VerifyAndRetireAsync(string directory, Journal journal, CancellationToken token)
     {
         // Matching bytes may only be in the OS cache after a killed writer. Synchronize the target
-        // even when recovery did not have to rewrite it, before deleting the durable backup.
+        // even when recovery did not have to rewrite it, before deleting the recovery copies.
         await target.SynchronizeAsync(journal.Id, token);
         if (await target.GetIdentityAsync(journal.Id, token) != journal.Identity ||
             Hash(await target.ReadAsync(journal.Id, token)) != journal.UpdatedHash)
@@ -150,9 +150,7 @@ public sealed class PhotoMutationRecovery(string root, IRecoverablePhotoTarget t
             throw new IOException("The saved photo could not be verified; recovery copies were retained.");
         }
         File.Delete(Path.Combine(directory, "journal"));
-        DurableFile.SyncDirectory(directory);
         Directory.Delete(directory, recursive: true);
-        DurableFile.SyncDirectory(root);
     }
 
     private static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));

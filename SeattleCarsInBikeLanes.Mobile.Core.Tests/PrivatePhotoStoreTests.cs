@@ -47,12 +47,14 @@ public sealed class PrivatePhotoStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task PersistsUploadStateAtomically()
+    public async Task UploadStateReplacementSurvivesStoreRecreation()
     {
         FakeContent content = new FakeContent(PhotoExifData.Empty);
         PrivatePhotoStore store = new PrivatePhotoStore(root, content);
         PrivatePhotoAsset saved = await store.SaveAsync(new byte[] { 0, 9 }, imported: false);
         XmpUploadState state = XmpUploadState.UploadedNow("submission-1");
+        string path = Assert.Single(Directory.GetFiles(Path.Combine(root, "captured"), "*.jpg"));
+        await File.WriteAllBytesAsync(path + ".tmp", [8]);
 
         Assert.True(await store.WriteUploadStateAsync(saved.Id, state));
 
@@ -60,6 +62,61 @@ public sealed class PrivatePhotoStoreTests : IDisposable
         XmpUploadState read = await reopened.ReadUploadStateAsync(saved.Id);
         Assert.True(read.Uploaded);
         Assert.Equal(new byte[] { 1, 9 }, await reopened.GetDataAsync(saved.Id));
+        Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveCreatesAndReusesNestedDirectories(bool imported)
+    {
+        string nestedRoot = Path.Combine(root, "nested", "photos");
+        PrivatePhotoStore store = new PrivatePhotoStore(nestedRoot, new FakeContent(PhotoExifData.Empty));
+
+        PrivatePhotoAsset first = await store.SaveAsync([0, 1], imported);
+        PrivatePhotoAsset second = await store.SaveAsync([0, 2], imported);
+
+        PrivatePhotoStore reopened = new PrivatePhotoStore(nestedRoot, new FakeContent(PhotoExifData.Empty));
+        Assert.Equal(new byte[] { 0, 1 }, await reopened.GetDataAsync(first.Id));
+        Assert.Equal(new byte[] { 0, 2 }, await reopened.GetDataAsync(second.Id));
+        Assert.Empty(Directory.GetFiles(root, "*.tmp", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public async Task DirectoryCreationFailurePropagatesAndAllowsRetry()
+    {
+        Directory.CreateDirectory(root);
+        string captured = Path.Combine(root, "captured");
+        await File.WriteAllTextAsync(captured, "not a directory");
+        PrivatePhotoStore store = new PrivatePhotoStore(root, new FakeContent(PhotoExifData.Empty));
+
+        await Assert.ThrowsAsync<IOException>(() => store.SaveAsync([0, 1], imported: false));
+        Assert.Equal("not a directory", await File.ReadAllTextAsync(captured));
+
+        File.Delete(captured);
+        PrivatePhotoAsset saved = await store.SaveAsync([0, 1], imported: false);
+        Assert.Equal(new byte[] { 0, 1 }, await store.GetDataAsync(saved.Id));
+    }
+
+    [Fact]
+    public async Task FailedMetadataReplacementPreservesOriginalAndAllowsRetry()
+    {
+        PrivatePhotoStore store = new PrivatePhotoStore(root, new FakeContent(PhotoExifData.Empty));
+        PrivatePhotoAsset saved = await store.SaveAsync([0, 9], imported: false);
+        string path = Assert.Single(Directory.GetFiles(Path.Combine(root, "captured"), "*.jpg"));
+        Directory.CreateDirectory(path + ".tmp");
+        XmpUploadState state = XmpUploadState.UploadedNow("submission-1");
+
+        Exception? failure = await Record.ExceptionAsync(() => store.WriteUploadStateAsync(saved.Id, state));
+        Assert.True(failure is IOException or UnauthorizedAccessException,
+            failure?.ToString() ?? "Expected the temporary file creation to fail.");
+        Assert.Equal(new byte[] { 0, 9 }, await store.GetDataAsync(saved.Id));
+        Assert.False((await store.ReadUploadStateAsync(saved.Id)).Uploaded);
+
+        Directory.Delete(path + ".tmp");
+        Assert.True(await store.WriteUploadStateAsync(saved.Id, state));
+        Assert.Equal(new byte[] { 1, 9 }, await store.GetDataAsync(saved.Id));
+        Assert.False(File.Exists(path + ".tmp"));
     }
 
     [Theory]

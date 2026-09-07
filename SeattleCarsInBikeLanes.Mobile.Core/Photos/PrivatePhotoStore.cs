@@ -38,11 +38,13 @@ public interface IPrivatePhotoStore
 }
 
 /// <summary>
-/// Durable photos that only this app can see.
+/// Persistent photos that only this app can see.
 /// </summary>
 /// <remarks>
-/// Files under the app data directory survive process termination, device restarts, and app
-/// upgrades. The operating system removes them when the app is uninstalled.
+/// Files under the app data directory survive process termination, normal device restarts, and
+/// app upgrades. The operating system removes them when the app is uninstalled.
+/// File contents are flushed before temporary-file replacement, but directory metadata is not
+/// explicitly flushed. See <see cref="DurableFile"/> for the accepted OS-crash/power-loss gap.
 /// </remarks>
 public sealed class PrivatePhotoStore : IPrivatePhotoStore
 {
@@ -93,7 +95,7 @@ public sealed class PrivatePhotoStore : IPrivatePhotoStore
         await writes.WaitAsync(cancellationToken);
         try
         {
-            DurableFile.CreateDirectory(directory);
+            Directory.CreateDirectory(directory);
             await using (FileStream output = new FileStream(
                 temporaryPath,
                 FileMode.CreateNew,
@@ -107,7 +109,6 @@ public sealed class PrivatePhotoStore : IPrivatePhotoStore
             }
 
             File.Move(temporaryPath, path);
-            DurableFile.SyncDirectory(directory);
         }
         catch
         {
@@ -161,7 +162,6 @@ public sealed class PrivatePhotoStore : IPrivatePhotoStore
             }
             await DurableFile.WriteAsync(temporaryPath, updated, cancellationToken);
             File.Move(temporaryPath, path, overwrite: true);
-            DurableFile.SyncDirectory(Path.GetDirectoryName(path)!);
             byte[] persisted = await File.ReadAllBytesAsync(path, cancellationToken);
             if (!persisted.AsSpan().SequenceEqual(updated))
             {

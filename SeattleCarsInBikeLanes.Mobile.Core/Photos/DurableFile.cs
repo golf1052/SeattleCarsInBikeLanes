@@ -1,57 +1,22 @@
-using System.ComponentModel;
-using System.Runtime.InteropServices;
-
 namespace SeattleCarsInBikeLanes.Mobile.Core.Photos;
 
+/// <summary>
+/// Writes new files and flushes their contents to disk using standard .NET APIs.
+/// </summary>
+/// <remarks>
+/// Flushing file contents does not necessarily persist the parent directory's creation, rename,
+/// or deletion. The standard .NET APIs used here do not explicitly flush directory metadata, so
+/// recent directory changes may be lost after an abrupt OS crash or power loss even after file
+/// contents were flushed. Atomic replacement and durable persistence are different guarantees.
+/// This residual edge case is deliberately accepted in exchange for using standard .NET APIs;
+/// this helper does not provide complete power-loss durability.
+/// </remarks>
 public static class DurableFile
 {
-    public static void CreateDirectory(string path)
-    {
-        if (Directory.Exists(path)) return;
-        string? parent = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(parent)) CreateDirectory(parent);
-        Directory.CreateDirectory(path);
-        if (!string.IsNullOrEmpty(parent)) SyncDirectory(parent);
-    }
-
     public static async Task WriteAsync(string path, byte[] bytes, CancellationToken token = default)
     {
         await using FileStream stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         await stream.WriteAsync(bytes, token);
         stream.Flush(flushToDisk: true);
     }
-
-    public static void SyncDirectory(string path)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            // Windows uses file WriteThrough/FlushFileBuffers; directory descriptors are Unix-only.
-            return;
-        }
-        int descriptor = Open(path, 0);
-        if (descriptor < 0)
-        {
-            throw new IOException("Could not open the photo directory for durable synchronization.",
-                new Win32Exception(Marshal.GetLastPInvokeError()));
-        }
-        try
-        {
-            if (Fsync(descriptor) != 0)
-            {
-                throw new IOException("Could not synchronize the photo directory.",
-                    new Win32Exception(Marshal.GetLastPInvokeError()));
-            }
-        }
-        finally
-        {
-            Close(descriptor);
-        }
-    }
-
-    [DllImport("libc", EntryPoint = "open", SetLastError = true)]
-    private static extern int Open(string path, int flags);
-    [DllImport("libc", EntryPoint = "fsync", SetLastError = true)]
-    private static extern int Fsync(int descriptor);
-    [DllImport("libc", EntryPoint = "close")]
-    private static extern int Close(int descriptor);
 }

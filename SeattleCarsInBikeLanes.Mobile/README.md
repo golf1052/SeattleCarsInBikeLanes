@@ -244,7 +244,7 @@ Run this matrix on a physical Android 10+ device before merging mobile changes:
 | First launch on Android | Camera and location permissions are requested sequentially; no storage permission is requested because captured photos use scoped `MediaStore` storage and imports use the system picker |
 | Later launch after denial | Previously attempted permissions are status-checked but not automatically requested again; permissions granted later in system Settings are recognized |
 | Camera denied | The camera preview is never created or started; the Camera tab opens directly to previous photos and the Import button remains usable |
-| Photos denied or limited on iOS | Capture and import remain usable; new captures and picker copies are stored persistently inside the app and remain after process termination, device restart, and app updates, but are removed when the app is uninstalled |
+| Photos denied or limited on iOS | Capture and import remain usable; new captures and picker copies are stored persistently inside the app and remain after process termination, normal device restart, and app updates, but are removed when the app is uninstalled; see the file-persistence limitation below |
 | Location denied | Capture and the map picker do not re-prompt; captured photos have no GPS and submission is blocked until the user selects an in-bounds location on the map |
 | Capture | Each successful shot immediately flashes the preview and produces one haptic click before its thumbnail appears; a non-black photo is saved under `Pictures/Cars in Bike Lanes`, appears in the app roll, and remains after process restart |
 | Orientation and preview | The center-cropped preview fills the usable camera body in portrait and both landscape rotations without entering the status bar or display cutout; the full control rail is horizontal at the screen bottom in portrait and vertical on the physical-bottom side in landscape, the zoom pill stays next to the shutter, all controls remain clear of system insets and upright, and rotating does not restart the preview |
@@ -297,20 +297,50 @@ but does not make that index authoritative for its submission state.
 The queue persists a server receipt before local acknowledgement. A report labelled
 **Sent; saving photo status** has already reached the server. Retry finishes only its
 XMP/index acknowledgement; it does not submit again or require an account. Its photos
-remain reserved until every acknowledgement is durable. Sent/uncertain reports cannot
-be discarded as though they were unsent. Uncertain network outcomes first reconcile
-the existing report ID; a status lookup outage never permits a new independent report.
+remain reserved until every acknowledgement is persisted and verified. Sent/uncertain
+reports cannot be discarded as though they were unsent. Uncertain network outcomes
+first reconcile the existing report ID; a status lookup outage never permits a new
+independent report.
 
 iOS stamps the rendered current photo rather than reconstructing earlier adjustment
 recipes, and reads the edited resource back. Android keeps the MediaStore asset ID
-unchanged: before truncating, it durably saves original/staged JPEGs and a journal in
-the app's no-backup directory. Interrupted edits are recovered before app access.
+unchanged: before truncating, it saves and flushes the contents of original/staged
+JPEGs and a journal in the app's no-backup directory, then publishes the journal.
+Process-interrupted edits are recovered before app access when those files remain
+available, subject to the file-persistence limitation below.
 Even matching recovered bytes are synchronized before journal/backup retirement.
 Recovery conflicts or unavailable targets are quarantined, keeping their recovery
 copies and queue operation without blocking unrelated photos. Do not uninstall or
 clear app data to troubleshoot recovery: that destroys those private recovery copies.
 The in-place MediaStore write is not atomic to other applications; an external edit
 or reused/deleted URI is not overwritten blindly.
+
+### File persistence and the accepted directory-durability gap
+
+`DurableFile`, private photo storage, photo recovery backups/journals, and pending
+browser sign-out records use standard .NET file APIs. File contents are flushed with
+`FileStream.Flush(flushToDisk: true)` before publishing temporary files or starting
+an in-place photo mutation. Temporary-file replacement, backup/journal ordering,
+photo readback verification, and propagation of storage failures are retained.
+
+Flushing file contents does not necessarily persist the parent directory's creation,
+rename, or deletion, including changes to its file entries. The standard .NET APIs
+used here do not explicitly flush directory metadata. Following an abrupt OS crash
+or power loss, recent directory changes may therefore be lost even after file
+contents were flushed. A new photo, metadata replacement, recovery file/journal,
+or sign-out record may disappear or revert; a deletion may not persist.
+
+Atomic replacement and durable persistence are different guarantees: replacing a
+file without exposing a partial write does not ensure the replacement survives
+power loss. The user deliberately accepts this residual edge case in exchange for
+using standard .NET APIs. This is **not complete power-loss durability**. Recovery
+still protects interrupted in-place edits when the recovery files are available;
+it cannot guarantee recovery if an OS crash loses their directory entries. Native
+PhotoKit and MediaStore operations are unchanged.
+
+Host tests cover service recreation, process-interruption simulations, ordering,
+readback, and I/O failures. They do not simulate an OS crash or power loss or prove
+directory durability.
 
 ### Queued attribution and sign-out
 
@@ -334,7 +364,8 @@ durable queue successfully; cleanup failures are logged and retried on restart.
 Queue JSON and pending browser-clear records contain no tokens.
 
 Provider sign-out is persisted before active credentials are cleared. Browser clear
-actions survive restart and are acknowledged only after native sign-out completes.
+actions survive process restart (subject to the file-persistence limitation above)
+and are acknowledged only after native sign-out completes.
 A durable signed-out flag blocks later stale browser capture until an explicit
 sign-in action. Bluesky Settings validates the native bearer, independently of web
 cookies; transient failures retain the saved account. These bearers are this site's
