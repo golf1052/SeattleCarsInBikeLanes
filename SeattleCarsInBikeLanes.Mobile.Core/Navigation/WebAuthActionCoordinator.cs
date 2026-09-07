@@ -27,12 +27,20 @@ public sealed class WebAuthActionCoordinator
     private long nextId;
     private readonly IWebAuthActionStore? store;
 
+    /// <param name="store">
+    /// Optional storage; <see langword="null"/> keeps actions in memory only for tests.
+    /// The production app injects persistent storage.
+    /// </param>
     public WebAuthActionCoordinator(IWebAuthActionStore? store = null)
     {
         this.store = store;
         if (store is not null)
         {
+            // Restore pending website sign-outs so an app restart cannot lose the instruction to clear
+            // stale WebView credentials and accidentally restore a signed-out account.
+            // Only ApplySignedOut actions survive restart; old OpenSignIn actions must not reopen login dialogs.
             pending.AddRange(store.Read().Where(action => action.Kind == WebAuthActionKind.ApplySignedOut));
+            // Start at the highest restored ID to avoid collisions with pending actions during acknowledgement.
             nextId = pending.Select(action => action.Id).DefaultIfEmpty().Max();
         }
     }
