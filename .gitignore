@@ -11,6 +11,7 @@
 *.user
 *.userosscache
 *.sln.docstates
+SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.local.props
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs

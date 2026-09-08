@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Upload flow browser checks</title>
+<h1>Upload flow browser checks</h1>
+<p>Uses the production upload helpers with an in-memory fake server. No reports are sent.</p>
+<pre id="results">Running...</pre>
+<script src="../../SeattleCarsInBikeLanes/wwwroot/js/helpers.js"></script>
+<script src="../../SeattleCarsInBikeLanes/wwwroot/js/upload-report.js"></script>
+<script src="../../SeattleCarsInBikeLanes/wwwroot/js/admin-helpers.js"></script>
+<script>
+const checks = [];
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const json = (body, status = 200) => new Response(JSON.stringify(body),
+    { status, headers: { 'Content-Type': 'application/json' } });
+const reject = (code, status) => json({ code, message: code }, status);
+const receipt = (id, attribution = {}) => ({
+    reportId: id, submissionId: id, submittedAt: '2026-09-08T00:00:00Z', attribution
+});
+const prepared = (attempt) => [{
+    photoId: `photo-${attempt}`, submissionId: attempt, photoNumber: 0
+}];
+const createReport = () => new ReportUpload([new File(['photo'], 'photo.jpg', { type: 'image/jpeg' })]);
+const draft = (cars = 2) => [{ ...prepared('old')[0], numberOfCars: cars }];
+const expectFailure = async (promise) => {
+    let failed = false;
+    try { await promise; } catch { failed = true; }
+    assert(failed, 'Expected failure');
+};
+
+async function check(name, run) {
+    const originalFetch = window.fetch;
+    try {
+        await run();
+        checks.push({ name, passed: true });
+    } catch (error) {
+        checks.push({ name, passed: false, error: error.message });
+    } finally {
+        window.fetch = originalFetch;
+    }
+}
+
+(async () => {
+    await check('Shared URLs, report header, envelope, and receipt', async () => {
+        const report = createReport();
+        const urls = [];
+        window.fetch = async (url, options) => {
+            urls.push(url);
+            assert(options.headers['X-Report-Id'] === report.id, 'Stable report header missing');
+            if (url.endsWith('/Initial')) {
+                assert(options.body.getAll('files').length === 1, 'Multipart files missing');
+                return json(prepared('first'));
+            }
+            const body = JSON.parse(options.body);
+            assert(body.photos[0].photoId === 'photo-first', 'Prepared reference missing');
+            assert(body.attribution.blueskyDid === 'did:plc:a', 'Explicit attribution missing');
+            return json(receipt(report.id, body.attribution));
+        };
+        await report.prepare();
+        await report.submit(draft(), { blueskyDid: 'did:plc:a' });
+        assert(urls.join(',') === 'api/Upload/Initial,api/Upload/Finalize', 'Wrong submission routes');
+        assert(report.receipt && !report.uncertain && report.files.length === 0, 'Acceptance not acknowledged');
+    });
+
+    await check('Lost success response resolves receipt without another finalization', async () => {
+        const report = createReport();
+        report.prepared = prepared('first');
+        let posts = 0;
+        window.fetch = async (url) => {
+            if (url.endsWith('/Finalize')) {
+                posts++;
+                throw new TypeError('Connection lost after acceptance');
+            }
+            return json(receipt(report.id, { blueskyDid: 'did:plc:a' }));
+        };
+        await expectFailure(report.submit(draft(), { blueskyDid: 'did:plc:a' }));
+        assert(report.uncertain, 'Lost response must be uncertain');
+        const accepted = await report.submit(draft(99), { blueskyDid: 'did:plc:b' });
+        assert(posts === 1 && accepted.attribution.blueskyDid === 'did:plc:a', 'Retry replaced accepted report');
+    });
+
+    await check('Duplicate clicks share one in-flight operation', async () => {
+        const report = createReport();
+        report.prepared = prepared('first');
+        let finish;
+        let calls = 0;
+        window.fetch = async () => { calls++; return new Promise(resolve => { finish = resolve; }); };
+        const first = report.submit(draft(), {});
+        const second = report.submit(draft(), {});
+        assert(first === second && calls === 1, 'Duplicate submission was sent');
+        finish(json(receipt(report.id)));
+        await first;
+    });
+
+    await check('In-progress receipt lookup never resubmits or clears frozen state', async () => {
+        const report = createReport();
+        report.prepared = prepared('first');
+        const urls = [];
+        window.fetch = async (url) => { urls.push(url); return reject('report_in_progress', 409); };
+        await expectFailure(report.submit(draft(), {}));
+        await expectFailure(report.submit(draft(99), {}));
+        assert(report.uncertain && report.request.photos[0].numberOfCars === 2, 'In-progress state was lost');
+        assert(urls.filter(url => url.endsWith('/Finalize')).length === 1, 'In-progress work was resent');
+    });
+
+    await check('Expired preparation retries new photos under the same report ID', async () => {
+        const report = createReport();
+        report.prepared = prepared('expired');
+        let posts = 0;
+        window.fetch = async (url, options) => {
+            assert(options.headers['X-Report-Id'] === report.id, 'Preparation changed report ID');
+            if (url.endsWith('/Initial')) return json(prepared('fresh'));
+            if (++posts === 1) return reject('preparation_expired', 410);
+            const body = JSON.parse(options.body);
+            assert(body.photos[0].photoId === 'photo-fresh', 'Expired reference reused');
+            assert(body.photos[0].numberOfCars === 2, 'User details lost');
+            return json(receipt(report.id));
+        };
+        await report.submit(draft(), {});
+        assert(posts === 2 && report.receipt, 'Repreparation did not complete');
+    });
+
+    await check('Definitive validation errors allow corrections without changing report identity', async () => {
+        const report = createReport();
+        report.prepared = prepared('first');
+        let posts = 0;
+        window.fetch = async (_, options) => {
+            if (++posts === 1) return reject('invalid_report', 400);
+            assert(JSON.parse(options.body).photos[0].numberOfCars === 3, 'Corrected value ignored');
+            return json(receipt(report.id));
+        };
+        await expectFailure(report.submit(draft(), {}));
+        assert(!report.uncertain && !report.request, 'Rejected request was frozen');
+        await report.submit(draft(3), {});
+    });
+
+    await check('Provider outage retains selected account while retrying', async () => {
+        const report = createReport();
+        report.prepared = prepared('first');
+        let posts = 0;
+        window.fetch = async (url, options) => {
+            if (url.includes('/Reports/')) return new Response(null, { status: 404 });
+            const body = JSON.parse(options.body);
+            assert(body.attribution.blueskyDid === 'did:plc:a', 'Retry adopted another account');
+            return ++posts === 1 ? reject('provider_unavailable', 503) : json(receipt(report.id, body.attribution));
+        };
+        await expectFailure(report.submit(draft(), { blueskyDid: 'did:plc:a' }));
+        await report.submit(draft(), { blueskyDid: 'did:plc:b' });
+    });
+
+    await check('Rejected credentials permit an explicit anonymous retry, not silent account switching', async () => {
+        const report = createReport();
+        report.prepared = prepared('first');
+        let posts = 0;
+        window.fetch = async (_, options) => {
+            if (++posts === 1) return reject('credential_rejected', 401);
+            assert(Object.keys(JSON.parse(options.body).attribution).length === 0, 'Explicit anonymity was lost');
+            return json(receipt(report.id));
+        };
+        await expectFailure(report.submit(draft(), { blueskyDid: 'did:plc:a' }));
+        assert(!report.uncertain, 'Credential rejection was treated as accepted');
+        await report.submit(draft(), {});
+    });
+
+    await check('Malformed success is uncertain and requires a valid receipt', async () => {
+        const report = createReport();
+        report.prepared = prepared('first');
+        window.fetch = async (url) => url.endsWith('/Finalize') ? json({}) : json(receipt(report.id));
+        await expectFailure(report.submit(draft(), {}));
+        assert(report.uncertain && !report.receipt, 'Malformed confirmation was accepted');
+        await report.submit(draft(), {});
+        assert(report.receipt, 'Receipt recovery failed');
+    });
+
+    await check('Incomplete initial photo set is not accepted', async () => {
+        const report = createReport();
+        window.fetch = async () => json([]);
+        await expectFailure(report.prepare());
+        assert(!report.prepared && report.files.length === 1, 'Incomplete preparation lost its source');
+    });
+
+    await check('Failed admin deletion requires reconciliation instead of success', async () => {
+        window.fetch = async () => json({ message: 'Report reserved for publishing' }, 409);
+        try {
+            await deletePendingPhoto({ reportId: 'report' });
+            throw new Error('Deletion incorrectly succeeded');
+        } catch (error) {
+            assert(error.status === 409 && error.refreshRequired, 'Conflict did not require refresh');
+        }
+    });
+
+    await check('Failed publication returns a retryable version without discarding the edited card', async () => {
+        window.fetch = async () => json({
+            message: 'Threads token expired; remove successful posts and retry.',
+            retryAllowed: true, reportVersion: 'after-release'
+        }, 502);
+        try {
+            await uploadTweet({ reportId: 'report' });
+            throw new Error('Publication incorrectly succeeded');
+        } catch (error) {
+            assert(error.retryAllowed && error.reportVersion === 'after-release', 'Retry version was lost');
+            assert(!error.refreshRequired, 'An editable failed card should stay in place');
+        }
+    });
+
+    await check('A failed publication without a confirmed pending version still requires refresh', async () => {
+        window.fetch = async () => json({ message: 'Storage unavailable', retryAllowed: true }, 503);
+        try {
+            await uploadTweet({ reportId: 'report' });
+            throw new Error('Publication incorrectly succeeded');
+        } catch (error) {
+            assert(!error.retryAllowed && error.refreshRequired, 'Unconfirmed state was treated as retryable');
+        }
+    });
+
+    await check('Lost admin response body requires reconciliation', async () => {
+        window.fetch = async () => ({ text: async () => { throw new TypeError('Body connection lost'); } });
+        try {
+            await deletePendingPhoto({ reportId: 'report' });
+            throw new Error('Deletion incorrectly succeeded');
+        } catch (error) {
+            assert(error.refreshRequired, 'Interrupted response did not require refresh');
+        }
+    });
+
+    await check('Malformed admin JSON does not become a success-shaped text response', async () => {
+        window.fetch = async () => new Response('{', { headers: { 'Content-Type': 'application/json' } });
+        try {
+            await getPendingPhotos();
+            throw new Error('Malformed response was accepted');
+        } catch (error) {
+            assert(error.refreshRequired, 'Malformed JSON did not require refresh');
+        }
+    });
+
+    window.uploadFlowResults = checks;
+    document.getElementById('results').textContent = checks.map(result =>
+        `${result.passed ? 'PASS' : 'FAIL'} ${result.name}${result.error ? ': ' + result.error : ''}`).join('\n');
+    document.title = checks.every(result => result.passed) ? 'Upload checks passed' : 'Upload checks failed';
+})();
+</script>
+</html>

@@ -25,6 +25,7 @@ let trailsLayer = null;
 const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 let loggedInMastodonFullUsername = null;
 let loggedInMastodonUsername = null;
+let loggedInMastodonAccountId = null;
 
 function toggleFilterLegendControl() {
     toggleLegendControl(filterLegendControl);
@@ -103,6 +104,7 @@ function clearMastodonAuth(notifyNative = true) {
     localStorage.removeItem('mastodonAccessToken');
     loggedInMastodonFullUsername = null;
     loggedInMastodonUsername = null;
+    loggedInMastodonAccountId = null;
     setMastodonButtonAsLoggedOut();
     document.getElementById('mastodonLogoutButton').className = 'dropdown-item disabled';
     if (notifyNative) {
@@ -120,6 +122,7 @@ function checkMastodonAuth() {
         .then(response => {
             loggedInMastodonFullUsername = response.fullUsername;
             loggedInMastodonUsername = response.username;
+            loggedInMastodonAccountId = response.accountId;
         });
     } else {
         document.getElementById('mastodonLogoutButton').className = 'dropdown-item disabled';
@@ -389,8 +392,13 @@ function initFilterLegendHtml() {
 function initUpload1LegendHtml() {
     document.getElementById('photoFileInput').value = '';
     const form = document.getElementById('uploadForm1');
+    let processing = false;
+    let report = null;
     const upload1Event = function(event) {
         event.preventDefault();
+        if (processing) {
+            return;
+        }
         const button = event.submitter;
         changeButtonToLoadingButton(button, 'Processing...');
         document.getElementById('uploadForm1AlertDiv').innerHTML = '';
@@ -406,7 +414,13 @@ function initUpload1LegendHtml() {
             for (const file of files) {
                 onlyFiles.push(file[1]);
             }
-            uploadImage(onlyFiles)
+            if (!report || onlyFiles.some((file, index) => file.name !== report.files[index]?.name ||
+                file.size !== report.files[index]?.size || file.lastModified !== report.files[index]?.lastModified) ||
+                onlyFiles.length !== report.files.length) {
+                report = new ReportUpload(onlyFiles);
+            }
+            processing = true;
+            report.prepare()
             .then(response => {
                 form.removeEventListener('submit', upload1Event);
                 form.setAttribute('hidden', '');
@@ -417,7 +431,7 @@ function initUpload1LegendHtml() {
                 uploadLegendControl.setOptions({
                     legends: [{
                         type: 'html',
-                        html: initUpload2LegendHtml(response)
+                        html: initUpload2LegendHtml(response, report)
                     }]
                 });
             })
@@ -426,7 +440,8 @@ function initUpload1LegendHtml() {
                     .appendChild(createAlertBanner(error.message));
                 
                 changeLoadingButtonToRegularButton(button, 'Process');
-            });
+            })
+            .finally(() => { processing = false; });
         }
     };
     form.addEventListener('submit', upload1Event);
@@ -434,7 +449,7 @@ function initUpload1LegendHtml() {
     return form;
 }
 
-function initUpload2LegendHtml(metadatas) {
+function initUpload2LegendHtml(metadatas, report) {
     if (metadatas.length === 1) {
         document.getElementById('uploadCarousel').setAttribute('hidden', '');
         document.getElementById('photo').src = metadatas[0].uri;
@@ -550,10 +565,35 @@ function initUpload2LegendHtml(metadatas) {
     }
 
     const form = document.getElementById('uploadForm2');
+    let submitting = false;
+    const originalDisabled = new Map();
+    const lockFields = (locked) => {
+        for (const input of form.querySelectorAll('input')) {
+            if (locked) {
+                if (!originalDisabled.has(input)) {
+                    originalDisabled.set(input, input.disabled);
+                }
+                input.disabled = true;
+            } else if (originalDisabled.has(input)) {
+                input.disabled = originalDisabled.get(input);
+                originalDisabled.delete(input);
+            }
+        }
+    };
     const upload2Event = function(event) {
         event.preventDefault();
+        if (submitting) {
+            return;
+        }
         const button = event.submitter;
+        // Disabled form inputs are excluded by FormData, so temporarily restore them
+        // when checking an uncertain submission. ReportUpload retains its frozen body.
+        lockFields(false);
         changeButtonToLoadingButton(button, 'Uploading...');
+        for (const photo of metadatas) {
+            photo.attribute = false;
+            photo.mastodonAccessToken = null;
+        }
         const data = new FormData(event.target);
         for (const [name, value] of data) {
             if (name === 'photoNumberOfCars') {
@@ -650,8 +690,41 @@ function initUpload2LegendHtml(metadatas) {
             }
         }
 
-        finalizeUploadImage(metadatas)
+        const attribution = {};
+        if (!report.uncertain && document.getElementById('attributeCheckbox').checked) {
+            if (window.blueskyUserDid) {
+                attribution.blueskyDid = window.blueskyUserDid;
+            }
+            if (localStorage.getItem('mastodonAccessToken')) {
+                if (!loggedInMastodonAccountId) {
+                    showUploadForm2Error('Your Mastodon account is still being verified. Please wait and retry.');
+                    changeLoadingButtonToRegularButton(button, 'Upload');
+                    lockFields(report.uncertain);
+                    return;
+                }
+                try {
+                    attribution.mastodonServer = new URL(localStorage.getItem('mastodonEndpoint')).origin;
+                } catch (error) {
+                    if (!(error instanceof TypeError)) {
+                        throw error;
+                    }
+                    showUploadForm2Error('Your saved Mastodon server is invalid. Sign in again, or turn off attribution.');
+                    changeLoadingButtonToRegularButton(button, 'Upload');
+                    return;
+                }
+                attribution.mastodonAccountId = loggedInMastodonAccountId;
+            }
+            if (Object.keys(attribution).length === 0 && !report.uncertain) {
+                showUploadForm2Error('Sign in again, or turn off attribution to submit anonymously.');
+                changeLoadingButtonToRegularButton(button, 'Upload');
+                return;
+            }
+        }
+        submitting = true;
+        lockFields(true);
+        report.submit(metadatas, attribution)
         .then(() => {
+            lockFields(false);
             userMustSelectLocation = false;
             selectedPosition = null;
             document.getElementById('photoNumberOfCarsInput').value = '';
@@ -698,9 +771,15 @@ function initUpload2LegendHtml(metadatas) {
             });
         })
         .catch(error => {
-            showUploadForm2Error(error.message);
+            const recovery = report.uncertain
+                ? ' Your submission is unconfirmed. Retry to check its status; do not start another report.'
+                : error.code === 'credential_rejected'
+                    ? ' Sign in again, or turn off attribution and retry.' : '';
+            showUploadForm2Error(error.message + recovery);
+            lockFields(report.uncertain);
             changeLoadingButtonToRegularButton(button, 'Upload');
-        });
+        })
+        .finally(() => { submitting = false; });
     };
     form.addEventListener('submit', upload2Event);
     form.removeAttribute('hidden');

@@ -31,7 +31,7 @@ using static SeattleCarsInBikeLanes.Controllers.AdminPageController;
 
 namespace SeattleCarsInBikeLanes.Tests
 {
-    public class AdminPageControllerTests
+    public partial class AdminPageControllerTests
     {
         private AdminPageController? controller;
         private ILogger<AdminPageController>? logger;
@@ -55,6 +55,7 @@ namespace SeattleCarsInBikeLanes.Tests
         private Mock<MastodonClient>? mockMastodonClient;
         private Mock<AtProtoClient>? mockBlueskyClient;
         private Mock<ThreadsClient>? mockThreadsClient;
+        private Mock<ReportStore> mockReportStore;
 
         public AdminPageControllerTests()
         {
@@ -62,6 +63,7 @@ namespace SeattleCarsInBikeLanes.Tests
             mockHttpMessageHandler = new Mock<HttpMessageHandler>(MockBehavior.Strict);
             mockHelperMethods = new Mock<HelperMethods>();
             mockBlobContainerClient = new Mock<BlobContainerClient>();
+            mockReportStore = new Mock<ReportStore>(mockBlobContainerClient.Object, NullLogger<ReportStore>.Instance, null!);
             mockSecretClient = new Mock<SecretClient>();
             mockImgurApiClient = new Mock<IApiClient>();
             mockImgurApiClient.Setup(m => m.ClientId).Returns("1234");
@@ -151,7 +153,8 @@ namespace SeattleCarsInBikeLanes.Tests
                 mockFeedProvider.Object,
                 mockBlueskyClientProvider.Object,
                 mockBlueskyOAuthProvider.Object,
-                mockThreadsClient.Object);
+                mockThreadsClient.Object,
+                mockReportStore.Object);
         }
 
         [Fact]
@@ -215,7 +218,8 @@ namespace SeattleCarsInBikeLanes.Tests
                     }
                 });
             mockBlueskyClient.Setup(m => m.CreateRecord(It.IsAny<CreateRecordRequest<BskyPost>>()).Result)
-                .Returns((CreateRecordRequest<BskyPost> request) => {
+                .Returns((CreateRecordRequest<BskyPost> request) =>
+                {
                     Assert.NotNull(request.Record.Facets);
                     Assert.Single(request.Record.Facets);
                     return new CreateRecordResponse()
@@ -294,7 +298,8 @@ namespace SeattleCarsInBikeLanes.Tests
                     }
                 });
             mockBlueskyClient.Setup(m => m.CreateRecord(It.IsAny<CreateRecordRequest<BskyPost>>()).Result)
-                .Returns((CreateRecordRequest<BskyPost> request) => {
+                .Returns((CreateRecordRequest<BskyPost> request) =>
+                {
                     Assert.NotNull(request.Record.Facets);
                     Assert.Single(request.Record.Facets);
                     return new CreateRecordResponse()
@@ -373,7 +378,8 @@ namespace SeattleCarsInBikeLanes.Tests
                     }
                 });
             mockBlueskyClient.Setup(m => m.CreateRecord(It.IsAny<CreateRecordRequest<BskyPost>>()).Result)
-                .Returns((CreateRecordRequest<BskyPost> request) => {
+                .Returns((CreateRecordRequest<BskyPost> request) =>
+                {
                     Assert.NotNull(request.Record.Facets);
                     Assert.Single(request.Record.Facets);
                     Assert.Single(request.Record.Facets[0].Features);

@@ -196,7 +196,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                 if (!string.Equals(did, loginState.ExpectedDid, StringComparison.Ordinal))
                 {
                     logger.LogError("Bluesky returned DID {ReturnedDid} but we requested {ExpectedDid}.",
-                        did, loginState.ExpectedDid);
+                                                                did, loginState.ExpectedDid);
                     await TryRevoke(agent, cancellationToken);
                     return LoginFailed("Bluesky authenticated a different account than the one requested.");
                 }
@@ -252,6 +252,20 @@ namespace SeattleCarsInBikeLanes.Controllers
                 result.Principal.FindFirstValue(BlueskyAuthDefaults.HandleClaim)));
         }
 
+        [HttpGet("/api/BlueskyAuth/native-me")]
+        [AllowAnonymous]
+        public async Task<IActionResult> NativeMe()
+        {
+            AuthenticateResult result = await HttpContext.AuthenticateAsync(BlueskyAuthDefaults.BearerScheme);
+            string? did = result.Principal?.FindFirstValue(BlueskyAuthDefaults.DidClaim);
+            string? handle = result.Principal?.FindFirstValue(BlueskyAuthDefaults.HandleClaim);
+            if (!result.Succeeded || string.IsNullOrWhiteSpace(did) || string.IsNullOrWhiteSpace(handle))
+            {
+                return Unauthorized();
+            }
+            return Ok(new Core.Contracts.CredentialIdentity(did, handle, result.Properties?.ExpiresUtc));
+        }
+
         /// <summary>
         /// Issues a bearer token for the signed in identity, for clients that cannot use cookies.
         /// </summary>
@@ -287,7 +301,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         private static ClaimsPrincipal BuildPrincipal(string did, string handle, string authenticationScheme)
         {
             Claim[] claims = new[]
-            {
+                                    {
                 new Claim(BlueskyAuthDefaults.DidClaim, did),
                 new Claim(BlueskyAuthDefaults.HandleClaim, handle),
                 new Claim(ClaimTypes.NameIdentifier, did),
