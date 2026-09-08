@@ -3,12 +3,15 @@ let gameCode = null;
 let userId = '';
 let username = '';
 let map = null;
+let mapReady = false;
+let mapTheme = window.siteTheme.getTheme();
 const seattleBoundingBox = new atlas.data.BoundingBox([-122.436522, 47.495082], [-122.235787, 47.735525]);
-const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 let guessLocationDataSource = null;
 let realLocationDataSource = null;
 let distancesPointDataSource = null;
 let distancesLineDataSource = null;
+let distancesSymbolLayer = null;
+let distancesLineLayer = null;
 let playersLegendControl = null;
 let helpLegendControl = null;
 let knownPlayers = [];
@@ -26,6 +29,45 @@ const popup = new atlas.Popup({
     content: ''
 });
 let popupTimeout = null;
+
+function getDistanceTextOptions(theme) {
+    return {
+        textField: ['get', 'content'],
+        color: theme === 'dark' ? '#fff' : '#000',
+        haloColor: theme === 'dark' ? '#000' : '#fff',
+        haloWidth: 2
+    };
+}
+
+function applyGameTheme(theme) {
+    if (mapReady && map && mapTheme !== theme) {
+        map.setStyle({
+            style: theme === 'dark' ? 'night' : 'road'
+        });
+        mapTheme = theme;
+    }
+
+    [playersLegendControl, imageLegendControl, helpLegendControl].forEach(legendControl => {
+        if (legendControl) {
+            legendControl.setOptions({
+                style: theme
+            });
+        }
+    });
+
+    if (distancesLineLayer) {
+        distancesLineLayer.setOptions({
+            strokeColor: theme === 'dark' ? '#fff' : '#000'
+        });
+    }
+    if (distancesSymbolLayer) {
+        distancesSymbolLayer.setOptions({
+            textOptions: getDistanceTextOptions(theme)
+        });
+    }
+}
+
+window.siteTheme.subscribe(applyGameTheme);
 
 const connection = new signalR.HubConnectionBuilder()
     .withUrl('/GuessGameHub')
@@ -167,13 +209,11 @@ connection.on('EndRound', function(endRoundInfo) {
         distancesPointDataSource = new atlas.source.DataSource(null, { cluster: false });
         distancesPointDataSource.add(distancesPointFeatureCollection);
         map.sources.add(distancesPointDataSource);
-        const distancesSymbolLayer = new atlas.layer.SymbolLayer(distancesPointDataSource, null, {
+        distancesSymbolLayer = new atlas.layer.SymbolLayer(distancesPointDataSource, null, {
             iconOptions: {
                 image: 'marker-yellow'
             },
-            textOptions: {
-                textField: ['get', 'content']
-            }
+            textOptions: getDistanceTextOptions(window.siteTheme.getTheme())
         });
         map.layers.add(distancesSymbolLayer);
     } else {
@@ -186,8 +226,8 @@ connection.on('EndRound', function(endRoundInfo) {
         distancesLineDataSource = new atlas.source.DataSource(null, { cluster: false });
         distancesLineDataSource.add(distancesLineFeatureCollection);
         map.sources.add(distancesLineDataSource);
-        const distancesLineLayer = new atlas.layer.LineLayer(distancesLineDataSource, null, {
-            strokeColor: 'black',
+        distancesLineLayer = new atlas.layer.LineLayer(distancesLineDataSource, null, {
+            strokeColor: window.siteTheme.isDark() ? '#fff' : '#000',
             strokeDashArray: [4, 4]
         });
         map.layers.add(distancesLineLayer);
@@ -436,11 +476,12 @@ if (urlSearchParams.has('gameCode')) {
 }
 
 function initMap() {
+    mapTheme = window.siteTheme.getTheme();
     map = new atlas.Map('map', {
         center: [-122.333301, 47.606501],
         zoom: 11,
         language: 'en-US',
-        style: darkMode ? 'night' : 'road',
+        style: mapTheme === 'dark' ? 'night' : 'road',
         authOptions: {
             authType: 'anonymous',
             clientId: 'df857d2c-3805-4793-90e4-63e84a499756',
@@ -453,6 +494,8 @@ function initMap() {
     });
 
     map.events.add('ready', function() {
+        mapReady = true;
+        applyGameTheme(window.siteTheme.getTheme());
         if (isAdmin) {
             document.getElementById('startGameButton').removeAttribute('hidden');
             document.getElementById('shareButton').removeAttribute('hidden');
@@ -475,7 +518,7 @@ function initMap() {
         .then((players) => {
             knownPlayers = players;
             playersLegendControl = new atlas.control.LegendControl({
-                style: 'auto',
+                style: window.siteTheme.getTheme(),
                 showToggle: true,
                 visible: true,
                 legends: [{
@@ -493,7 +536,7 @@ function initMap() {
         });
 
         imageLegendControl = new atlas.control.LegendControl({
-            style: 'auto',
+            style: window.siteTheme.getTheme(),
             showToggle: true,
             visible: false,
             legends: [{
@@ -504,7 +547,7 @@ function initMap() {
         map.controls.add(imageLegendControl, { position: 'bottom-right' });
 
         helpLegendControl = new atlas.control.LegendControl({
-            style: 'auto',
+            style: window.siteTheme.getTheme(),
             showToggle: false,
             visible: false,
             legends: [{
@@ -590,7 +633,7 @@ function buildPlayerList(players, addHeader) {
         if (player.lastRoundScore) {
             const lastRoundScoreSpan = document.createElement('span');
             lastRoundScoreSpan.innerText = ` (+${player.lastRoundScore})`;
-            lastRoundScoreSpan.style.color = 'green';
+            lastRoundScoreSpan.className = 'text-success-emphasis';
             playerListItem.append(lastRoundScoreSpan);
         }
         playersHtmlList.append(playerListItem);
