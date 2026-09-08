@@ -540,7 +540,7 @@
               ColumnSpacing="12"
               MinimumHeightRequest="72">
 
-            <!-- Doubles as the roll toggle and as a peek at the most recent shot. -->
+            <!-- Show the destination: photos from the camera, or the camera from the roll. -->
             <ImageButton x:Name="LatestThumbnailButton"
                          Grid.Row="1"
                          Grid.Column="0"
@@ -551,7 +551,23 @@
                          CornerRadius="8"
                          BackgroundColor="#33FFFFFF"
                          HorizontalOptions="Start"
-                         Command="{Binding ToggleRollCommand}" />
+                         IsEnabled="{Binding HasCamera}"
+                         Command="{Binding ToggleRollCommand}"
+                         SemanticProperties.Description="View photos">
+                <ImageButton.Triggers>
+                    <DataTrigger TargetType="ImageButton" Binding="{Binding IsRollVisible}" Value="True">
+                        <Setter Property="Source">
+                            <Setter.Value>
+                                <FontImageSource FontFamily="FluentIcons" Glyph="&#xF255;" Color="White" Size="24" />
+                            </Setter.Value>
+                        </Setter>
+                        <Setter Property="Aspect" Value="AspectFit" />
+                        <Setter Property="Padding" Value="14" />
+                        <Setter Property="BackgroundColor" Value="#CC000000" />
+                        <Setter Property="SemanticProperties.Description" Value="Back to camera" />
+                    </DataTrigger>
+                </ImageButton.Triggers>
+            </ImageButton>
 
             <!-- Gives the layout code a stable shutter-sized anchor in either rail orientation. -->
             <Grid x:Name="CaptureControls"

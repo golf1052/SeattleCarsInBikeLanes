@@ -272,6 +272,7 @@ Run this matrix on a physical Android 10+ device before merging mobile changes:
 | Metadata | A captured photo retains orientation, capture time, GPS when available, and the Cars in Bike Lanes XMP packet |
 | Import | Up to four images can be selected with the system picker and remain readable after restarting the app |
 | Thumbnails | Captured and imported images render in the roll and report preview |
+| Photo navigation on iOS and Android | The latest-photo thumbnail opens the roll; while browsing pending or reported photos, it becomes a camera icon announced as "Back to camera" that restores the viewfinder and thumbnail. The control stays in the same place in portrait and landscape, remains legible in light and dark mode, and is disabled when no camera is available |
 | Delete | Captured photos are deleted only after app confirmation; imported photos are forgotten by the app but remain in the device library |
 | Anonymous report | A report can be submitted without signing in and its photos move to the reported section |
 | Report grouping on iOS and Android | A one-photo report and a separate three-photo report appear under two distinct submission-time headers, newest report first; the same groups remain after restarting the app |
