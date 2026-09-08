@@ -51,14 +51,14 @@ namespace SeattleCarsInBikeLanes
             builder.Services.AddCors(options =>
             {
                 options.AddDefaultPolicy(policy =>
-                {
-                    policy.WithOrigins("https://localhost:7152",
-                        "http://localhost:5152",
-                        // Bluesky OAuth development uses the atproto localhost exception, which
-                        // requires a 127.0.0.1 loopback callback, so the dev site is browsed there.
-                        "http://127.0.0.1:5152",
-                        "https://seattle.carinbikelane.com");
-                });
+                                                {
+                                                    policy.WithOrigins("https://localhost:7152",
+                                                                                "http://localhost:5152",
+                                                                                // Bluesky OAuth development uses the atproto localhost exception, which
+                                                                                // requires a 127.0.0.1 loopback callback, so the dev site is browsed there.
+                                                                                "http://127.0.0.1:5152",
+                                                                                "https://seattle.carinbikelane.com");
+                                                });
             });
 
             builder.Services.AddControllers();
@@ -99,7 +99,7 @@ namespace SeattleCarsInBikeLanes
                             if (usernameMatch && passwordMatch)
                             {
                                 var claims = new[]
-                                {
+                                                                                                {
                                     new Claim(ClaimTypes.NameIdentifier,
                                         context.Username,
                                         ClaimValueTypes.String,
@@ -145,7 +145,9 @@ namespace SeattleCarsInBikeLanes
                     };
                 })
                 .AddScheme<AuthenticationSchemeOptions, BlueskyBearerAuthenticationHandler>(
-                    BlueskyAuthDefaults.BearerScheme, _ => { })
+                    BlueskyAuthDefaults.BearerScheme, _ =>
+                    {
+                    })
                 .AddPolicyScheme(BlueskyAuthDefaults.AnyScheme, BlueskyAuthDefaults.AnyScheme, policyOptions =>
                 {
                     // Browsers send a cookie, the mobile app sends a bearer token.
@@ -164,6 +166,14 @@ namespace SeattleCarsInBikeLanes
             // Setup services
             var services = builder.Services;
             services.AddSingleton<HttpClient>();
+            services.AddSingleton(_ => new MastodonCredentialVerifier(new HttpClient(new HttpClientHandler()
+            {
+                AllowAutoRedirect = false,
+                UseCookies = false
+            })));
+            services.AddSingleton<DeviceBlocklistProvider>();
+            services.AddSingleton<ReportStore>();
+            services.AddHostedService<ReportCleanupService>();
             services.AddSingleton<HelperMethods>();
             services.AddSingleton<StatusResponse>();
             services.AddSingleton<DefaultAzureCredential>(c =>
@@ -179,14 +189,14 @@ namespace SeattleCarsInBikeLanes
             services.AddSingleton(c =>
             {
                 return new SecretClient(new Uri("https://seattle-carsinbikelanes.vault.azure.net/"),
-                    c.GetRequiredService<DefaultAzureCredential>());
+                                                    c.GetRequiredService<DefaultAzureCredential>());
             });
             services.AddSingleton(c =>
             {
                 SecretClient client = c.GetRequiredService<SecretClient>();
                 KeyVaultSecret twitterBearerTokenSecret = client.GetSecret("twitter-bearer-token");
                 string twitterBearerToken = twitterBearerTokenSecret.Value;
-                var twitterAuth = new ApplicationOnlyAuthorizer()
+                ApplicationOnlyAuthorizer twitterAuth = new ApplicationOnlyAuthorizer()
                 {
                     BearerToken = twitterBearerToken
                 };
@@ -195,12 +205,12 @@ namespace SeattleCarsInBikeLanes
             services.AddSingleton(c =>
             {
                 return new MapsSearchClient(c.GetRequiredService<DefaultAzureCredential>(),
-                    "df857d2c-3805-4793-90e4-63e84a499756");
+                                                    "df857d2c-3805-4793-90e4-63e84a499756");
             });
             services.AddSingleton(c =>
             {
                 return new CosmosClient("https://seattle-carsinbikelanes-db.documents.azure.com:443/",
-                    c.GetRequiredService<DefaultAzureCredential>());
+                                                    c.GetRequiredService<DefaultAzureCredential>());
             });
             services.AddSingleton(c =>
             {
@@ -212,6 +222,12 @@ namespace SeattleCarsInBikeLanes
                 ILogger<ReportedItemsDatabase> logger = c.GetRequiredService<ILogger<ReportedItemsDatabase>>();
                 Container container = c.GetRequiredService<Microsoft.Azure.Cosmos.Database>().GetContainer("items");
                 return new ReportedItemsDatabase(logger, container);
+            });
+            services.AddSingleton(c =>
+            {
+                ILogger<BlockedDevicesDatabase> logger = c.GetRequiredService<ILogger<BlockedDevicesDatabase>>();
+                Container container = c.GetRequiredService<Microsoft.Azure.Cosmos.Database>().GetContainer("blocked-devices");
+                return new BlockedDevicesDatabase(logger, container);
             });
             services.AddSingleton(c =>
             {
@@ -240,7 +256,7 @@ namespace SeattleCarsInBikeLanes
             services.AddSingleton(c =>
             {
                 return new BlobServiceClient(new Uri("https://seacarsinbikelanesfiles.blob.core.windows.net/"),
-                    c.GetRequiredService<DefaultAzureCredential>());
+                                                    c.GetRequiredService<DefaultAzureCredential>());
             });
             services.AddSingleton(c =>
             {
@@ -266,7 +282,7 @@ namespace SeattleCarsInBikeLanes
             services.AddSingleton<IImageEndpoint>(c =>
             {
                 return new ImageEndpoint(c.GetRequiredService<ApiClient>(),
-                    new HttpClient());
+                                                    new HttpClient());
             });
             services.AddSingleton(c =>
             {
@@ -275,29 +291,29 @@ namespace SeattleCarsInBikeLanes
             services.AddSingleton(c =>
             {
                 return new MastodonClientProvider(c.GetRequiredService<ILogger<MastodonClientProvider>>(),
-                    c.GetRequiredService<IWebHostEnvironment>(),
-                    c.GetRequiredService<MastodonOAuthMappingDatabase>(),
-                    c.GetRequiredService<SecretClient>(),
-                    c.GetRequiredService<ILogger<MastodonClient>>(),
-                    c.GetRequiredService<HttpClient>());
+                                                    c.GetRequiredService<IWebHostEnvironment>(),
+                                                    c.GetRequiredService<MastodonOAuthMappingDatabase>(),
+                                                    c.GetRequiredService<SecretClient>(),
+                                                    c.GetRequiredService<ILogger<MastodonClient>>(),
+                                                    c.GetRequiredService<HttpClient>());
             });
             services.AddSingleton(c =>
             {
                 return new FeedProvider(c.GetRequiredService<ILogger<FeedProvider>>(),
-                    c.GetRequiredService<ReportedItemsDatabase>(),
-                    c.GetRequiredService<BlobContainerClient>());
+                                                    c.GetRequiredService<ReportedItemsDatabase>(),
+                                                    c.GetRequiredService<BlobContainerClient>());
             });
             services.AddSingleton(c =>
             {
                 return new SlackbotProvider(c.GetRequiredService<ILogger<SlackbotProvider>>(),
-                    c.GetRequiredService<HttpClient>(),
-                    c.GetRequiredService<SecretClient>());
+                                                    c.GetRequiredService<HttpClient>(),
+                                                    c.GetRequiredService<SecretClient>());
             });
             services.AddSingleton(c =>
             {
                 return new BlueskyClientProvider(c.GetRequiredService<ILogger<BlueskyClientProvider>>(),
-                    c.GetRequiredService<SecretClient>(),
-                    c.GetRequiredService<HttpClient>());
+                                                    c.GetRequiredService<SecretClient>(),
+                                                    c.GetRequiredService<HttpClient>());
             });
             services.AddSingleton<GuessGameManager>();
             services.AddSingleton<BlueskyOAuthProvider>();
@@ -356,5 +372,3 @@ namespace SeattleCarsInBikeLanes
         }
     }
 }
-
-

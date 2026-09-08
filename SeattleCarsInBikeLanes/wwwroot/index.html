@@ -381,10 +381,14 @@
     <script src="js/azure-maps-layer-legend.min.js"></script>
     <script src="js/azure-maps-spider-clusters.min.js"></script>
     <script src="js/element-helpers.js"></script>
-    <script src="js/helpers.js"></script>
+    <!-- The v= query parameter changes the script URL so browsers fetch updated code instead of
+         reusing a cached version that sends the old upload format. We update this label manually
+         when a deployment needs fresh scripts. -->
+    <script src="js/helpers.js?v=shared-reports-1"></script>
+    <script src="js/upload-report.js?v=shared-reports-1"></script>
     <script src="js/bluesky-auth.js"></script>
     <script src="js/bikelanes.js"></script>
-    <script src="js/index.js"></script>
+    <script src="js/index.js?v=shared-reports-1"></script>
     <script src="js/mobile-auth.js"></script>
     <script type="module" src="js/csvexport.js"></script>
 </body>

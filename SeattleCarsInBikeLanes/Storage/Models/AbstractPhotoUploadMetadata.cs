@@ -1,4 +1,6 @@
-﻿namespace SeattleCarsInBikeLanes.Storage.Models
+﻿using SeattleCarsInBikeLanes.Core.Contracts;
+
+namespace SeattleCarsInBikeLanes.Storage.Models
 {
     public abstract class AbstractPhotoUploadMetadata
     {
@@ -65,11 +67,5 @@
             PhotoLongitude = photoLongitude;
             Tags = tags;
         }
-    }
-
-    public class ImageTag
-    {
-        public string Name { get; set; } = default!;
-        public float Confidence { get; set; } = default!;
     }
 }

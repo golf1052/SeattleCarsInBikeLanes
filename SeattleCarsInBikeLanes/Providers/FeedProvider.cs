@@ -1,4 +1,5 @@
-﻿using System.ServiceModel.Syndication;
+﻿using System.Globalization;
+using System.ServiceModel.Syndication;
 using System.Text;
 using System.Xml;
 using Azure.Storage.Blobs;
@@ -229,10 +230,14 @@ namespace SeattleCarsInBikeLanes.Providers
             {
                 contentBuilder.Append($"<p><a href=\"{reportedItem.TwitterLink}\">Twitter post</a></p>");
             }
-            else if (reportedItem.TweetId.Length < 36)
+            else
             {
                 string tweetId = reportedItem.TweetId.Split('.')[0];
-                contentBuilder.Append($"<p><a href=\"https://twitter.com/carbikelanesea/status/{tweetId}\">Twitter post</a></p>");
+                if (tweetId.Length <= 20 &&
+                    ulong.TryParse(tweetId, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+                {
+                    contentBuilder.Append($"<p><a href=\"https://twitter.com/carbikelanesea/status/{tweetId}\">Twitter post</a></p>");
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(reportedItem.MastodonLink))
@@ -255,9 +260,10 @@ namespace SeattleCarsInBikeLanes.Providers
             SyndicationItem item = new SyndicationItem(titleBuilder.ToString(), content, null, reportedItem.TweetId, pubDate);
             item.PublishDate = pubDate;
 
+            feedItems.RemoveAll(existingItem => existingItem.Id == reportedItem.TweetId);
             if (feedItems.Count >= 100)
             {
-                feedItems.RemoveAt(feedItems.Count - 1);
+                feedItems.RemoveRange(99, feedItems.Count - 99);
             }
 
             if (beginning)

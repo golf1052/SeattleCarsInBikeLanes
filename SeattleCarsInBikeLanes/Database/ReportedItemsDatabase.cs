@@ -19,6 +19,14 @@ namespace SeattleCarsInBikeLanes.Database
             return await base.AddItem(item, item.TweetId);
         }
 
+        public virtual async Task SavePublishedReportAsync(ReportedItem item, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(item);
+            ArgumentException.ThrowIfNullOrWhiteSpace(item.TweetId);
+
+            await container.UpsertItemAsync(item, new PartitionKey(item.TweetId), cancellationToken: cancellationToken);
+        }
+
         public async Task<bool> UpdateReportedItem(ReportedItem item)
         {
             return await base.UpdateItem(item, item.TweetId);
@@ -88,8 +96,8 @@ namespace SeattleCarsInBikeLanes.Database
             if (request.Location != null && request.DistanceFromLocationInMiles != null)
             {
                 query = query.Where(i => i.Location != null)
-                    .Where(i => i.Location!.Distance(new Point(request.Location)) <=
-                    request.DistanceFromLocationInMiles * 1609.344);
+                                                    .Where(i => i.Location!.Distance(new Point(request.Location)) <=
+                                                    request.DistanceFromLocationInMiles * 1609.344);
             }
 
             using FeedIterator<ReportedItem> iterator = query.ToFeedIterator();
@@ -139,11 +147,11 @@ namespace SeattleCarsInBikeLanes.Database
         public async Task<List<ReportedItem>?> GetItemUsingIdentifier(string identifier)
         {
             IQueryable<ReportedItem> query = container.GetItemLinqQueryable<ReportedItem>()
-                .Where(i => i.TweetId.Contains(identifier) ||
-                    (i.TwitterLink != null && i.TwitterLink.Contains(identifier)) ||
-                    (i.MastodonLink != null && i.MastodonLink.Contains(identifier)) ||
-                    (i.BlueskyLink != null && i.BlueskyLink.Contains(identifier)) ||
-                    (i.ThreadsLink != null && i.ThreadsLink.Contains(identifier)));
+                                        .Where(i => i.TweetId.Contains(identifier) ||
+                                            (i.TwitterLink != null && i.TwitterLink.Contains(identifier)) ||
+                                            (i.MastodonLink != null && i.MastodonLink.Contains(identifier)) ||
+                                            (i.BlueskyLink != null && i.BlueskyLink.Contains(identifier)) ||
+                                            (i.ThreadsLink != null && i.ThreadsLink.Contains(identifier)));
 
             using FeedIterator<ReportedItem> iterator = query.ToFeedIterator();
             return await ProcessIterator(iterator);
@@ -193,8 +201,8 @@ namespace SeattleCarsInBikeLanes.Database
         public async Task<List<ReportedItem>> GetMostCars(DateOnly startDate, DateOnly endDate)
         {
             IQueryable<ReportedItem> query = container.GetItemLinqQueryable<ReportedItem>()
-                .Where(i => i.Date >= startDate && i.Date <= endDate)
-                .OrderByDescending(i => i.NumberOfCars);
+                                        .Where(i => i.Date >= startDate && i.Date <= endDate)
+                                        .OrderByDescending(i => i.NumberOfCars);
 
             using FeedIterator<ReportedItem> iterator = query.ToFeedIterator();
             List<ReportedItem>? items = await ProcessIterator(iterator);
