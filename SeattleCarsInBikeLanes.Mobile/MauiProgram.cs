@@ -164,6 +164,9 @@ public static class MauiProgram
 		services.AddSingleton<ICameraDeviceService, Platforms.iOS.CameraDeviceService>();
 		services.AddSingleton<ICameraPreviewReadiness, Platforms.iOS.CameraPreviewReadiness>();
 		services.AddSingleton<ICameraOrientationSource, Platforms.iOS.CameraOrientationSource>();
+		services.AddSingleton<ICameraHardwareControls>(sp => OperatingSystem.IsIOSVersionAtLeast(18)
+			? new Platforms.iOS.CameraHardwareControls(sp.GetRequiredService<ILogger<Platforms.iOS.CameraHardwareControls>>())
+			: new UnsupportedCameraHardwareControls());
 		services.AddSingleton<IBackgroundWorkScope, Platforms.iOS.BackgroundWorkScope>();
 #elif ANDROID
 		services.AddSingleton<IPhotoLibraryService,
@@ -173,6 +176,7 @@ public static class MauiProgram
 		services.AddSingleton<ICameraDeviceService, CameraDeviceService>();
 		services.AddSingleton<ICameraPreviewReadiness, Platforms.Android.CameraPreviewReadiness>();
 		services.AddSingleton<ICameraOrientationSource, Platforms.Android.CameraOrientationSource>();
+		services.AddSingleton<ICameraHardwareControls, UnsupportedCameraHardwareControls>();
 		services.AddSingleton<IBackgroundWorkScope, NullBackgroundWorkScope>();
 		services.AddSingleton<IBackgroundUploadScheduler, Platforms.Android.WorkManagerUploadScheduler>();
 #else
@@ -184,6 +188,7 @@ public static class MauiProgram
 		services.AddSingleton<ICameraDeviceService, CameraDeviceService>();
 		services.AddSingleton<ICameraPreviewReadiness, UnsupportedCameraPreviewReadiness>();
 		services.AddSingleton<ICameraOrientationSource, CameraOrientationSource>();
+		services.AddSingleton<ICameraHardwareControls, UnsupportedCameraHardwareControls>();
 		services.AddSingleton<IBackgroundWorkScope, NullBackgroundWorkScope>();
 #endif
 	}

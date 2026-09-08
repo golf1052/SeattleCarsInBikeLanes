@@ -74,12 +74,34 @@ public readonly record struct ZoomRange
     }
 
     /// <summary>
+    /// Uses the native recommendation rather than the app's digital-zoom cap.
+    /// Null means that no usable recommendation is available.
+    /// </summary>
+    public static ZoomRange? FromSystemRecommendation(
+        float minimum, float maximum, float availableMinimum, float availableMaximum)
+    {
+        if (!float.IsFinite(minimum) || !float.IsFinite(maximum) ||
+            !float.IsFinite(availableMinimum) || !float.IsFinite(availableMaximum) ||
+            minimum <= 0 || availableMinimum <= 0 ||
+            maximum < minimum || availableMaximum < availableMinimum)
+        {
+            return null;
+        }
+
+        minimum = Math.Max(minimum, availableMinimum);
+        maximum = Math.Min(maximum, availableMaximum);
+        return maximum < minimum ? null : new ZoomRange(minimum, maximum);
+    }
+
+    public float Refresh(float current, bool reset) => reset ? Default : Clamp(current);
+
+    /// <summary>
     /// The widest the camera goes. Below 1 on an ultra wide lens.
     /// </summary>
     public float Minimum { get; }
 
     /// <summary>
-    /// The closest the camera goes, never above <see cref="MaximumUsableZoom"/>.
+    /// The closest the camera goes. System recommendations are not subject to the app's cap.
     /// </summary>
     public float Maximum { get; }
 

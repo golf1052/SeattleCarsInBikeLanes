@@ -130,6 +130,7 @@ public partial class CameraPage : ContentPage
         LaunchPermissionCoordinator launchPermissions,
         ICameraAppLifecycle cameraLifecycle,
         ICameraOrientationSource cameraOrientation,
+        ICameraHardwareControls hardwareControls,
         ILogger<CameraPage> logger)
     {
         InitializeComponent();
@@ -142,12 +143,14 @@ public partial class CameraPage : ContentPage
         this.launchPermissions = launchPermissions;
         this.cameraLifecycle = cameraLifecycle;
         this.cameraOrientation = cameraOrientation;
+        this.hardwareControls = hardwareControls;
         this.logger = logger;
 
         BindingContext = viewModel;
 
         cameraLifecycle.Stopped += CameraAppStopped;
         cameraLifecycle.Resumed += CameraAppResumed;
+        InitializeHardwareControls();
     }
 
     protected override async void OnAppearing()
@@ -155,6 +158,7 @@ public partial class CameraPage : ContentPage
         base.OnAppearing();
 
         isPageVisible = true;
+        ObserveHardwareWindow();
         StartObservingOrientation();
         cameraReadiness.Begin(CameraReadinessTransition.TabReturn);
 
@@ -181,6 +185,8 @@ public partial class CameraPage : ContentPage
         base.OnDisappearing();
 
         isPageVisible = false;
+        UpdateHardwareAvailability();
+        StopObservingHardwareWindow();
         StopObservingOrientation();
         cameraReadiness.Finish("cancelled");
         CancelPreviewReadyWait();
@@ -314,6 +320,7 @@ public partial class CameraPage : ContentPage
         if (isPreviewRunning)
         {
             viewModel.IsCameraReady = true;
+            AttachHardwareControls();
             cameraReadiness.Complete();
             return;
         }
@@ -356,6 +363,7 @@ public partial class CameraPage : ContentPage
 
         isPreviewRunning = true;
         viewModel.IsCameraReady = true;
+        AttachHardwareControls();
         ResumePreviewState();
         cameraReadiness.Complete();
     }
@@ -455,6 +463,7 @@ public partial class CameraPage : ContentPage
         // a crop the user did not ask for and might not notice until afterwards. The toolkit resets
         // the camera itself each time a preview loads; this is what keeps the label in step.
         viewModel.ResetZoom();
+        ApplyNativeZoom();
     }
 
     /// <summary>
@@ -504,11 +513,12 @@ public partial class CameraPage : ContentPage
         {
             camera = new CameraView();
             camera.MediaCaptured += CameraMediaCaptured;
+            camera.HandlerChanging += CameraHandlerChanging;
+            camera.HandlerChanged += CameraHandlerChanged;
 
             // Two way so the toolkit's own reset to 1x, which it does every time a camera finishes
             // loading, comes back to the view model instead of leaving the label wrong.
-            camera.SetBinding(CameraView.ZoomFactorProperty,
-                new Binding(nameof(CameraViewModel.ZoomFactor), BindingMode.TwoWay));
+            BindTouchZoom();
 
             camera.PropertyChanged += CameraPropertyChanged;
 
@@ -546,6 +556,7 @@ public partial class CameraPage : ContentPage
 
             isPreviewRunning = true;
             viewModel.IsCameraReady = true;
+            AttachHardwareControls();
             ResumePreviewState();
             cameraReadiness.Complete();
         }
@@ -564,6 +575,7 @@ public partial class CameraPage : ContentPage
         CancelPreviewReadyWait();
         HideFocusReticle();
         viewModel.IsCameraReady = false;
+        hardwareControls.Detach();
         viewModel.HasCamera = false;
         isPreviewRunning = false;
         selectableCameras = [];
@@ -582,6 +594,8 @@ public partial class CameraPage : ContentPage
 
         camera.MediaCaptured -= CameraMediaCaptured;
         camera.PropertyChanged -= CameraPropertyChanged;
+        camera.HandlerChanging -= CameraHandlerChanging;
+        camera.HandlerChanged -= CameraHandlerChanged;
         CameraHost.Remove(camera);
         camera = null;
     }
@@ -628,6 +642,7 @@ public partial class CameraPage : ContentPage
     private async void CameraAppStopped(object? sender, EventArgs e)
     {
         isWindowActive = false;
+        UpdateHardwareAvailability();
         cameraReadiness.Finish("cancelled");
         CancelPreviewReadyWait();
 
@@ -738,6 +753,10 @@ public partial class CameraPage : ContentPage
         }
 
         viewModel.SetZoomRange(selected.MinimumZoomFactor, selected.MaximumZoomFactor);
+        hardwareControls.Refresh();
+        SynchronizeHardwareState();
+        viewModel.ResetZoom();
+        ApplyNativeZoom();
         cameraDevices.ResumeContinuousFocus(selected.DeviceId);
     }
 
@@ -761,7 +780,7 @@ public partial class CameraPage : ContentPage
     {
         try
         {
-            if (camera?.SelectedCamera is null)
+            if (!CanUseCameraPreview || camera?.SelectedCamera is null)
             {
                 return;
             }
@@ -852,6 +871,11 @@ public partial class CameraPage : ContentPage
     /// </remarks>
     private void CameraPinchUpdated(object? sender, PinchGestureUpdatedEventArgs e)
     {
+        if (!CanUseCameraPreview || !viewModel.CanZoom)
+        {
+            return;
+        }
+
         switch (e.Status)
         {
             case GestureStatus.Started:
@@ -931,17 +955,38 @@ public partial class CameraPage : ContentPage
         }
     }
 
-    private async void CaptureClicked(object? sender, EventArgs e)
+    private async void CaptureClicked(object? sender, EventArgs e) => await CapturePhotoAsync();
+
+    private async Task CapturePhotoAsync()
     {
         // The button goes away with the preview, but a tap that landed just before the roll opened
         // can still arrive here, and it would photograph whatever the phone is pointing at while
         // the user is looking at their photos.
-        if (camera is null || !viewModel.IsPreviewInteractive)
+        if (camera is null)
         {
             return;
         }
 
         try
+        {
+            await captureCoordinator.CaptureAsync(CanUseCameraPreview, CaptureCurrentCameraAsync);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to capture a photo.");
+            hardwareControls.SetEnabled(false);
+            try
+            {
+                await DisplayAlertAsync("Camera", "Couldn't take that photo.", "OK");
+            }
+            finally
+            {
+                hardwareControls.Refresh();
+                UpdateHardwareAvailability();
+            }
+        }
+
+        async Task CaptureCurrentCameraAsync()
         {
             // The camera is put back into continuous autofocus on the way to the shutter, because
             // the toolkit reconfigures the device when it starts the preview and changes the
@@ -969,22 +1014,44 @@ public partial class CameraPage : ContentPage
                 }
             }
         }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to capture a photo.");
-            await DisplayAlertAsync("Camera", "Couldn't take that photo.", "OK");
-        }
     }
 
-    private void SwitchCameraClicked(object? sender, EventArgs e)
+    private async void SwitchCameraClicked(object? sender, EventArgs e)
     {
-        if (camera is null || selectableCameras.Count < 2)
+        if (camera is null || selectableCameras.Count < 2 || !CanUseCameraPreview ||
+            captureCoordinator.IsCapturing)
         {
             return;
         }
 
-        currentCameraIndex = (currentCameraIndex + 1) % selectableCameras.Count;
-        camera.SelectedCamera = selectableCameras[currentCameraIndex];
+        isCameraSwitching = true;
+        UpdateHardwareAvailability();
+        await previewLifecycleMutex.WaitAsync();
+        try
+        {
+            viewModel.IsCameraReady = false;
+            hardwareControls.Detach();
+            currentCameraIndex = (currentCameraIndex + 1) % selectableCameras.Count;
+            camera.SelectedCamera = selectableCameras[currentCameraIndex];
+            using CancellationTokenSource cancellation = new CancellationTokenSource(PreviewReadyTimeout);
+            await previewReadiness.WaitForFirstFrameAsync(camera, cancellation.Token);
+            if (IsPreviewExpected)
+            {
+                viewModel.IsCameraReady = true;
+                AttachHardwareControls();
+                ResumePreviewState();
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to switch the camera.");
+        }
+        finally
+        {
+            isCameraSwitching = false;
+            previewLifecycleMutex.Release();
+            UpdateHardwareAvailability();
+        }
     }
 
     private void PhotoTapped(object? sender, TappedEventArgs e)

@@ -414,6 +414,50 @@ samples arrive with `platform=android` for:
 The metric names, millisecond units, and `transition`, `platform`,
 `permission_state`, and `result` attributes must remain identical to iOS.
 
+## In-app iOS Camera Control
+
+On iOS 18+ devices with Camera Control, a full click takes one photo on release.
+A light press opens Apple's native zoom control; slide on Camera Control to zoom.
+Volume buttons also take photos while the hardware interaction is enabled.
+There is no burst/video gesture or exposure control.
+
+The app does not register as a Camera Control launch target: there is no
+`CameraCaptureIntent`, Lock Screen camera extension, or launch-setting change.
+Open the app normally. Hardware controls are enabled only while the live camera
+preview is ready and visible, and are disabled during capture, camera switching,
+photo importing, photo-roll viewing, navigation away, and app inactivity.
+Disabled interactions leave hardware buttons to their normal system behavior.
+Inactive zoom controls are removed from the capture session and registered again
+when the preview is ready, rather than toggling `AVCaptureSlider.Enabled`. This
+avoids the faint, unresponsive overlay observed after returning from the photo
+roll or resuming the app. Pending actions from an earlier registration are ignored.
+
+Hardware zoom, pinch zoom, and the zoom pill share the active camera format's
+system-recommended range, constrained by current native device availability.
+This range is not subject to the app's usual 10x digital-zoom cap. The displayed
+zoom follows native changes, and reopening or switching cameras resets to the
+default zoom. The native overlay uses a configurable `AVCaptureSlider` so pinch
+zoom and the zoom pill also update Camera Control's displayed value. Hardware
+scrolling uses 0.25x steps (or the full range if narrower) to avoid excessive
+scrolling. Pinch zoom remains continuous and its exact value is reflected in the
+overlay without rounding to those steps. Hardware swipes update the same device
+zoom; queued programmatic value-change callbacks
+do not replay earlier zoom levels. The slider is rebuilt when its range changes.
+A missing usable native recommendation or unavailable zoom control
+retains the existing touch-zoom policy without disabling hardware shutter support.
+Unsupported iPhones and Android retain the existing touch controls and zoom range.
+
+Physical-device acceptance requires an iPhone with Camera Control. Open the app
+while a different camera app is selected as the system launch target; exercise
+click capture, light-press/swipe zoom, alternating pinch/pill/hardware zoom,
+rear/front switching, both landscape orientations, and repeated roll/tab/app
+transitions. Check that no capture occurs behind the roll or an import sheet, and
+that leaving immediately after a shutter press saves exactly one photo. A
+simulator cannot validate these physical gestures.
+Test the photo-roll and background/foreground transitions separately: zoom must
+still move both the native overlay and preview after each, including when pinch
+zoom leaves the device between the hardware slider's quarter-step values.
+
 ## Cross-platform feature policy
 
 Mobile features ship for iOS and Android together. Equivalent behavior and
@@ -424,7 +468,11 @@ Current intentional difference: Android uses CameraX continuous autofocus
 instead of the iOS tap-to-focus override because the camera toolkit does not
 expose Android's `CameraControl`.
 
-Camera controls otherwise have orientation parity. iOS interface orientation
+Camera Control is an intentional iOS-only hardware integration. Supported iPhones
+also use Apple's recommended zoom range for all zoom inputs; Android and
+unsupported iPhones keep the existing device-limited, 10x-capped zoom policy.
+
+On-screen camera controls otherwise have orientation parity. iOS interface orientation
 and Android display rotation use different native conventions, so each platform
 normalizes those values to the phone's physical bottom edge before the shared
 camera layout places the control rail.

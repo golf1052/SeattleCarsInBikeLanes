@@ -195,4 +195,65 @@ public class ZoomRangeTests
     {
         Assert.Equal(expected, ZoomRange.Format(value));
     }
+
+    [Theory]
+    [InlineData(6f)]
+    [InlineData(15f)]
+    public void UsesTheSystemRecommendationInsteadOfTheDigitalZoomCap(float maximum)
+    {
+        ZoomRange? range = ZoomRange.FromSystemRecommendation(1f, maximum, 1f, 100f);
+
+        Assert.NotNull(range);
+        Assert.Equal(maximum, range.Value.Maximum);
+        Assert.Equal(maximum, range.Value.Clamp(100f));
+        Assert.Equal(maximum, range.Value.Presets[^1]);
+        Assert.Equal(10f, ZoomRange.FromCamera(1f, 100f).Maximum);
+    }
+
+    [Theory]
+    [InlineData(float.NaN, 8f, 1f, 20f)]
+    [InlineData(1f, float.PositiveInfinity, 1f, 20f)]
+    [InlineData(1f, 8f, float.NaN, 20f)]
+    [InlineData(1f, 8f, 1f, float.PositiveInfinity)]
+    [InlineData(0f, 8f, 1f, 20f)]
+    [InlineData(1f, 8f, 0f, 20f)]
+    [InlineData(8f, 1f, 1f, 20f)]
+    [InlineData(1f, 8f, 20f, 1f)]
+    [InlineData(1f, 4f, 5f, 20f)]
+    [InlineData(5f, 8f, 1f, 4f)]
+    public void RejectsUnavailableOrInvalidSystemRecommendations(
+        float minimum, float maximum, float availableMinimum, float availableMaximum)
+    {
+        Assert.Null(ZoomRange.FromSystemRecommendation(minimum, maximum, availableMinimum, availableMaximum));
+    }
+
+    [Fact]
+    public void IntersectsTheRecommendationWithLiveDeviceAvailability()
+    {
+        ZoomRange? range = ZoomRange.FromSystemRecommendation(0.5f, 20f, 1f, 12f);
+
+        Assert.NotNull(range);
+        Assert.Equal(1f, range.Value.Minimum);
+        Assert.Equal(12f, range.Value.Maximum);
+    }
+
+    [Fact]
+    public void FixedSystemRangeHasNoZoomControl()
+    {
+        ZoomRange? range = ZoomRange.FromSystemRecommendation(2f, 2f, 1f, 20f);
+
+        Assert.NotNull(range);
+        Assert.False(range.Value.CanZoom);
+        Assert.Equal(2f, range.Value.Default);
+    }
+
+    [Fact]
+    public void RangeRefreshKeepsOrClampsZoomInsteadOfResetting()
+    {
+        ZoomRange range = ZoomRange.FromCamera(1f, 8f);
+
+        Assert.Equal(5f, range.Refresh(5f, reset: false));
+        Assert.Equal(8f, range.Refresh(12f, reset: false));
+        Assert.Equal(1f, range.Refresh(5f, reset: true));
+    }
 }

@@ -436,6 +436,11 @@ public sealed partial class CameraViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanZoom))]
     public partial bool IsCameraReady { get; set; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPreviewInteractive))]
+    [NotifyPropertyChangedFor(nameof(CanZoom))]
+    public partial bool IsImporting { get; set; }
+
     /// <summary>
     /// What the camera currently being previewed can be zoomed to.
     /// </summary>
@@ -464,7 +469,7 @@ public sealed partial class CameraViewModel : ObservableObject
     /// this is what the layer over the preview follows rather than the narrower
     /// <see cref="CanZoom"/>.
     /// </remarks>
-    public bool IsPreviewInteractive => HasCamera && IsCameraReady && !IsRollVisible;
+    public bool IsPreviewInteractive => HasCamera && IsCameraReady && !IsRollVisible && !IsImporting;
 
     /// <summary>
     /// Whether the zoom controls are worth showing.
@@ -490,11 +495,18 @@ public sealed partial class CameraViewModel : ObservableObject
     /// user staring at a crop they never asked for.
     /// </remarks>
     public void SetZoomRange(float minimum, float maximum)
+        => SetZoomRange(ZoomRange.FromCamera(minimum, maximum), reset: true);
+
+    public void SetZoomRange(ZoomRange range, bool reset)
     {
-        ZoomRange = ZoomRange.FromCamera(minimum, maximum);
-        OnPropertyChanged(nameof(ZoomRange));
-        OnPropertyChanged(nameof(CanZoom));
-        ResetZoom();
+        if (ZoomRange != range)
+        {
+            ZoomRange = range;
+            OnPropertyChanged(nameof(ZoomRange));
+            OnPropertyChanged(nameof(CanZoom));
+        }
+
+        ZoomFactor = ZoomRange.Refresh(ZoomFactor, reset);
     }
 
     /// <summary>
@@ -689,6 +701,7 @@ public sealed partial class CameraViewModel : ObservableObject
     [RelayCommand]
     private async Task ImportAsync()
     {
+        IsImporting = true;
         try
         {
             IReadOnlyList<ReportPhoto> imported = await photoCatalog.ImportPhotosAsync(MaxPhotosPerReport);
@@ -704,6 +717,10 @@ public sealed partial class CameraViewModel : ObservableObject
         {
             logger.LogError(ex, "Failed to import photos.");
             StatusMessage = "Couldn't import those photos.";
+        }
+        finally
+        {
+            IsImporting = false;
         }
     }
 
