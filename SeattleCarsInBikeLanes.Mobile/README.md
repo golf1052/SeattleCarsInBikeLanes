@@ -111,12 +111,32 @@ Device crash reports are available through `devicectl device info files` and
 `devicectl device copy from` with `--domain-type systemCrashLogs`; keep the matching
 build's `.app.dSYM` to symbolicate them.
 
+For a connected iPhone, clean both the Release configuration and the physical-device
+runtime. From the `SeattleCarsInBikeLanes.Mobile` directory:
+
+```bash
+dotnet clean -c Release -f net10.0-ios -r ios-arm64
+```
+
+Plain `dotnet clean` defaults to Debug and leaves Release artifacts untouched.
+Adding only `-c Release` is not enough: without `-r ios-arm64`, the iOS SDK on an
+Apple Silicon Mac still selects `iossimulator-arm64`, even with an iPhone connected.
+
+Clean does not restore packages. If the latest build restored only `ios-arm64`,
+a simulator clean fails with `NETSDK1047` because `obj/project.assets.json` has no
+simulator target. This is a mismatch between the clean command and generated
+restore state, not a missing iOS framework in the `.csproj`. If the device target
+itself is missing, run `dotnet restore -r ios-arm64 -p:Configuration=Release` before
+the device clean.
+
 Clean the exact device configuration, then rebuild. From the repository root:
 
 ```bash
 project="SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.csproj"
 output="$HOME/Library/Caches/SeattleCarsInBikeLanes/ios-release/"
 
+dotnet restore "$project" -r ios-arm64 -p:Configuration=Release \
+  -p:OutputPath="$output" &&
 dotnet clean "$project" -f net10.0-ios -c Release -r ios-arm64 \
   -p:OutputPath="$output" &&
 dotnet build "$project" -f net10.0-ios -c Release -r ios-arm64 \
