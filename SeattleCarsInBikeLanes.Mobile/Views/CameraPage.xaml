@@ -592,8 +592,8 @@
                         </DataTrigger>
                     </Button.Triggers>
                     <Button.ImageSource>
-                        <!-- image library icon -->
-                        <FontImageSource FontFamily="FluentIcons" Glyph="&#xF422;" Color="White" Size="20" />
+                        <!-- Fluent imageAdd (20 regular). -->
+                        <FontImageSource FontFamily="FluentIcons" Glyph="&#xE71A;" Color="White" Size="20" />
                     </Button.ImageSource>
                 </Button>
 
@@ -607,8 +607,8 @@
                         IsVisible="{Binding IsPreviewInteractive}"
                         SemanticProperties.Description="Switch camera">
                     <Button.ImageSource>
-                        <!-- camera flip icon -->
-                        <FontImageSource FontFamily="FluentIcons" Glyph="&#xF13F;" Color="White" Size="20" />
+                        <!-- Fluent cameraSwitch (20 regular). -->
+                        <FontImageSource FontFamily="FluentIcons" Glyph="&#xE2A2;" Color="White" Size="20" />
                     </Button.ImageSource>
                 </Button>
             </StackLayout>
