@@ -55,7 +55,7 @@ public class ReportValidatorTests
         ValidationResult result = ReportValidator.ValidatePhotos(selected, maxPhotos: 4);
 
         Assert.False(result.IsValid);
-        Assert.Contains("not reported again", result.Error, StringComparison.Ordinal);
+        Assert.Equal("These photos have already been reported.", result.Error);
         Assert.Single(selected);
         Assert.True(selected[0].Submitted);
     }
@@ -70,7 +70,7 @@ public class ReportValidatorTests
         ValidationResult result = ReportValidator.ValidatePhotos(selected, maxPhotos: 4);
 
         Assert.False(result.IsValid);
-        Assert.Contains("can be deleted", result.Error, StringComparison.Ordinal);
+        Assert.Equal("These photos have already been reported.", result.Error);
         Assert.Equal(new[] { unreported, reported }, selected);
         Assert.False(unreported.Submitted);
         Assert.True(reported.Submitted);

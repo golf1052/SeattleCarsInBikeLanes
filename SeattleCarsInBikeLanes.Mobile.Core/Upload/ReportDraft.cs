@@ -127,8 +127,7 @@ public static class ReportValidator
 
         if (photos.Any(photo => photo.Submitted))
         {
-            return ValidationResult.Invalid(
-                "Already reported photos can be deleted, but not reported again. Deselect them to report other photos.");
+            return ValidationResult.Invalid("These photos have already been reported.");
         }
 
         return photos.Count > maxPhotos

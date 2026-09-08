@@ -754,7 +754,7 @@ public sealed partial class CameraViewModel : ObservableObject
         IReadOnlyList<PhotoItemViewModel> selected = SelectedPhotos;
         ValidationResult validation = ReportValidator.ValidatePhotos(selected, MaxPhotosPerReport);
 
-        StatusMessage = selected.Count > 0 && !validation.IsValid
+        StatusMessage = selected.Count > 0 && !validation.IsValid && !selected.Any(item => item.Submitted)
             ? validation.Error
             : selected.Any(item => item.IsQueued)
                 ? "One of these photos is already on its way to the site."
