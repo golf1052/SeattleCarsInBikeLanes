@@ -221,6 +221,235 @@ public sealed class UploadQueueTests
         await queue.DrainAsync();
     }
 
+    [Theory]
+    [InlineData(false, HttpStatusCode.NotFound)]
+    [InlineData(true, HttpStatusCode.NotFound)]
+    [InlineData(false, HttpStatusCode.Gone)]
+    [InlineData(true, HttpStatusCode.Gone)]
+    public async Task OldApiFailureCanBeDiscardedOfflineAfterRestart(bool networkAttempted, HttpStatusCode status)
+    {
+        Fixture f = new();
+        if (networkAttempted)
+            f.Uploads.BeforeFinalize = () => throw new UploadException("Old API is unavailable.", status);
+        else
+            f.Uploads.PreparationFailure = status;
+
+        using (UploadQueue first = f.Queue())
+        {
+            await first.EnqueueAsync(f.Photos, f.Draft);
+            await first.DrainAsync();
+            Assert.Equal(UploadQueueState.Failed, Assert.Single(first.Reports).State);
+        }
+
+        f.Uploads.StatusUnavailable = true;
+        using (UploadQueue reopened = f.Queue())
+        {
+            await reopened.StartAsync();
+            QueuedReport report = Assert.Single(reopened.Reports);
+            Assert.Equal(networkAttempted, report.NetworkAttempted);
+            Assert.True(report.CanDiscard);
+            string reference = report.Attribution.CredentialReference!;
+            Assert.NotNull(await new QueuedCredentialVault(f.Auth.Storage).ResolveAsync(report.Id, reference));
+            int changes = 0;
+            reopened.Changed += (_, _) => changes++;
+            bool completed = false;
+            reopened.Completed += (_, _) => completed = true;
+
+            await reopened.DiscardAsync(report.Id);
+
+            Assert.Equal(1, changes);
+            Assert.False(completed);
+            Assert.Empty(reopened.Reports);
+            Assert.Empty(f.Store.Rows);
+            Assert.Empty(f.Catalog.Marked);
+            Assert.All(f.Photos, photo =>
+            {
+                Assert.False(photo.Submitted);
+                Assert.Null(reopened.GetPhotoState(photo.Id));
+            });
+            await Assert.ThrowsAsync<IOException>(() =>
+                new QueuedCredentialVault(f.Auth.Storage).ResolveAsync(report.Id, reference));
+        }
+
+        using UploadQueue restarted = f.Queue();
+        await restarted.DrainAsync();
+        Assert.Empty(restarted.Reports);
+        Assert.Equal(1, f.Uploads.Preparations);
+        Assert.Equal(networkAttempted ? 1 : 0, f.Uploads.Finalizations);
+        Assert.Equal(0, f.Uploads.StatusReads);
+        Assert.True(await restarted.EnqueueAsync(f.Photos, f.Draft));
+    }
+
+    [Fact]
+    public async Task ExhaustedUncertainReportCanBeDiscardedWithoutAnotherStatusLookup()
+    {
+        Fixture f = new();
+        f.Uploads.AfterAccept = () => throw new HttpRequestException("response lost");
+        f.Uploads.StatusUnavailable = true;
+        using UploadQueue queue = f.Queue();
+        await queue.EnqueueAsync(f.Photos, f.Draft);
+        for (int attempt = 0; attempt < UploadRetryPolicy.MaxAttempts; attempt++)
+        {
+            await queue.DrainAsync();
+            f.Runtime.Now = f.Runtime.Now.AddHours(1);
+        }
+        QueuedReport report = Assert.Single(queue.Reports);
+        Assert.Equal(UploadQueueState.Failed, report.State);
+        Assert.True(report.NetworkAttempted);
+        Assert.Null(report.Receipt);
+        Assert.True(report.CanDiscard);
+        int statusReads = f.Uploads.StatusReads;
+
+        await queue.DiscardAsync(report.Id);
+        await queue.DrainAsync();
+
+        Assert.Empty(queue.Reports);
+        Assert.Empty(f.Store.Rows);
+        Assert.Empty(f.Catalog.Marked);
+        Assert.NotNull(f.Uploads.Receipt);
+        Assert.Equal(statusReads, f.Uploads.StatusReads);
+        Assert.Equal(1, f.Uploads.Finalizations);
+    }
+
+    [Fact]
+    public async Task FailedDiscardRetainsErrorPhotosAndCredentials()
+    {
+        Fixture f = new();
+        f.Uploads.BeforeFinalize = () => throw new UploadException("Old API is unavailable.", HttpStatusCode.Gone);
+        using UploadQueue queue = f.Queue();
+        await queue.EnqueueAsync(f.Photos, f.Draft);
+        await queue.DrainAsync();
+        QueuedReport report = Assert.Single(queue.Reports);
+        f.Store.FailRemove = true;
+        int changes = 0;
+        queue.Changed += (_, _) => changes++;
+
+        await Assert.ThrowsAsync<IOException>(() => queue.DiscardAsync(report.Id));
+
+        Assert.Same(report, Assert.Single(queue.Reports));
+        Assert.Equal("Old API is unavailable.", report.LastError);
+        Assert.Single(f.Store.Rows);
+        Assert.Equal(0, changes);
+        Assert.All(f.Photos, photo => Assert.Equal(UploadQueueState.Failed, queue.GetPhotoState(photo.Id)));
+        Assert.NotNull(await new QueuedCredentialVault(f.Auth.Storage)
+            .ResolveAsync(report.Id, report.Attribution.CredentialReference!));
+        f.Store.FailRemove = false;
+        await queue.DiscardAsync(report.Id);
+        Assert.Empty(queue.Reports);
+    }
+
+    [Fact]
+    public async Task DiscardPreservesOtherReportsAndTheirSharedCredentials()
+    {
+        Fixture f = new();
+        f.Uploads.PreparationFailure = HttpStatusCode.Gone;
+        using UploadQueue queue = f.Queue();
+        await queue.EnqueueAsync(f.Photos, f.Draft);
+        await queue.DrainAsync();
+        QueuedReport failed = Assert.Single(queue.Reports);
+        ReportPhoto otherPhoto = new() { Id = "other-photo", Origin = f.Photos[0].Origin };
+        await queue.EnqueueAsync([otherPhoto], f.Draft);
+        QueuedReport other = queue.Reports.Single(report => report.Id != failed.Id);
+        Assert.Equal(failed.Attribution.CredentialReference, other.Attribution.CredentialReference);
+
+        await queue.DiscardAsync(failed.Id);
+
+        Assert.Same(other, Assert.Single(queue.Reports));
+        Assert.Equal(other.Id, Assert.Single(f.Store.Rows).Key);
+        Assert.Equal(UploadQueueState.Pending, queue.GetPhotoState(otherPhoto.Id));
+        Assert.NotNull(await new QueuedCredentialVault(f.Auth.Storage)
+            .ResolveAsync(other.Id, other.Attribution.CredentialReference!));
+    }
+
+    [Fact]
+    public async Task AcceptedReportCannotBeDiscardedAfterLocalRetriesAreExhausted()
+    {
+        Fixture f = new();
+        f.Catalog.FailAfterMarks = 0;
+        using UploadQueue queue = f.Queue();
+        await queue.EnqueueAsync(f.Photos, f.Draft);
+        for (int attempt = 0; attempt < UploadRetryPolicy.MaxAttempts; attempt++)
+        {
+            await queue.DrainAsync();
+            f.Runtime.Now = f.Runtime.Now.AddHours(1);
+        }
+        QueuedReport report = Assert.Single(queue.Reports);
+        Assert.Equal(UploadQueueState.Failed, report.State);
+        Assert.NotNull(report.Receipt);
+        Assert.False(report.CanDiscard);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => queue.DiscardAsync(report.Id));
+
+        Assert.Single(f.Store.Rows);
+        f.Catalog.FailAfterMarks = null;
+        await queue.RetryAsync(report.Id);
+        await queue.DrainAsync();
+        Assert.Empty(queue.Reports);
+        Assert.Equal(1, f.Uploads.Finalizations);
+    }
+
+    [Fact]
+    public async Task PendingOrUploadingReportCannotBeDiscarded()
+    {
+        Fixture f = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        f.Uploads.BeforeFinalize = async () => { entered.SetResult(); await release.Task; };
+        using UploadQueue queue = f.Queue();
+        await queue.EnqueueAsync(f.Photos, f.Draft);
+        QueuedReport report = Assert.Single(queue.Reports);
+        Assert.False(report.CanDiscard);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => queue.DiscardAsync(report.Id));
+
+        Task sending = queue.DrainAsync();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try
+        {
+            Assert.Equal(UploadQueueState.Uploading, report.State);
+            Assert.False(report.CanDiscard);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => queue.DiscardAsync(report.Id));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await sending;
+        }
+    }
+
+    [Fact]
+    public async Task DiscardWaitsForFailedAttemptToPersistBeforeRemovingIt()
+    {
+        Fixture f = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        f.Uploads.BeforeFinalize = () => throw new UploadException("Old API is unavailable.", HttpStatusCode.Gone);
+        f.Store.BeforeUpdate = async record =>
+        {
+            if (record.State == (int)UploadQueueState.Failed)
+            {
+                entered.SetResult();
+                await release.Task;
+            }
+        };
+        using UploadQueue queue = f.Queue();
+        await queue.EnqueueAsync(f.Photos, f.Draft);
+        string id = Assert.Single(queue.Reports).Id;
+        Task sending = queue.DrainAsync();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task discard = queue.DiscardAsync(id);
+        try
+        {
+            Assert.False(discard.IsCompleted);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(sending, discard);
+        }
+        Assert.Empty(queue.Reports);
+        Assert.Empty(f.Store.Rows);
+    }
+
     private sealed class Fixture
     {
         public AuthFixture Auth = new();
@@ -257,6 +486,7 @@ public sealed class UploadQueueTests
     {
         public Dictionary<string, string> Rows = [];
         public Func<Task>? BeforeAdd;
+        public Func<UploadQueueRecord, Task>? BeforeUpdate;
         public bool LoseAddResponse, FailUpdates, FailRemove, FailReads;
         public Task<IReadOnlyList<UploadQueueRecord>> GetAllAsync() =>
             FailReads ? throw new IOException("read failed") :
@@ -267,12 +497,12 @@ public sealed class UploadQueueTests
             Rows.Add(record.Id, JsonSerializer.Serialize(record));
             if (LoseAddResponse) throw new IOException("insert response lost");
         }
-        public Task UpdateAsync(UploadQueueRecord record)
+        public async Task UpdateAsync(UploadQueueRecord record)
         {
+            if (BeforeUpdate is not null) await BeforeUpdate(record);
             if (FailUpdates) throw new IOException("disk full");
             if (!Rows.ContainsKey(record.Id)) throw new IOException("missing row");
             Rows[record.Id] = JsonSerializer.Serialize(record);
-            return Task.CompletedTask;
         }
         public Task RemoveAsync(string id)
         {
@@ -293,6 +523,7 @@ public sealed class UploadQueueTests
         public BoundingBox BoundingBox => BoundingBox.Seattle;
         public int Preparations, Finalizations, StatusReads;
         public bool RejectCredentials, Unavailable, StatusUnavailable;
+        public HttpStatusCode? PreparationFailure;
         public Action? AfterAccept;
         public Func<Task>? BeforeFinalize;
         public AccountSession? Credentials;
@@ -300,7 +531,9 @@ public sealed class UploadQueueTests
         public Task RefreshLimitsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<UploadPreparation> PrepareAsync(IReadOnlyList<UploadPhoto> photos, CancellationToken cancellationToken = default)
         {
-            Preparations++; return Task.FromResult(new UploadPreparation(photos.Select((p, i) =>
+            Preparations++;
+            if (PreparationFailure is { } status) throw new UploadException("Old API is unavailable.", status);
+            return Task.FromResult(new UploadPreparation(photos.Select((p, i) =>
             new InitialPhotoUpload { PhotoId = $"attempt-{Preparations}-{i}", PhotoNumber = i, SubmissionId = $"attempt-{Preparations}" }).ToArray()));
         }
         public Task<SubmissionReceipt?> GetReceiptAsync(string reportId, CancellationToken cancellationToken = default)

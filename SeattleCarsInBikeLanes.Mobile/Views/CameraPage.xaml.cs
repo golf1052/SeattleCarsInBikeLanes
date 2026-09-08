@@ -1084,6 +1084,25 @@ public partial class CameraPage : ContentPage
         }
     }
 
+    private async void CancelUploadClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (sender is not Button { BindingContext: FailedReportViewModel report })
+                throw new InvalidOperationException("The failed upload could not be identified.");
+
+            if (!await DisplayAlertAsync("Cancel upload?", report.CancelConfirmation, "Cancel upload", "Keep report"))
+                return;
+
+            await report.DiscardCommand.ExecuteAsync(null);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or SQLite.SQLiteException)
+        {
+            logger.LogError(ex, "Failed to cancel the upload.");
+            await DisplayAlertAsync("Upload", "Couldn't cancel that upload. Its current status has been kept.", "OK");
+        }
+    }
+
     private async void DeleteClicked(object? sender, EventArgs e)
     {
         try

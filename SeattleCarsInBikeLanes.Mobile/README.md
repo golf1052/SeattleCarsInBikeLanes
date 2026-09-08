@@ -317,10 +317,17 @@ but does not make that index authoritative for its submission state.
 The queue persists a server receipt before local acknowledgement. A report labelled
 **Sent; saving photo status** has already reached the server. Retry finishes only its
 XMP/index acknowledgement; it does not submit again or require an account. Its photos
-remain reserved until every acknowledgement is persisted and verified. Sent/uncertain
-reports cannot be discarded as though they were unsent. Uncertain network outcomes
-first reconcile the existing report ID; a status lookup outage never permits a new
-independent report.
+remain reserved until every acknowledgement is persisted and verified; these confirmed
+reports cannot be cancelled. Retrying an uncertain network outcome first reconciles
+the existing report ID rather than creating a new independent report.
+
+Failed uploads without a confirmed receipt offer **Retry** and **Cancel**, including
+old uploads whose API is no longer available. Cancelling requires confirmation, removes
+the saved queue entry and error, releases queued credentials, and keeps the photos
+available to report again. It works offline and remains cancelled after restarting
+the app. If a network attempt was made, the confirmation warns that the server may
+already have received the report: cancelling is local only, does not remove anything
+from the site, and reporting those photos again could create a duplicate.
 
 iOS stamps the rendered current photo rather than reconstructing earlier adjustment
 recipes, and reads the edited resource back. Android keeps the MediaStore asset ID

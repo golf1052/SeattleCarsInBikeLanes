@@ -474,15 +474,16 @@
                                     Command="{Binding RetryCommand}" />
 
                             <Button Grid.Column="2"
-                                    Text="Discard"
+                                    Text="Cancel"
                                     IsVisible="{Binding CanDiscard}"
+                                    SemanticProperties.Description="Cancel failed upload"
                                     TextColor="White"
                                     FontSize="12"
                                     Padding="10,4"
                                     HeightRequest="34"
                                     BackgroundColor="#66000000"
                                     VerticalOptions="Center"
-                                    Command="{Binding DiscardCommand}" />
+                                    Clicked="CancelUploadClicked" />
                         </Grid>
                     </DataTemplate>
                 </BindableLayout.ItemTemplate>

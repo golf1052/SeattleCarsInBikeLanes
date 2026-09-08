@@ -110,6 +110,10 @@ public sealed partial class FailedReportViewModel : ObservableObject
         Id = report.Id;
         Title = report.Receipt is not null ? "Sent; saving photo status" : $"Report of {report.Description} wasn't sent";
         Error = report.LastError ?? "The report couldn't be sent.";
+        CancelConfirmation = "This removes the failed upload and its error. Your photos will be kept." +
+            (report.NetworkAttempted
+                ? " The server may already have received this report. Cancelling won't remove it from the site, and sending it again could create a duplicate."
+                : string.Empty);
     }
 
     public string Id { get; }
@@ -133,6 +137,7 @@ public sealed partial class FailedReportViewModel : ObservableObject
     /// </remarks>
     public string Error { get; }
     public bool CanDiscard => uploadQueue.Reports.FirstOrDefault(report => report.Id == Id)?.CanDiscard == true;
+    public string CancelConfirmation { get; }
 
     /// <summary>
     /// Puts the report back in the queue.
@@ -141,7 +146,7 @@ public sealed partial class FailedReportViewModel : ObservableObject
     private async Task RetryAsync() => await uploadQueue.RetryAsync(Id);
 
     /// <summary>
-    /// Throws the report away.
+    /// Cancels the failed upload locally after the page confirms with the user.
     /// </summary>
     /// <remarks>
     /// Its photos go back to being unreported rather than disappearing, because the user may well

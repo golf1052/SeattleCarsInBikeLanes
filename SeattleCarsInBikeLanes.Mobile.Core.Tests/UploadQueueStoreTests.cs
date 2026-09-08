@@ -130,6 +130,32 @@ public class UploadQueueStoreTests
     }
 
     [Fact]
+    public async Task RemovedFailedUploadStaysRemovedAfterReopening()
+    {
+        using TestDatabase database = new TestDatabase();
+        await using (UploadQueueStore store = new UploadQueueStore(database.Path))
+        {
+            foreach (string id in new[] { "cancelled", "retained" })
+            {
+                await store.AddAsync(new UploadQueueRecord
+                {
+                    Id = id,
+                    Payload = "{}",
+                    CreatedAt = DateTime.UtcNow,
+                    State = (int)UploadQueueState.Failed,
+                    LastError = "Old API is unavailable."
+                });
+            }
+            await store.RemoveAsync("cancelled");
+        }
+
+        await using UploadQueueStore reopened = new UploadQueueStore(database.Path);
+        UploadQueueRecord remaining = Assert.Single(await reopened.GetAllAsync());
+        Assert.Equal("retained", remaining.Id);
+        Assert.Equal("Old API is unavailable.", remaining.LastError);
+    }
+
+    [Fact]
     public async Task CurrentVersionWithWrongColumnsIsRejected()
     {
         using TestDatabase database = new TestDatabase();

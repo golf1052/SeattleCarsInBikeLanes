@@ -19,7 +19,7 @@ public sealed class QueuedReport
     public SubmissionReceipt? Receipt { get; set; }
     public bool NetworkAttempted { get; set; }
     public bool AnonymousFallback { get; set; }
-    public bool CanDiscard => State == UploadQueueState.Failed && !NetworkAttempted && Receipt is null;
+    public bool CanDiscard => State == UploadQueueState.Failed && Receipt is null;
     public string Description => Receipt is not null ? "Sent; saving photo status" :
         Photos.Count == 1 ? "1 photo" : $"{Photos.Count} photos";
 }
@@ -196,7 +196,7 @@ public sealed class UploadQueue : IUploadQueue, IDisposable
             QueuedReport? report = Reports.FirstOrDefault(r => r.Id == id);
             if (report is null) return;
             if (!report.CanDiscard)
-                throw new InvalidOperationException("A sent or uncertain report must finish saving its photo status.");
+                throw new InvalidOperationException("Only failed uploads without a confirmed receipt can be cancelled.");
             await store.RemoveAsync(id);
             lock (gate) reports.Remove(report);
             await CleanupCredentialsAsync(() => vault.ReleaseAsync(id));
@@ -335,12 +335,18 @@ public sealed class UploadQueue : IUploadQueue, IDisposable
                 UploadRetryPolicy.Classify(uploadError?.StatusCode);
             UploadRetryDecision decision = UploadRetryPolicy.Decide(report.Attempts, failure, runtime.UtcNow,
                 uploadError?.RetryAfter);
-            report.State = decision.State;
-            report.NextAttemptAt = decision.NextAttemptAt;
-            report.ServerDirectedRetry = uploadError?.RetryAfter > TimeSpan.Zero;
-            report.LastError = report.Receipt is not null ? "Sent; couldn't save photo status. Retry to finish locally." :
-                uploadError?.Message ?? "Couldn't finish sending. Your report is saved; retry shortly.";
-            await SaveAsync(report);
+            // Retry/cancel must not race the final write of the failed attempt.
+            await mutations.WaitAsync();
+            try
+            {
+                report.State = decision.State;
+                report.NextAttemptAt = decision.NextAttemptAt;
+                report.ServerDirectedRetry = uploadError?.RetryAfter > TimeSpan.Zero;
+                report.LastError = report.Receipt is not null ? "Sent; couldn't save photo status. Retry to finish locally." :
+                    uploadError?.Message ?? "Couldn't finish sending. Your report is saved; retry shortly.";
+                await SaveAsync(report);
+            }
+            finally { mutations.Release(); }
             RaiseChanged();
         }
     }
