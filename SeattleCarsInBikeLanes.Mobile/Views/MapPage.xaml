@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SeattleCarsInBikeLanes.Mobile.Views.MapPage"
+             Shell.NavBarIsVisible="False"
+             Title="Map">
+
+    <Grid>
+        <!-- The site's map already does everything, and rebuilding it natively would mean two
+             implementations to keep in step. -->
+        <WebView x:Name="Web" Navigating="WebNavigating" Navigated="WebNavigated" />
+
+        <ActivityIndicator x:Name="Busy"
+                           IsRunning="True"
+                           VerticalOptions="Center"
+                           HorizontalOptions="Center" />
+
+        <Button x:Name="CancelSignInButton"
+                Text="Cancel sign in"
+                Clicked="CancelSignInClicked"
+                IsVisible="False"
+                HorizontalOptions="End"
+                VerticalOptions="End"
+                Margin="12" />
+    </Grid>
+</ContentPage>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="m3_primary">#235CB1</color>
+    <color name="m3_on_primary">#FFFFFF</color>
+    <color name="m3_primary_container">#D7E2FF</color>
+    <color name="m3_on_primary_container">#001A40</color>
+    <color name="m3_secondary">#565E71</color>
+    <color name="m3_on_secondary">#FFFFFF</color>
+    <color name="m3_secondary_container">#DAE2F9</color>
+    <color name="m3_on_secondary_container">#131C2C</color>
+    <color name="m3_tertiary">#705574</color>
+    <color name="m3_on_tertiary">#FFFFFF</color>
+    <color name="m3_tertiary_container">#FBD7FC</color>
+    <color name="m3_on_tertiary_container">#29132E</color>
+    <color name="m3_error">#BA1A1A</color>
+    <color name="m3_on_error">#FFFFFF</color>
+    <color name="m3_error_container">#FFDAD6</color>
+    <color name="m3_on_error_container">#410002</color>
+    <color name="m3_surface">#FEFBFF</color>
+    <color name="m3_surface_container">#EFEDF1</color>
+    <color name="m3_surface_variant">#E1E2EC</color>
+    <color name="m3_on_surface">#1B1B1F</color>
+    <color name="m3_on_surface_variant">#44474E</color>
+    <color name="m3_outline">#74777F</color>
+    <color name="m3_outline_variant">#C4C6D0</color>
+
+    <color name="colorPrimary">@color/m3_primary</color>
+    <color name="colorPrimaryDark">@color/m3_primary</color>
+    <color name="colorAccent">@color/m3_primary</color>
+</resources>

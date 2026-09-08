@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewmodels="clr-namespace:SeattleCarsInBikeLanes.Mobile.ViewModels"
+             x:Class="SeattleCarsInBikeLanes.Mobile.Views.SettingsPage"
+             x:DataType="viewmodels:SettingsViewModel"
+             Title="Settings">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="24">
+
+            <Label Text="{Binding StatusMessage}"
+                   Style="{StaticResource StatusLabel}"
+                   IsVisible="{Binding StatusMessage, Converter={StaticResource IsNotNullConverter}}" />
+
+            <VerticalStackLayout Spacing="8">
+                <Label Text="Account" FontAttributes="Bold" FontSize="18" />
+
+                <Label Text="Sign in so the reports you send can be credited to you."
+                       IsVisible="{Binding IsSignedIn, Converter={StaticResource InvertedBoolConverter}}" />
+
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Bluesky" FontAttributes="Bold" />
+                    <Label Text="{Binding AccountName}"
+                           IsVisible="{Binding IsBlueskySignedIn}" />
+                    <Button Text="Sign in with Bluesky"
+                            Clicked="BlueskySignInClicked"
+                            HorizontalOptions="Start"
+                            IsVisible="{Binding IsBlueskySignedIn, Converter={StaticResource InvertedBoolConverter}}" />
+                    <Button Text="Sign out"
+                            Command="{Binding SignOutBlueskyCommand}"
+                            HorizontalOptions="Start"
+                            IsVisible="{Binding IsBlueskySignedIn}" />
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Mastodon" FontAttributes="Bold" />
+                    <Label Text="{Binding MastodonName}"
+                           IsVisible="{Binding IsMastodonSignedIn}" />
+                    <Button Text="Sign in with Mastodon"
+                            Clicked="MastodonSignInClicked"
+                            HorizontalOptions="Start"
+                            IsVisible="{Binding IsMastodonSignedIn, Converter={StaticResource InvertedBoolConverter}}" />
+                    <Button Text="Sign out"
+                            Command="{Binding SignOutMastodonCommand}"
+                            HorizontalOptions="Start"
+                            IsVisible="{Binding IsMastodonSignedIn}" />
+                </VerticalStackLayout>
+
+                <HorizontalStackLayout Spacing="8" IsVisible="{Binding IsSignedIn}">
+                    <Switch IsToggled="{Binding AttributeByDefault}" />
+                    <Label Text="Credit my reports by default" VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="8">
+                <Label Text="Photos" FontAttributes="Bold" FontSize="18" />
+                <Label Text="Photos taken in the app are saved to your &quot;Cars in Bike Lanes&quot; album. Imported photos stay where they are."
+                       Style="{StaticResource SupportingTextLabel}" />
+                <Button Text="Forget imported photos"
+                        Command="{Binding ClearImportedPhotosCommand}"
+                        HorizontalOptions="Start" />
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="8">
+                <Label Text="About" FontAttributes="Bold" FontSize="18" />
+                <Label Text="{Binding AppVersion, StringFormat='Version {0}'}"
+                       Style="{StaticResource SupportingTextLabel}" />
+                <Button Text="Open the website" Command="{Binding OpenWebsiteCommand}" HorizontalOptions="Start" />
+                <Button Text="Privacy policy" Command="{Binding OpenPrivacyPolicyCommand}" HorizontalOptions="Start" />
+                <Button Text="Source code" Command="{Binding OpenSourceCommand}" HorizontalOptions="Start" />
+            </VerticalStackLayout>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

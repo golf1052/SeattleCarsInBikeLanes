@@ -116,7 +116,25 @@ let privateKey = sessionRequest.result.value.dpopKey.keyPair.privateKey;
 2. `dotnet pack -c Release`
 3. `dotnet nuget push <path to .nupkg> -k <NuGet API key>`
 
-## Shared report uploads
+# Mobile App
+
+## Identifier
+
+com.golf1052.SeattleCarsInBikeLanes.Mobile
+
+## Mobile platform parity
+
+Mobile features must be delivered for iOS and Android together. A mobile change is complete only when:
+
+- equivalent user outcomes work on both platforms, using platform-native APIs where their UX differs;
+- both `net10.0-ios` and `net10.0-android` compile;
+- shared behavior has automated coverage and each platform-specific path has been exercised on a simulator or device;
+- equivalent Sentry telemetry uses the same metric names, units, and bounded attributes on both platforms, with `platform` identifying `ios` or `android`; and
+- any intentional platform exception is documented in the mobile README and in the pull request.
+
+Do not register a placeholder or no-op implementation for one mobile platform as a way to ship the other. If an operating-system limitation prevents exact behavior, implement the closest safe equivalent and document the difference.
+
+# Shared report uploads
 
 The website and mobile app use the same two-stage API and report store. Photos
 remain ordinary JPEG blobs; the server does not embed image bytes in report JSON.
@@ -184,7 +202,7 @@ rejected request can be corrected. Confirmed expired credentials let the website
 user sign in again or explicitly turn attribution off; the mobile queue retains
 its separately approved automatic anonymous-fallback behavior.
 
-### Storage and recovery
+## Storage and recovery
 
 Temporary analyzed images stay under `initialupload/`. All permanent report data
 stays under the existing `finalizedupload/` prefix. New report records use
@@ -209,7 +227,7 @@ Corrupt report records are logged and skipped during cleanup, together with any
 photos they might reference; they are not treated as missing reports. Repair the
 record before expecting its cleanup or moderation to proceed.
 
-### Existing moderation data
+## Existing moderation data
 
 Existing `finalizedupload/<photo-id>.jpeg/.json` submissions remain available
 without a destructive bulk migration. The Admin Panel groups their stored
@@ -225,7 +243,7 @@ failure must not make a previously moderated submission appear again. Missing or
 unreadable legacy files require operator attention rather than silent omission.
 This stored-data adapter is not compatibility support for old API request bodies.
 
-### Blocking device submissions
+## Blocking device submissions
 
 On `/AdminPage`, choose **Block device** next to a pending report's device ID.
 The confirmation modal requires a reason (1-1,000 characters after trimming).
@@ -258,7 +276,7 @@ that the list is empty or that an unconfirmed change succeeded. Refresh blocked
 devices after an uncertain response to reconcile the saved state. Blocking and
 unblocking do not discard edits to pending reports.
 
-#### Cosmos setup before deployment
+### Cosmos setup before deployment
 
 1. In the existing `seattle-carsinbikelanes-db` Cosmos account, create an empty
    `blocked-devices` container under the `seattle` database, with partition-key
@@ -294,7 +312,7 @@ would not enforce blocks added in Cosmos; preserve those records and account for
 them explicitly before rolling back. This storage change does not require mobile
 API changes; retain the Cosmos implementation when integrating the mobile branch.
 
-### Retrying failed publication
+## Retrying failed publication
 
 Imgur uploads finish first. Mastodon, Bluesky, and Threads then publish
 concurrently; Mastodon and Bluesky receive independent read-only streams over
@@ -322,7 +340,7 @@ state and requires a refresh after that storage error is fixed.
 Submission deduplication is separate from social posting: we check and remove
 any posts that succeeded before retrying publication.
 
-### Validation and deployment order
+## Validation and deployment order
 
 Use the existing server and shared Core test projects directly; building the
 website does not require mobile workloads. `SeattleCarsInBikeLanes.Tests/TestFiles/UploadFlow.html`
@@ -342,9 +360,8 @@ PR workflow runs build and test but do not deploy. Merge/deploy the shared backe
 before updating the mobile branch to use it; a green PR workflow with a skipped
 deploy job is not evidence that the server is live.
 
-After deployment, merge main into the existing mobile branch and update its
-upload URLs, preparation report-ID propagation, shared request/error types, and
-tests. Remove the abandoned mobile-only server/bundle code during that merge
-without discarding queued reports, retained credentials, receipt-first local
-acknowledgement, or either platform's photo recovery. Exercise the combined flow
-against a matching test backend before using it for real reports.
+The mobile app uses this shared contract; the superseded mobile-only server
+endpoint, bundle store, and request/error types have been removed. Keep queued
+reports, retained credentials, receipt-first local acknowledgement, and both
+platforms' photo recovery intact when updating the app. Exercise the combined
+flow against a matching test backend before using it for real reports.
