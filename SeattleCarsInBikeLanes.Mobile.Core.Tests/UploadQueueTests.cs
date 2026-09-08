@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using SeattleCarsInBikeLanes.Core.Contracts;
@@ -107,6 +108,65 @@ public sealed class UploadQueueTests
     }
 
     [Fact]
+    public async Task SharedHttpFlowRecoversALostFinalizeResponseWithoutUploadingAgain()
+    {
+        Fixture f = new();
+        string? reportId = null;
+        SubmissionReceipt? accepted = null;
+        List<string> requests = [];
+        TestHttpHandler handler = new();
+        handler.Response = async (request, token) =>
+        {
+            string path = request.RequestUri!.AbsolutePath;
+            requests.Add(path);
+            Assert.Equal("device", Assert.Single(request.Headers.GetValues("X-Device-Id")));
+            if (path == "/api/Upload/Initial")
+            {
+                reportId = Assert.Single(request.Headers.GetValues("X-Report-Id"));
+                return AuthServiceTests.Json(Enumerable.Range(0, 4).Select(i => new InitialPhotoUpload
+                {
+                    PhotoId = $"prepared-{i}", SubmissionId = "attempt", PhotoNumber = i,
+                    PhotoCrossStreet = $"Street {i}"
+                }).ToArray());
+            }
+            if (path == "/api/Upload/Finalize")
+            {
+                Assert.Equal(reportId, Assert.Single(request.Headers.GetValues("X-Report-Id")));
+                FinalizeReportRequest body = (await request.Content!.ReadFromJsonAsync<FinalizeReportRequest>(token))!;
+                Assert.Equal(4, body.Photos.Count);
+                Assert.All(body.Photos, photo => Assert.Equal("Street 0", photo.PhotoCrossStreet));
+                Assert.Equal("did:plc:a", body.Attribution.BlueskyDid);
+                Assert.Equal("token-a", request.Headers.Authorization?.Parameter);
+                accepted = new SubmissionReceipt(reportId!, reportId!, DateTimeOffset.UtcNow, body.Attribution);
+                throw new HttpRequestException("Accepted, but the response was lost.");
+            }
+            Assert.Equal($"/api/Upload/Reports/{reportId}", path);
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("Anonymous", request.Headers.Authorization?.Scheme);
+            Assert.NotNull(accepted);
+            return AuthServiceTests.Json(accepted);
+        };
+        using HttpClient client = new(handler);
+        UploadService uploads = new(client, new Device(), new PassthroughImageResizer(), NullLogger<UploadService>.Instance);
+        using (UploadQueue first = f.Queue(uploads))
+        {
+            await first.EnqueueAsync(f.Photos, f.Draft);
+            await first.DrainAsync();
+            QueuedReport pending = Assert.Single(first.Reports);
+            Assert.True(pending.NetworkAttempted);
+            Assert.Null(pending.Receipt);
+        }
+        f.Runtime.Now = f.Runtime.Now.AddHours(1);
+        using UploadQueue reopened = f.Queue(uploads);
+        await reopened.DrainAsync();
+
+        Assert.Empty(reopened.Reports);
+        Assert.Equal(new[] { "/api/Upload/Initial", "/api/Upload/Finalize", $"/api/Upload/Reports/{reportId}" }, requests);
+        Assert.Equal(4, f.Catalog.Marked.Count);
+        Assert.All(f.Catalog.Marked.Values, receipt => Assert.Equal(accepted!.SubmissionId, receipt.SubmissionId));
+    }
+
+    [Fact]
     public async Task SignOutAndSwitchCannotReplaceQueuedCredentials()
     {
         Fixture f = new();
@@ -157,6 +217,38 @@ public sealed class UploadQueueTests
         Assert.Equal(1, f.Uploads.Finalizations);
         Assert.Equal(1, f.Uploads.Preparations);
         Assert.False(Assert.Single(queue.Reports).AnonymousFallback);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Conflict, UploadErrors.ReportInProgress)]
+    [InlineData(HttpStatusCode.Gone, UploadErrors.PreparationExpired)]
+    public async Task RecoverableApiErrorsReprepareWithTheSameReportIdAfterRestart(HttpStatusCode status, string code)
+    {
+        Fixture f = new();
+        f.Uploads.BeforeFinalize = () => throw new UploadException("Please retry.", status,
+            TimeSpan.FromSeconds(90), code);
+        string id;
+        using (UploadQueue first = f.Queue())
+        {
+            await first.EnqueueAsync(f.Photos, f.Draft);
+            id = Assert.Single(first.Reports).Id;
+            await first.DrainAsync();
+            QueuedReport pending = Assert.Single(first.Reports);
+            Assert.Equal(UploadQueueState.Pending, pending.State);
+            Assert.Equal(f.Runtime.Now.AddSeconds(90), pending.NextAttemptAt);
+            Assert.True(pending.ServerDirectedRetry);
+            Assert.False(pending.AnonymousFallback);
+        }
+        f.Uploads.BeforeFinalize = null;
+        f.Runtime.Now = f.Runtime.Now.AddSeconds(90);
+        using UploadQueue reopened = f.Queue();
+        await reopened.DrainAsync();
+        Assert.Empty(reopened.Reports);
+        Assert.Equal(1, f.Uploads.StatusReads);
+        Assert.Equal(new[] { id, id }, f.Uploads.PreparedReportIds);
+        Assert.Equal(2, f.Uploads.Finalizations);
+        Assert.Equal(id, f.Uploads.Receipt?.ReportId);
+        Assert.Equal("token-a", f.Uploads.Credentials?.Bluesky?.Token);
     }
 
     [Fact]
@@ -468,9 +560,14 @@ public sealed class UploadQueueTests
         public ReportPhoto[] Photos = Enumerable.Range(0, 4).Select(i =>
             new ReportPhoto { Id = $"p{i}", Origin = SeattleCarsInBikeLanes.Mobile.Core.Photos.PhotoOrigin.Captured }).ToArray();
         public Fixture() { Active = Auth.Create(); }
-        public UploadQueue Queue() => new(Store, Uploads, Catalog, Active,
+        public UploadQueue Queue(IUploadService? uploads = null) => new(Store, uploads ?? Uploads, Catalog, Active,
             new QueuedCredentialVault(Auth.Storage), new NullBackgroundWorkScope(), Runtime,
             NullLogger<UploadQueue>.Instance);
+    }
+
+    private sealed class Device : IDeviceIdentityService
+    {
+        public Task<string> GetDeviceIdAsync() => Task.FromResult("device");
     }
 
     private sealed class Runtime : IQueueRuntime
@@ -528,10 +625,13 @@ public sealed class UploadQueueTests
         public Func<Task>? BeforeFinalize;
         public AccountSession? Credentials;
         public SubmissionReceipt? Receipt;
+        public List<string> PreparedReportIds = [];
         public Task RefreshLimitsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task<UploadPreparation> PrepareAsync(IReadOnlyList<UploadPhoto> photos, CancellationToken cancellationToken = default)
+        public Task<UploadPreparation> PrepareAsync(IReadOnlyList<UploadPhoto> photos, string reportId,
+            CancellationToken cancellationToken = default)
         {
             Preparations++;
+            PreparedReportIds.Add(reportId);
             if (PreparationFailure is { } status) throw new UploadException("Old API is unavailable.", status);
             return Task.FromResult(new UploadPreparation(photos.Select((p, i) =>
             new InitialPhotoUpload { PhotoId = $"attempt-{Preparations}-{i}", PhotoNumber = i, SubmissionId = $"attempt-{Preparations}" }).ToArray()));
@@ -542,6 +642,7 @@ public sealed class UploadQueueTests
             QueuedAttribution attribution, AccountSession? credentials, string reportId, CancellationToken cancellationToken = default)
         {
             Finalizations++; Credentials = credentials;
+            Assert.Equal(reportId, PreparedReportIds.Last());
             if (BeforeFinalize is not null) await BeforeFinalize();
             if (RejectCredentials && credentials is not null) throw new QueuedCredentialRejectedException();
             if (Unavailable) throw new UploadException("provider unavailable", HttpStatusCode.ServiceUnavailable);

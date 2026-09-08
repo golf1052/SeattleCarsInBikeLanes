@@ -398,9 +398,17 @@ sign-in action. Bluesky Settings validates the native bearer, independently of w
 cookies; transient failures retain the saved account. These bearers are this site's
 protected identity tickets, not live Bluesky OAuth refresh tokens.
 
-The new mobile protocol requires the matching server update (`FinalizeMobile` and
-report receipt lookup). Queue schema v2 and active-session v2 do not migrate old
-author-only prerelease queue/login state. Imported-library references are preserved.
+The app and website share `POST /api/Upload/Initial`, `POST /api/Upload/Finalize`,
+and `GET /api/Upload/Reports/{reportId}`. Both upload stages send the queue's stable
+`X-Report-Id` and installation `X-Device-Id`; finalization sends a
+`FinalizeReportRequest` with ordered photos and explicit queued attribution.
+All photos share the report's date, location, cross street, and car count.
+Typed `report_in_progress` responses honor `Retry-After` and reconcile the receipt;
+`preparation_expired` responses retry with fresh preparation under the same report
+ID. Device blocking and identity mismatches remain visible failures, not anonymous
+fallbacks. This requires the shared server API from PR #21, not `FinalizeMobile`.
+Queue schema v2 and active-session v2 do not migrate old author-only prerelease
+queue/login state. Imported-library references are preserved.
 
 Host fault-injection tests and Release compilation do not replace native PhotoKit,
 MediaStore/power-loss, locked-device secure storage, or WebView lifecycle exercise.

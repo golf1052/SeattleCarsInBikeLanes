@@ -278,7 +278,7 @@ public sealed class UploadQueue : IUploadQueue, IDisposable
                         ?? throw new UploadException("One of the photos could not be read.", System.Net.HttpStatusCode.BadRequest);
                     photos.Add(new UploadPhoto(photo.Id, jpeg));
                 }
-                UploadPreparation preparation = await uploads.PrepareAsync(photos, token);
+                UploadPreparation preparation = await uploads.PrepareAsync(photos, report.Id, token);
                 ReportDraft draft = ReportDraftMerge.WithServerValues(report.Draft, preparation.PhotoDateTime,
                     preparation.Location, preparation.CrossStreet, uploads.BoundingBox, runtime.UtcNow.ToLocalTime());
                 report.NetworkAttempted = true;
@@ -332,7 +332,7 @@ public sealed class UploadQueue : IUploadQueue, IDisposable
             logger.LogWarning("Report {ReportId} remains queued after {FailureType}.", report.Id, ex.GetType().Name);
             UploadException? uploadError = ex as UploadException;
             UploadFailureKind failure = report.Receipt is not null ? UploadFailureKind.Transient :
-                UploadRetryPolicy.Classify(uploadError?.StatusCode);
+                UploadRetryPolicy.Classify(uploadError?.StatusCode, uploadError?.Code);
             UploadRetryDecision decision = UploadRetryPolicy.Decide(report.Attempts, failure, runtime.UtcNow,
                 uploadError?.RetryAfter);
             // Retry/cancel must not race the final write of the failed attempt.

@@ -1,4 +1,5 @@
 using System.Net;
+using SeattleCarsInBikeLanes.Core.Contracts;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Upload;
 
@@ -44,7 +45,7 @@ public static class UploadRetryPolicy
     /// <param name="statusCode">
     /// The status the server answered with, or null when there was no answer at all.
     /// </param>
-    public static UploadFailureKind Classify(HttpStatusCode? statusCode)
+    public static UploadFailureKind Classify(HttpStatusCode? statusCode, string? errorCode = null)
     {
         // No status means the request never got an answer: no signal, DNS, a timeout. Nothing about
         // the report itself is known to be wrong.
@@ -62,6 +63,8 @@ public static class UploadRetryPolicy
 
             (int)HttpStatusCode.RequestTimeout => UploadFailureKind.Transient,
             (int)HttpStatusCode.TooManyRequests => UploadFailureKind.Transient,
+            (int)HttpStatusCode.Conflict when errorCode == UploadErrors.ReportInProgress => UploadFailureKind.Transient,
+            (int)HttpStatusCode.Gone when errorCode == UploadErrors.PreparationExpired => UploadFailureKind.Transient,
 
             // Everything else in the 4xx range is the server explaining what is wrong with the
             // report, including 403 for a blocked device. Sending it again changes nothing.

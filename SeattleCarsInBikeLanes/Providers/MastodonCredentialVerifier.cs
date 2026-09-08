@@ -4,66 +4,103 @@ using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 
-namespace SeattleCarsInBikeLanes.Providers;
-
-public sealed record VerifiedMastodonAccount(string Server, string Id, string Username)
+namespace SeattleCarsInBikeLanes.Providers
 {
-    public string FullUsername => $"@{Username}@{new Uri(Server).Host}";
-}
-
-public sealed class CredentialRejectedException : Exception;
-public sealed class ProviderUnavailableException(string message) : Exception(message);
-
-public sealed class MastodonCredentialVerifier(HttpClient client)
-{
-    private const int MaxIdentityBytes = 64 * 1024;
-    public static string NormalizeServer(string server)
+    public sealed record VerifiedMastodonAccount(string Server, string Id, string Username)
     {
-        if (!Uri.TryCreate(server, UriKind.Absolute, out Uri? uri) ||
-            uri.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo) ||
-            uri.AbsolutePath != "/" || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
-        {
-            throw new ArgumentException("Invalid Mastodon server.");
-        }
-        return uri.GetLeftPart(UriPartial.Authority);
+        public string FullUsername => $"@{Username}@{new Uri(Server).Host}";
     }
 
-    public async Task<VerifiedMastodonAccount> VerifyAsync(string server, string token, CancellationToken cancellationToken)
+    public sealed class CredentialRejectedException : Exception
     {
-        string canonical = NormalizeServer(server);
-        using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get,
-            $"{canonical}/api/v1/accounts/verify_credentials");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-        {
-            throw new CredentialRejectedException();
-        }
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new ProviderUnavailableException("Mastodon could not verify the account. Try again shortly.");
-        }
-        if (response.Content.Headers.ContentLength > MaxIdentityBytes)
-            throw new ProviderUnavailableException("Mastodon returned an oversized account response.");
-        using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using MemoryStream body = new MemoryStream();
-        byte[] buffer = new byte[8192];
-        int count;
-        while ((count = await input.ReadAsync(buffer, cancellationToken)) != 0)
-        {
-            if (body.Length + count > MaxIdentityBytes)
-                throw new ProviderUnavailableException("Mastodon returned an oversized account response.");
-            body.Write(buffer, 0, count);
-        }
-        Account? account = JsonSerializer.Deserialize<Account>(body.ToArray());
-        if (string.IsNullOrWhiteSpace(account?.Id) || string.IsNullOrWhiteSpace(account.Username))
-        {
-            throw new ProviderUnavailableException("Mastodon returned an incomplete account.");
-        }
-        return new VerifiedMastodonAccount(canonical, account.Id, account.Username);
     }
 
-    private sealed record Account(
-        [property: JsonPropertyName("id")] string Id,
-        [property: JsonPropertyName("username")] string Username);
+    public sealed class ProviderUnavailableException : Exception
+    {
+        public ProviderUnavailableException(string message) : base(message)
+        {
+        }
+    }
+
+    public sealed class MastodonCredentialVerifier
+    {
+        private const int MaxIdentityBytes = 64 * 1024;
+        private readonly HttpClient client;
+        private readonly TimeSpan verificationTimeout;
+
+        public MastodonCredentialVerifier(HttpClient client, TimeSpan? verificationTimeout = null)
+        {
+            this.client = client;
+            this.verificationTimeout = verificationTimeout ?? TimeSpan.FromSeconds(15);
+            if (this.verificationTimeout <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(verificationTimeout));
+            }
+        }
+
+        public static string NormalizeServer(string server)
+        {
+            if (!Uri.TryCreate(server, UriKind.Absolute, out Uri? uri) ||
+                                        uri.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo) ||
+                                        uri.AbsolutePath != "/" || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
+            {
+                throw new ArgumentException("Invalid Mastodon server.");
+            }
+            return uri.GetLeftPart(UriPartial.Authority);
+        }
+
+        public async Task<VerifiedMastodonAccount> VerifyAsync(string server, string token, CancellationToken cancellationToken)
+        {
+            string canonical = NormalizeServer(server);
+            using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get,
+                $"{canonical}/api/v1/accounts/verify_credentials");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            // HttpClient.Timeout only covers headers with ResponseHeadersRead.
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(verificationTimeout);
+            try
+            {
+                using HttpResponseMessage response = await client.SendAsync(request,
+                                                    HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                {
+                    throw new CredentialRejectedException();
+                }
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new ProviderUnavailableException("Mastodon could not verify the account. Try again shortly.");
+                }
+                if (response.Content.Headers.ContentLength > MaxIdentityBytes)
+                {
+                    throw new ProviderUnavailableException("Mastodon returned an oversized account response.");
+                }
+                using Stream input = await response.Content.ReadAsStreamAsync(deadline.Token);
+                using MemoryStream body = new MemoryStream();
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = await input.ReadAsync(buffer, deadline.Token)) != 0)
+                {
+                    if (body.Length + count > MaxIdentityBytes)
+                    {
+                        throw new ProviderUnavailableException("Mastodon returned an oversized account response.");
+                    }
+                    body.Write(buffer, 0, count);
+                }
+                Account? account = JsonSerializer.Deserialize<Account>(body.ToArray());
+                if (string.IsNullOrWhiteSpace(account?.Id) || string.IsNullOrWhiteSpace(account.Username))
+                {
+                    throw new ProviderUnavailableException("Mastodon returned an incomplete account.");
+                }
+                return new VerifiedMastodonAccount(canonical, account.Id, account.Username);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested)
+            {
+                throw new ProviderUnavailableException("Mastodon verification timed out. Please retry.");
+            }
+        }
+
+        private sealed record Account(
+            [property: JsonPropertyName("id")] string Id,
+            [property: JsonPropertyName("username")] string Username);
+    }
 }

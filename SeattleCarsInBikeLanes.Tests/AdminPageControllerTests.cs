@@ -31,7 +31,7 @@ using static SeattleCarsInBikeLanes.Controllers.AdminPageController;
 
 namespace SeattleCarsInBikeLanes.Tests
 {
-    public class AdminPageControllerTests
+    public partial class AdminPageControllerTests
     {
         private AdminPageController? controller;
         private ILogger<AdminPageController>? logger;
@@ -55,6 +55,7 @@ namespace SeattleCarsInBikeLanes.Tests
         private Mock<MastodonClient>? mockMastodonClient;
         private Mock<AtProtoClient>? mockBlueskyClient;
         private Mock<ThreadsClient>? mockThreadsClient;
+        private Mock<ReportStore> mockReportStore;
 
         public AdminPageControllerTests()
         {
@@ -62,6 +63,7 @@ namespace SeattleCarsInBikeLanes.Tests
             mockHttpMessageHandler = new Mock<HttpMessageHandler>(MockBehavior.Strict);
             mockHelperMethods = new Mock<HelperMethods>();
             mockBlobContainerClient = new Mock<BlobContainerClient>();
+            mockReportStore = new Mock<ReportStore>(mockBlobContainerClient.Object, NullLogger<ReportStore>.Instance, null!);
             mockSecretClient = new Mock<SecretClient>();
             mockImgurApiClient = new Mock<IApiClient>();
             mockImgurApiClient.Setup(m => m.ClientId).Returns("1234");
@@ -152,35 +154,7 @@ namespace SeattleCarsInBikeLanes.Tests
                 mockBlueskyClientProvider.Object,
                 mockBlueskyOAuthProvider.Object,
                 mockThreadsClient.Object,
-                new SubmissionClaimProvider(NullLogger<SubmissionClaimProvider>.Instance, mockBlobContainerClient.Object));
-        }
-
-        [Fact]
-        public async Task MobileOwnershipIsVisibleAndBlocksCompetingControllerActions()
-        {
-            SubmissionClaimProviderTests.Storage storage = new();
-            var report = SubmissionClaimProviderTests.Report(count: 4);
-            await storage.Service().CommitAsync(report);
-            mockBlobContainerClient!.Setup(c => c.GetBlobClient(It.IsAny<string>()))
-                .Returns<string>(name => storage.Container.Object.GetBlobClient(name));
-            mockBlobContainerClient.Setup(c => c.GetBlobsAsync(
-                Azure.Storage.Blobs.Models.BlobTraits.None, Azure.Storage.Blobs.Models.BlobStates.None,
-                It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .Returns<Azure.Storage.Blobs.Models.BlobTraits, Azure.Storage.Blobs.Models.BlobStates, string, CancellationToken>(
-                    (_, _, prefix, token) => prefix == UploadController.FinalizedUploadPrefix
-                        ? Azure.AsyncPageable<Azure.Storage.Blobs.Models.BlobItem>.FromPages([])
-                        : storage.Container.Object.GetBlobsAsync(Azure.Storage.Blobs.Models.BlobTraits.None,
-                            Azure.Storage.Blobs.Models.BlobStates.None, prefix, token));
-            controller!.ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext
-            { HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext() };
-            await storage.Service().BeginModerationAsync(report.Receipt.ReportId, "publishing");
-            var pending = await controller.GetPendingPhotos();
-            Assert.All(Assert.Single(pending).Value, photo => Assert.NotNull(photo.ModerationStatus));
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                controller.DeletePendingPhoto(report.Photos.Select(photo => photo.Metadata).ToList()));
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                controller.UploadTweet(report.Photos.Select(photo => photo.Metadata).ToList()));
-            Assert.Equal(4, (await storage.Service().GetForModerationAsync(report.Receipt.ReportId)).Photos.Count);
+                mockReportStore.Object);
         }
 
         [Fact]

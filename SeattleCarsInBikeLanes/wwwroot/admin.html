@@ -82,14 +82,67 @@
       <button class="btn btn-danger" id="deletePostButton">Delete</button>
     </div>
   </div>
-  <div class="row">
-    <div id="pendingItems"></div>
+  <section class="my-4" aria-labelledby="blockedDevicesHeading">
+    <h2 id="blockedDevicesHeading" class="h4">Blocked devices</h2>
+    <p>Blocks prevent future submissions. Accepted reports are unchanged. Reasons are visible only to administrators.</p>
+    <button type="button" class="btn btn-secondary" id="refreshBlockedDevicesButton">Refresh blocked devices</button>
+    <p id="blockedDevicesStatus" class="mt-2" role="status" aria-live="polite">Loading blocked devices...</p>
+    <div id="blockedDevicesError" class="alert alert-danger" role="alert" hidden></div>
+    <ul id="blockedDevicesList" class="list-group"></ul>
+  </section>
+  <div class="modal fade" id="deviceBlockModal" tabindex="-1" aria-labelledby="deviceBlockModalTitle"
+    aria-describedby="deviceBlockModalDescription" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title fs-5" id="deviceBlockModalTitle">Block device</h2>
+        </div>
+        <div class="modal-body">
+          <p class="text-break">Device: <strong id="deviceBlockModalTarget"></strong></p>
+          <p id="deviceBlockModalDescription"></p>
+          <div id="deviceBlockReasonGroup">
+            <label for="deviceBlockReason" class="form-label">Reason for blocking (required)</label>
+            <textarea id="deviceBlockReason" class="form-control" rows="4" required maxlength="1000"
+              aria-describedby="deviceBlockReasonHelp deviceBlockModalError"></textarea>
+            <p id="deviceBlockReasonHelp" class="form-text">1-1,000 characters after trimming. Visible only to administrators.</p>
+          </div>
+          <div id="deviceBlockSavedReasonGroup" hidden>
+            <h3 class="h6">Saved reason</h3>
+            <p id="deviceBlockSavedReason" class="text-break" style="white-space: pre-wrap;"></p>
+          </div>
+          <div id="deviceBlockModalError" class="alert alert-danger" role="alert" hidden></div>
+          <button type="button" class="btn btn-secondary" id="deviceBlockModalRefresh" hidden>Refresh status</button>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="deviceBlockModalCancel">Cancel</button>
+          <button type="button" class="btn btn-danger" id="deviceBlockModalConfirm">Confirm block</button>
+        </div>
+      </div>
+    </div>
   </div>
+  <div class="row">
+    <div id="pendingItems" role="status" aria-live="polite"></div>
+    <div><button type="button" class="btn btn-secondary" id="refreshPendingButton">Refresh pending reports</button></div>
+  </div>
+  <details class="my-3">
+    <summary>Retrying a failed upload</summary>
+    <p>A failed upload stays in this panel with its photos. Check Bluesky, Mastodon and Threads
+      and delete any posts that succeeded. Check the logs, fix the cause (such as an expired
+      Threads access token), then click Upload again on the same report.</p>
+    <p>Publishing is never retried automatically. While a request is still running, its buttons
+      are disabled to prevent duplicate clicks. A failed request releases the report for retry
+      and keeps your form edits. Database and feed entries are updated under the same report ID
+      if an earlier attempt reached those steps.</p>
+    <p>Missing or corrupt saved photos require repair of the original JPEG/JSON pairs.
+      The panel cannot recover bytes that were already lost. If a corrupt sidecar cannot be associated
+      with a report, legacy moderation is blocked until it is repaired so that no photos are omitted.</p>
+  </details>
   <div id="cardsDiv"></div>
   <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.4/build/global/luxon.min.js"></script>
   <script src="js/element-helpers.js"></script>
-  <script src="js/admin-helpers.js"></script>
-  <script src="js/admin.js"></script>
+  <script src="js/admin-helpers.js?v=device-blocks-1"></script>
+  <script src="js/admin-device-blocks.js?v=device-blocks-1"></script>
+  <script src="js/admin.js?v=device-blocks-1"></script>
 </body>
 
 </html>

@@ -1,6 +1,7 @@
-const isDesktop = window.screen.availWidth >= 576;
 let blueskyAdminDid = null;
 let blueskyAccessJwt = null;
+let pendingRefresh = 0;
+const adminDeviceBlocks = new AdminDeviceBlocks();
 
 function createElementWithClass(tagName, className) {
     const element = document.createElement(tagName);
@@ -23,47 +24,18 @@ function createTextInputRow(label, name, value, userSpecified) {
     if (userSpecified) {
         input.style = 'color: red;';
     }
-    input.value = value;
+    input.value = value ?? '';
+    input.setAttribute('aria-label', label);
     inputDiv.appendChild(input);
     row.appendChild(inputDiv);
     return row;
 }
 
-function createSubmitButton(buttonClass, text, moderationStatus) {
+function createSubmitButton(buttonClass, text) {
     const button = createElementWithClass('button', `btn ${buttonClass}`);
     button.setAttribute('type', 'submit');
     button.append(text);
-    button.disabled = !!moderationStatus;
     return button;
-}
-
-// Shown rather than edited. The device id is set by the server from the request header, so an
-// editable field would only invite changing something that gets overwritten anyway.
-function createDeviceIdRow(deviceId, moderationStatus) {
-    const row = createElementWithClass('div', 'row');
-    if (!deviceId) {
-        row.hidden = true;
-        return row;
-    }
-
-    const labelDiv = createElementWithClass('div', 'col-auto');
-    const labelElement = createElementWithClass('div', 'form-label');
-    labelElement.append('Device ID:');
-    labelDiv.appendChild(labelElement);
-    row.appendChild(labelDiv);
-
-    const valueDiv = createElementWithClass('div', 'col-12');
-    const value = createElementWithClass('code', 'user-select-all');
-    value.append(deviceId);
-    value.setAttribute('title', 'Add this to blockeddevices.json to block the device.');
-    valueDiv.appendChild(value);
-    row.appendChild(valueDiv);
-    if (moderationStatus) {
-        const warning = createElementWithClass('div', 'alert alert-warning');
-        warning.textContent = moderationStatus;
-        row.appendChild(warning);
-    }
-    return row;
 }
 
 function createPictureCarousel(key, metadatas) {
@@ -77,9 +49,14 @@ function createPictureCarousel(key, metadatas) {
             carouselItem.classList.add('active');
         }
         const img = createElementWithClass('img', 'd-block');
-        img.style = 'max-width: 25rem;';
-        img.src = metadata.uri;
-        carouselItem.appendChild(img);
+        img.style = 'max-width: 100%;';
+        img.alt = `Report photo ${index + 1}`;
+        if (metadata.uri) {
+            img.src = metadata.uri;
+            carouselItem.appendChild(img);
+        } else {
+            carouselItem.append('Preview unavailable. See the report warning below.');
+        }
         innerDiv.appendChild(carouselItem);
     });
     div.appendChild(innerDiv);
@@ -118,21 +95,40 @@ function createDesktopCard(key, metadatas) {
     const dateTime = luxon.DateTime.fromISO(metadata.photoDateTime);
 
     const card = createElementWithClass('div', 'card');
-    card.id = metadata.photoId;
+    card.id = key;
     card.style = 'max-width: 25rem;';
 
     let picture;
     if (metadatas.length === 1) {
         picture = document.createElement('img');
-        picture.src = metadata.uri;
+        picture.alt = 'Report photo';
+        if (metadata.uri) {
+            picture.src = metadata.uri;
+        } else {
+            picture = document.createElement('p');
+            picture.append('Preview unavailable. See the report warning below.');
+        }
     } else {
         picture = createPictureCarousel(key, metadatas);
     }
     
     const cardBody = createElementWithClass('div', 'card-body');
+    const status = createElementWithClass('p', 'text-break');
+    status.append(`Report: ${metadata.reportId} · ${metadata.moderationStatus}`);
+    if (metadata.deviceId) status.append(' · ', adminDeviceBlocks.createControl(metadata.deviceId));
+    if (metadata.moderationOperationId) {
+        status.append(` · Operation: ${metadata.moderationOperationId} · Started: ${metadata.moderationStartedAt}`);
+    }
+    cardBody.appendChild(status);
+    for (const warning of new Set(metadatas.map(photo => photo.warning).filter(Boolean))) {
+        const warningElement = createElementWithClass('p', 'alert alert-warning');
+        warningElement.setAttribute('role', 'status');
+        warningElement.append(warning);
+        cardBody.appendChild(warningElement);
+    }
 
     const form = document.createElement('form');
-    form.id = `${metadata.photoId}_form`;
+    form.id = `${key}_form`;
 
     const numberOfCarsRow = createElementWithClass('div', 'row');
     const numberOfCarsLabelDiv = createElementWithClass('div', 'col-auto');
@@ -146,6 +142,8 @@ function createDesktopCard(key, metadatas) {
     numberOfCarsInput.setAttribute('type', 'number');
     numberOfCarsInput.setAttribute('name', 'numberOfCars');
     numberOfCarsInput.setAttribute('min', '1');
+    numberOfCarsInput.setAttribute('aria-label', 'Number of cars');
+    numberOfCarsInput.required = true;
     numberOfCarsInput.value = metadata.numberOfCars;
     numberOfCarsInputDiv.appendChild(numberOfCarsInput);
     numberOfCarsRow.appendChild(numberOfCarsInputDiv);
@@ -164,7 +162,9 @@ function createDesktopCard(key, metadatas) {
     if (metadata.userSpecifiedDateTime) {
         dateInput.style = 'color: red;';
     }
-    dateInput.value = dateTime.toISODate();
+    dateInput.value = dateTime.toISODate() ?? '';
+    dateInput.setAttribute('aria-label', 'Date');
+    dateInput.required = true;
     dateInputDiv.appendChild(dateInput);
     dateRow.appendChild(dateInputDiv);
 
@@ -182,7 +182,9 @@ function createDesktopCard(key, metadatas) {
     if (metadata.userSpecifiedDateTime) {
         timeInput.style = 'color: red;';
     }
-    timeInput.value = dateTime.toLocaleString(luxon.DateTime.TIME_24_SIMPLE);
+    timeInput.value = dateTime.isValid ? dateTime.toFormat('HH:mm') : '';
+    timeInput.setAttribute('aria-label', 'Time');
+    timeInput.required = true;
     timeInputDiv.appendChild(timeInput);
     timeRow.appendChild(timeInputDiv);
 
@@ -191,137 +193,114 @@ function createDesktopCard(key, metadatas) {
     const twitterAttributionRow = createTextInputRow('Twitter Attribution:', 'twitterSubmittedBy', metadata.twitterSubmittedBy);
     const mastodonAttributionRow = createTextInputRow('Mastodon Attribution:', 'mastodonSubmittedBy', metadata.mastodonSubmittedBy);
     const blueskyAttributionRow = createTextInputRow('Bluesky Attribution:', 'blueskySubmittedBy', metadata.blueskySubmittedBy);
-    const twitterLinkRow = createTextInputRow('Twitter Link:', 'twitterLink', '');
-    const deviceIdRow = createDeviceIdRow(metadata.deviceId, metadata.moderationStatus);
+    const threadsAttributionRow = createTextInputRow('Threads Attribution:', 'threadsSubmittedBy', metadata.threadsSubmittedBy);
+    const twitterLinkRow = createTextInputRow('Twitter Link:', 'twitterLink', metadata.twitterLink);
+
+    function readEdits() {
+        const fields = new FormData(form);
+        const [latitude, longitude, extra] = fields.get('gps').split(',').map(value => value.trim());
+        const date = luxon.DateTime.fromISO(`${fields.get('date')}T${fields.get('time')}`);
+        const numberOfCars = Number(fields.get('numberOfCars'));
+        if (!latitude || !longitude || extra !== undefined || !Number.isFinite(Number(latitude)) ||
+            !Number.isFinite(Number(longitude)) || !date.isValid || !Number.isInteger(numberOfCars) || numberOfCars < 1) {
+            throw new Error('Enter a positive car count, valid date/time, and GPS as latitude, longitude.');
+        }
+        return {
+            numberOfCars,
+            photoDateTime: date.toISO({ includeOffset: false }),
+            photoCrossStreet: fields.get('location').trim(),
+            photoLatitude: latitude,
+            photoLongitude: longitude,
+            twitterSubmittedBy: fields.get('twitterSubmittedBy').trim() || 'Submission',
+            mastodonSubmittedBy: fields.get('mastodonSubmittedBy').trim() || 'Submission',
+            blueskySubmittedBy: fields.get('blueskySubmittedBy').trim() || 'Submission',
+            threadsSubmittedBy: fields.get('threadsSubmittedBy').trim() || 'Submission',
+            twitterLink: fields.get('twitterLink').trim()
+        };
+    }
 
     const copyButton = createElementWithClass('button', 'btn btn-light me-4');
     copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
-    copyButton.addEventListener('click', function() {
-        const carString = metadata.numberOfCars === 1 ? 'car' : 'cars';
-        let submissionString = 'Submission';
-        if (metadata.mastodonSubmittedBy && metadata.mastodonSubmittedBy !== 'Submission') {
-            const splitMastodonSubmittedBy = metadata.mastodonSubmittedBy.split(' ');
-            const splitUsername = splitMastodonSubmittedBy[2].split('@');
-            submissionString = `Submitted by https://${splitUsername[2]}/@${splitUsername[1]}`;
+    copyButton.type = 'button';
+    copyButton.setAttribute('aria-label', 'Copy report text');
+    copyButton.addEventListener('click', async function() {
+        try {
+            const edits = readEdits();
+            const date = luxon.DateTime.fromISO(edits.photoDateTime);
+            const carString = edits.numberOfCars === 1 ? 'car' : 'cars';
+            let attribution = edits.mastodonSubmittedBy !== 'Submission' ? edits.mastodonSubmittedBy : edits.blueskySubmittedBy;
+            const mastodonMention = attribution.match(/^Submitted by @([^@\s]+)@([^@\s]+)$/);
+            if (mastodonMention) attribution = `Submitted by https://${mastodonMention[2]}/@${mastodonMention[1]}`;
+            else if (metadata.blueskyHandle && attribution === `Submitted by @${metadata.blueskyHandle}`) {
+                attribution = `Submitted by https://bsky.app/profile/${metadata.blueskyHandle}`;
+            }
+            await navigator.clipboard.writeText(
+                `${edits.numberOfCars} ${carString}\nDate: ${date.toFormat('M/d/yyyy')}\nTime: ${date.toFormat('h:mm a')}\n` +
+                `Location: ${edits.photoCrossStreet}\nGPS: ${edits.photoLatitude}, ${edits.photoLongitude}\n${attribution}`);
+        } catch (error) {
+            displayError(`Could not copy report text. ${error.message}`);
         }
-        if (submissionString === 'Submission' && metadata.blueskySubmittedBy && metadata.blueskySubmittedBy !== 'Submission') {
-            const splitBlueskySubmittedBy = metadata.blueskySubmittedBy.split(' ');
-            const splitHandle = splitBlueskySubmittedBy[2].split('@');
-            submissionString = `Submitted by https://bsky.app/profile/${splitHandle[1]}`;
-        }
-        const copyString =
-            `${metadata.numberOfCars} ${carString}\n` +
-            `Date: ${dateTime.toFormat('M/d/yyyy')}\n` +
-            `Time: ${dateTime.toFormat('h:mm a')}\n` +
-            `Location: ${metadata.photoCrossStreet}\n` +
-            `GPS: ${metadata.photoLatitude}, ${metadata.photoLongitude}\n` +
-            `${submissionString}`;
-        navigator.clipboard.writeText(copyString);
     });
-    const uploadButton = createSubmitButton('btn-success', 'Upload', metadata.moderationStatus);
+    const uploadButton = createSubmitButton('btn-success', 'Upload');
     uploadButton.className = 'btn btn-success me-4';
-    const deleteButton = createSubmitButton('btn-danger', 'Delete', metadata.moderationStatus);
+    const deleteButton = createSubmitButton('btn-danger', 'Delete');
+    deleteButton.formNoValidate = true;
     const buttonDiv = createElementWithClass('div', 'text-center');
     buttonDiv.append(copyButton, uploadButton, deleteButton);
 
-    form.append(numberOfCarsRow, dateRow, timeRow, locationRow, gpsRow, twitterAttributionRow, mastodonAttributionRow, blueskyAttributionRow, twitterLinkRow, deviceIdRow, buttonDiv);
+    form.append(numberOfCarsRow, dateRow, timeRow, locationRow, gpsRow, twitterAttributionRow, mastodonAttributionRow, blueskyAttributionRow, threadsAttributionRow, twitterLinkRow, buttonDiv);
 
-    form.addEventListener('submit', (event) => {
+    const canModerate = metadatas.every(photo => photo.canModerate);
+    uploadButton.disabled = !canModerate;
+    deleteButton.disabled = !canModerate;
+    if (!canModerate) {
+        form.querySelectorAll('input').forEach(input => input.readOnly = true);
+    }
+    let inFlight = false;
+    form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const data = new FormData(event.target);
         const submitButton = event.submitter;
-
-        if (submitButton.innerText === 'Upload') {
-            changeButtonToLoadingButton(submitButton, 'Uploading...');
-            for (const [name, value] of data) {
-                if (name === 'numberOfCars') {
-                    const parsedNumberOfCars = parseInt(value);
-                    if (!isNaN(parsedNumberOfCars) && parsedNumberOfCars !== metadata.numberOfCars) {
-                        metadata.numberOfCars = parsedNumberOfCars;
-                    }
-                }
-
-                if (name === 'location') {
-                    if (value.trim() !== metadata.photoCrossStreet) {
-                        metadata.photoCrossStreet = value.trim();
-                    }
-                }
-
-                if (name === 'gps') {
-                    const [latitude, longitude] = value.split(',');
-                    if (latitude.trim() !== metadata.photoLatitude) {
-                        metadata.photoLatitude = latitude.trim();
-                    }
-                    if (longitude.trim() !== metadata.photoLongitude) {
-                        metadata.photoLongitude = longitude.trim();
-                    }
-                }
-
-                if (name === 'twitterSubmittedBy') {
-                    if (value.trim() !== metadata.twitterSubmittedBy) {
-                        metadata.twitterSubmittedBy = value.trim();
-                    }
-                }
-
-                if (name === 'mastodonSubmittedBy') {
-                    if (value.trim() !== metadata.mastodonSubmittedBy) {
-                        metadata.mastodonSubmittedBy = value.trim();
-                    }
-                }
-
-                if (name === 'blueskySubmittedBy') {
-                    if (value.trim() !== metadata.blueskySubmittedBy) {
-                        metadata.blueskySubmittedBy = value.trim();
-                    }
-                }
-
-                if (name === 'twitterLink') {
-                    metadata.twitterLink = value.trim();
+        if (!canModerate || inFlight || ![uploadButton, deleteButton].includes(submitButton)) return;
+        const publishing = submitButton === uploadButton;
+        let refreshRequired = false;
+        try {
+            const request = {
+                reportId: metadata.reportId,
+                reportVersion: metadata.reportVersion,
+                legacySubmissionId: metadata.legacySubmissionId,
+                photoIds: metadatas.map(photo => photo.photoId),
+                ...(publishing ? { edits: readEdits(), blueskyAdminDid, blueskyAccessJwt } : {})
+            };
+            inFlight = true;
+            uploadButton.disabled = true;
+            deleteButton.disabled = true;
+            changeButtonToLoadingButton(submitButton, publishing ? 'Uploading...' : 'Deleting...');
+            if (publishing) await uploadTweet(request);
+            else await deletePendingPhoto(request);
+            refreshRequired = true;
+            await displayPendingPhotos();
+        } catch (error) {
+            displayError(error.message);
+            if (error.retryAllowed) {
+                // Keep the edited form and advance its version after the server releases the
+                // failed attempt. A retry of an adopted report no longer uses the flat-data path.
+                for (const photo of metadatas) {
+                    photo.reportVersion = error.reportVersion;
+                    photo.legacySubmissionId = null;
                 }
             }
-
-            if (!metadata.twitterSubmittedBy) {
-                metadata.twitterSubmittedBy = 'Submission';
+            const staleCard = error.retryAllowed && !card.isConnected;
+            refreshRequired = refreshRequired || error.refreshRequired || staleCard;
+            if (error.refreshRequired || staleCard) {
+                try { await displayPendingPhotos(); }
+                catch (refreshError) { displayError(`${error.message} Refresh also failed: ${refreshError.message}`); }
             }
-            
-            if (!metadata.mastodonSubmittedBy) {
-                metadata.mastodonSubmittedBy = 'Submission';
-            }
-
-            if (!metadata.blueskySubmittedBy) {
-                metadata.blueskySubmittedBy = 'Submission';
-            }
-
-            if (!metadata.threadsSubmittedBy) {
-                metadata.threadsSubmittedBy = 'Submission';
-            }
-
-            if (blueskyAdminDid) {
-                metadata.blueskyAdminDid = blueskyAdminDid;
-            }
-
-            if (blueskyAccessJwt) {
-                metadata.blueskyAccessJwt = blueskyAccessJwt;
-            }
-
-            uploadTweet(metadatas)
-            .then(() => {
-                document.getElementById(metadata.photoId).remove();
-                return displayPendingPhotos();
-            })
-            .catch(error => {
-                changeLoadingButtonToRegularButton(submitButton, 'Upload');
-            });
-        } else if (submitButton.innerText === 'Delete') {
-            changeButtonToLoadingButton(submitButton, 'Deleting...');
-            deletePendingPhoto(metadatas)
-            .then(() => {
-                document.getElementById(metadata.photoId).remove();
-                return displayPendingPhotos();
-            })
-            .catch(error => {
-                changeLoadingButtonToRegularButton(submitButton, 'Delete');
-            });
+        } finally {
+            changeLoadingButtonToRegularButton(submitButton, publishing ? 'Upload' : 'Delete');
+            // If reconciliation failed, do not re-enable a stale card.
+            uploadButton.disabled = refreshRequired || !canModerate;
+            deleteButton.disabled = refreshRequired || !canModerate;
+            inFlight = false;
         }
     });
 
@@ -396,13 +375,15 @@ document.getElementById('deletePostButton').addEventListener('click', function(e
 });
 
 function displayPendingPhotos() {
+    const refresh = ++pendingRefresh;
     const cardsDiv = document.getElementById('cardsDiv');
-    if (cardsDiv.childElementCount === 0) {
-        return getPendingPhotos()
+    return getPendingPhotos()
         .then(response => {
-            document.getElementById('pendingItems').innerText = `Pending photos: ${Object.keys(response).length}`;
+            if (refresh !== pendingRefresh) return;
+            const cards = document.createDocumentFragment();
+            document.getElementById('pendingItems').innerText = `Pending reports: ${Object.keys(response).length}`;
             if (Object.keys(response).length === 0) {
-                cardsDiv.append('No pending reported items.');
+                cards.append('No pending reported items.');
             } else {
                 const sortedKeys = Object.keys(response).sort((a, b) => {
                     const aDate = luxon.DateTime.fromISO(response[a][0].photoDateTime);
@@ -411,27 +392,21 @@ function displayPendingPhotos() {
                 });
                 for (const key of sortedKeys) {
                     const card = createDesktopCard(key, response[key]);
-                    cardsDiv.append(card);
+                    cards.append(card);
                 }
             }
-        })
-        .catch(error => {
-            const cardsDiv = document.getElementById('cardsDiv');
-            const alertDiv = document.createElement('div');
-            alertDiv.className = 'alert alert-danger';
-            alertDiv.setAttribute('role', 'alert');
-            alertDiv.append(error.message);
-            cardsDiv.append(alertDiv);
+            cardsDiv.replaceChildren(cards);
         });
-    } else {
-        document.getElementById('pendingItems').innerText = `Pending photos: ${document.getElementsByClassName('card').length}`;
-        return Promise.resolve();
-    }
 }
 
+document.getElementById('refreshPendingButton').addEventListener('click', () => {
+    displayPendingPhotos().catch(error => displayError(error.message));
+});
+adminDeviceBlocks.refresh();
+displayPendingPhotos().catch(error => displayError(error.message));
 getBlueskySession()
 .then(response => {
     blueskyAdminDid = response.did;
     blueskyAccessJwt = response.accessJwt;
-    displayPendingPhotos();
-});
+})
+.catch(error => displayError(`Could not load the Bluesky admin session. ${error.message}`));

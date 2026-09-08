@@ -1,4 +1,6 @@
 let map = null;
+let mapReady = false;
+let mapTheme = window.siteTheme.getTheme();
 let reportedItemsPromise = null;
 let dataSource = null;
 let popup = null;
@@ -22,9 +24,59 @@ let blLayer = null;
 let clLayer = null;
 let oLayer = null;
 let trailsLayer = null;
-const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 let loggedInMastodonFullUsername = null;
 let loggedInMastodonUsername = null;
+let loggedInMastodonAccountId = null;
+
+function getBikeFacilityLegendItems(theme) {
+    return [
+        { label: 'Protected Bike Lane', color: 'rgb(22, 145, 208)', strokeWidth: 4 },
+        { label: 'Buffered Bike Lane', color: 'rgb(28, 179, 255)', strokeWidth: 3 },
+        { label: 'Painted Bike Lane', color: 'rgb(255, 108, 44)', strokeWidth: 3 },
+        { label: 'Climbing Lane', color: 'rgb(0, 168, 93)', strokeWidth: 2 },
+        { label: 'Miscellaneous Off Street Bicycle Facility', color: theme === 'dark' ? '#fff' : '#000', strokeWidth: 2 },
+        { label: 'Multi-Use Trail', color: 'rgb(168, 56, 0)', strokeWidth: 4 }
+    ];
+}
+
+function applyWebTheme(theme) {
+    if (mapReady && map && mapTheme !== theme) {
+        map.setStyle({
+            style: theme === 'dark' ? 'night' : 'road'
+        });
+        mapTheme = theme;
+    }
+
+    [filterLegendControl, uploadLegendControl, filterStatusLegendControl].forEach(legendControl => {
+        if (legendControl) {
+            legendControl.setOptions({
+                style: theme
+            });
+        }
+    });
+
+    const otherBikeLaneColor = theme === 'dark' ? '#fff' : '#000';
+    if (oLayer) {
+        oLayer.setOptions({
+            strokeColor: otherBikeLaneColor
+        });
+    }
+    if (bikeLaneLegendControl) {
+        bikeLaneLegendControl.setOptions({
+            style: theme,
+            legends: [{
+                type: 'category',
+                itemLayout: 'row',
+                shape: 'line',
+                fitItems: true,
+                shapeSize: 20,
+                items: getBikeFacilityLegendItems(theme)
+            }]
+        });
+    }
+}
+
+window.siteTheme.subscribe(applyWebTheme);
 
 function toggleFilterLegendControl() {
     toggleLegendControl(filterLegendControl);
@@ -103,6 +155,7 @@ function clearMastodonAuth(notifyNative = true) {
     localStorage.removeItem('mastodonAccessToken');
     loggedInMastodonFullUsername = null;
     loggedInMastodonUsername = null;
+    loggedInMastodonAccountId = null;
     setMastodonButtonAsLoggedOut();
     document.getElementById('mastodonLogoutButton').className = 'dropdown-item disabled';
     if (notifyNative) {
@@ -120,6 +173,7 @@ function checkMastodonAuth() {
         .then(response => {
             loggedInMastodonFullUsername = response.fullUsername;
             loggedInMastodonUsername = response.username;
+            loggedInMastodonAccountId = response.accountId;
         });
     } else {
         document.getElementById('mastodonLogoutButton').className = 'dropdown-item disabled';
@@ -389,8 +443,13 @@ function initFilterLegendHtml() {
 function initUpload1LegendHtml() {
     document.getElementById('photoFileInput').value = '';
     const form = document.getElementById('uploadForm1');
+    let processing = false;
+    let report = null;
     const upload1Event = function(event) {
         event.preventDefault();
+        if (processing) {
+            return;
+        }
         const button = event.submitter;
         changeButtonToLoadingButton(button, 'Processing...');
         document.getElementById('uploadForm1AlertDiv').innerHTML = '';
@@ -406,7 +465,13 @@ function initUpload1LegendHtml() {
             for (const file of files) {
                 onlyFiles.push(file[1]);
             }
-            uploadImage(onlyFiles)
+            if (!report || onlyFiles.some((file, index) => file.name !== report.files[index]?.name ||
+                file.size !== report.files[index]?.size || file.lastModified !== report.files[index]?.lastModified) ||
+                onlyFiles.length !== report.files.length) {
+                report = new ReportUpload(onlyFiles);
+            }
+            processing = true;
+            report.prepare()
             .then(response => {
                 form.removeEventListener('submit', upload1Event);
                 form.setAttribute('hidden', '');
@@ -417,7 +482,7 @@ function initUpload1LegendHtml() {
                 uploadLegendControl.setOptions({
                     legends: [{
                         type: 'html',
-                        html: initUpload2LegendHtml(response)
+                        html: initUpload2LegendHtml(response, report)
                     }]
                 });
             })
@@ -426,7 +491,8 @@ function initUpload1LegendHtml() {
                     .appendChild(createAlertBanner(error.message));
                 
                 changeLoadingButtonToRegularButton(button, 'Process');
-            });
+            })
+            .finally(() => { processing = false; });
         }
     };
     form.addEventListener('submit', upload1Event);
@@ -434,7 +500,7 @@ function initUpload1LegendHtml() {
     return form;
 }
 
-function initUpload2LegendHtml(metadatas) {
+function initUpload2LegendHtml(metadatas, report) {
     if (metadatas.length === 1) {
         document.getElementById('uploadCarousel').setAttribute('hidden', '');
         document.getElementById('photo').src = metadatas[0].uri;
@@ -550,10 +616,35 @@ function initUpload2LegendHtml(metadatas) {
     }
 
     const form = document.getElementById('uploadForm2');
+    let submitting = false;
+    const originalDisabled = new Map();
+    const lockFields = (locked) => {
+        for (const input of form.querySelectorAll('input')) {
+            if (locked) {
+                if (!originalDisabled.has(input)) {
+                    originalDisabled.set(input, input.disabled);
+                }
+                input.disabled = true;
+            } else if (originalDisabled.has(input)) {
+                input.disabled = originalDisabled.get(input);
+                originalDisabled.delete(input);
+            }
+        }
+    };
     const upload2Event = function(event) {
         event.preventDefault();
+        if (submitting) {
+            return;
+        }
         const button = event.submitter;
+        // Disabled form inputs are excluded by FormData, so temporarily restore them
+        // when checking an uncertain submission. ReportUpload retains its frozen body.
+        lockFields(false);
         changeButtonToLoadingButton(button, 'Uploading...');
+        for (const photo of metadatas) {
+            photo.attribute = false;
+            photo.mastodonAccessToken = null;
+        }
         const data = new FormData(event.target);
         for (const [name, value] of data) {
             if (name === 'photoNumberOfCars') {
@@ -650,8 +741,41 @@ function initUpload2LegendHtml(metadatas) {
             }
         }
 
-        finalizeUploadImage(metadatas)
+        const attribution = {};
+        if (!report.uncertain && document.getElementById('attributeCheckbox').checked) {
+            if (window.blueskyUserDid) {
+                attribution.blueskyDid = window.blueskyUserDid;
+            }
+            if (localStorage.getItem('mastodonAccessToken')) {
+                if (!loggedInMastodonAccountId) {
+                    showUploadForm2Error('Your Mastodon account is still being verified. Please wait and retry.');
+                    changeLoadingButtonToRegularButton(button, 'Upload');
+                    lockFields(report.uncertain);
+                    return;
+                }
+                try {
+                    attribution.mastodonServer = new URL(localStorage.getItem('mastodonEndpoint')).origin;
+                } catch (error) {
+                    if (!(error instanceof TypeError)) {
+                        throw error;
+                    }
+                    showUploadForm2Error('Your saved Mastodon server is invalid. Sign in again, or turn off attribution.');
+                    changeLoadingButtonToRegularButton(button, 'Upload');
+                    return;
+                }
+                attribution.mastodonAccountId = loggedInMastodonAccountId;
+            }
+            if (Object.keys(attribution).length === 0 && !report.uncertain) {
+                showUploadForm2Error('Sign in again, or turn off attribution to submit anonymously.');
+                changeLoadingButtonToRegularButton(button, 'Upload');
+                return;
+            }
+        }
+        submitting = true;
+        lockFields(true);
+        report.submit(metadatas, attribution)
         .then(() => {
+            lockFields(false);
             userMustSelectLocation = false;
             selectedPosition = null;
             document.getElementById('photoNumberOfCarsInput').value = '';
@@ -698,9 +822,15 @@ function initUpload2LegendHtml(metadatas) {
             });
         })
         .catch(error => {
-            showUploadForm2Error(error.message);
+            const recovery = report.uncertain
+                ? ' Your submission is unconfirmed. Retry to check its status; do not start another report.'
+                : error.code === 'credential_rejected'
+                    ? ' Sign in again, or turn off attribution and retry.' : '';
+            showUploadForm2Error(error.message + recovery);
+            lockFields(report.uncertain);
             changeLoadingButtonToRegularButton(button, 'Upload');
-        });
+        })
+        .finally(() => { submitting = false; });
     };
     form.addEventListener('submit', upload2Event);
     form.removeAttribute('hidden');
@@ -729,11 +859,12 @@ function initUploadDoneLegendHtml() {
 }
 
 function initMap() {
+    mapTheme = window.siteTheme.getTheme();
     map = new atlas.Map('map', {
         center: [-122.333301, 47.606501],
         zoom: 11,
         language: 'en-US',
-        style: darkMode ? 'night' : 'road',
+        style: mapTheme === 'dark' ? 'night' : 'road',
         authOptions: {
             authType: 'anonymous',
             clientId: 'df857d2c-3805-4793-90e4-63e84a499756',
@@ -746,6 +877,8 @@ function initMap() {
     });
 
     map.events.add('ready', function() {
+        mapReady = true;
+        applyWebTheme(window.siteTheme.getTheme());
         initMapControls();
         popup = new atlas.Popup();
 
@@ -765,7 +898,7 @@ function initMap() {
         .then(reportedItems => {
             filterLegendControl = new atlas.control.LegendControl({
                 title: 'Filters',
-                style: 'auto',
+                style: window.siteTheme.getTheme(),
                 showToggle: false,
                 visible: false,
                 legends: [{
@@ -777,7 +910,7 @@ function initMap() {
 
             uploadLegendControl = new atlas.control.LegendControl({
                 title: 'Upload',
-                style: 'auto',
+                style: window.siteTheme.getTheme(),
                 showToggle: false,
                 visible: false,
                 legends: [{
@@ -790,7 +923,7 @@ function initMap() {
             // Add filter status legend control (top-right)
             filterStatusLegendControl = new atlas.control.LegendControl({
                 title: 'Current Filters',
-                style: 'auto',
+                style: window.siteTheme.getTheme(),
                 showToggle: false,
                 visible: true,
                 legends: [{
@@ -855,7 +988,7 @@ function initMap() {
             .then(lanes => {
                 bikeLaneLegendControl = new atlas.control.LegendControl({
                     title: 'Bike Facilities',
-                    style: 'auto',
+                    style: window.siteTheme.getTheme(),
                     visible: false,
                     legends: [{
                         type: 'category',
@@ -863,14 +996,7 @@ function initMap() {
                         shape: 'line',
                         fitItems: true,
                         shapeSize: 20,
-                        items: [
-                            { label: 'Protected Bike Lane', color: 'rgb(22, 145, 208)', strokeWidth: 4 },
-                            { label: 'Buffered Bike Lane', color: 'rgb(28, 179, 255)', strokeWidth: 3 },
-                            { label: 'Painted Bike Lane', color: 'rgb(255, 108, 44)', strokeWidth: 3 },
-                            { label: 'Climbing Lane', color: 'rgb(0, 168, 93)', strokeWidth: 2 },
-                            { label: 'Miscellaneous Off Street Bicycle Facility', color: darkMode ? '#fff': '#000', strokeWidth: 2 },
-                            { label: 'Multi-Use Trail', color: 'rgb(168, 56, 0)', strokeWidth: 4 }
-                        ]
+                        items: getBikeFacilityLegendItems(window.siteTheme.getTheme())
                     }]
                 });
                 map.controls.add(bikeLaneLegendControl, { position: 'bottom-left' });
@@ -879,7 +1005,7 @@ function initMap() {
                 bblLayer = getLineLayer(getBufferedBikeLanesCollection(lanes), 'rgb(28, 179, 255)', 3, map);
                 blLayer = getLineLayer(getPaintedBikeLanesCollection(lanes), 'rgb(255, 108, 44)', 3, map);
                 clLayer = getLineLayer(getClimbingLanesCollection(lanes), 'rgb(0, 168, 93)', 2, map);
-                otherBikeLaneColor = darkMode ? '#fff' : '#000';
+                const otherBikeLaneColor = window.siteTheme.isDark() ? '#fff' : '#000';
                 oLayer = getLineLayer(getOtherLanesCollection(lanes), otherBikeLaneColor, 2, map);
                 map.layers.add(pblLayer);
                 map.layers.add(bblLayer);
@@ -969,16 +1095,6 @@ function initMap() {
     });
 }
 
-function initDarkMode() {
-    if (!darkMode) {
-        return;
-    }
-    const nav = document.querySelector('nav');
-    nav.classList.remove('bg-light');
-    nav.classList.add('navbar-dark', 'bg-dark');
-}
-
-initDarkMode();
 initControls();
 initMap();
 checkMastodonAuth();

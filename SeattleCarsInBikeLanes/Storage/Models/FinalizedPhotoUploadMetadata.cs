@@ -33,7 +33,7 @@ namespace SeattleCarsInBikeLanes.Storage.Models
         public string? DeviceId { get; set; }
 
         /// <summary>
-        /// The stable mobile queue identifier used to suppress duplicate finalization.
+        /// The stable report identifier used to suppress duplicate finalization.
         /// </summary>
         public string? ReportId { get; set; }
 

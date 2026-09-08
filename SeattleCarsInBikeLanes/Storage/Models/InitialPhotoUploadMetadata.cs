@@ -4,6 +4,9 @@ namespace SeattleCarsInBikeLanes.Storage.Models
 {
     public class InitialPhotoUploadMetadata : AbstractPhotoUploadMetadata
     {
+        public string? ReportId { get; set; }
+        public string? DeviceId { get; set; }
+
         public InitialPhotoUploadMetadata()
         {
         }

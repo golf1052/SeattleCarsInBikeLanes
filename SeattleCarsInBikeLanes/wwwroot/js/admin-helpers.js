@@ -1,143 +1,118 @@
+async function adminRequest(path, options = {}, recovery = {}) {
+    let response;
+    let text;
+    try {
+        response = await fetch(`api/AdminPage/${path}`, { cache: 'no-store', ...options });
+        text = await response.text();
+    } catch (cause) {
+        if (!(cause instanceof TypeError) && cause?.name !== 'AbortError') throw cause;
+        const error = new Error(recovery.network || 'The server could not be reached. Refresh pending reports to check whether the operation completed before retrying.');
+        error.cause = cause;
+        error.refreshRequired = true;
+        throw error;
+    }
+    let body;
+    try {
+        body = text ? JSON.parse(text) : null;
+    } catch (cause) {
+        if (!(cause instanceof SyntaxError)) throw cause;
+        if (response.headers.get('content-type')?.includes('json')) {
+            const error = new Error(recovery.unreadable || 'The site returned an unreadable response. Refresh pending reports before retrying.');
+            error.cause = cause;
+            error.refreshRequired = true;
+            throw error;
+        }
+        body = text;
+    }
+    if (!response.ok) {
+        const message = typeof body === 'string' ? body :
+            body?.message || body?.detail || (body?.errors && Object.values(body.errors).flat().join(' ')) || body?.title;
+        const error = new Error(message || `Request failed (${response.status}). ${recovery.failed || 'Refresh before retrying.'}`);
+        error.status = response.status;
+        error.retryAllowed = body?.retryAllowed === true && typeof body.reportVersion === 'string' && body.reportVersion.length > 0;
+        error.reportVersion = error.retryAllowed ? body.reportVersion : null;
+        error.refreshRequired = !error.retryAllowed &&
+            (response.status === 409 || response.status === 404 || response.status >= 500);
+        throw error;
+    }
+    if (recovery.expectedStatus && response.status !== recovery.expectedStatus) {
+        const error = new Error(recovery.unreadable);
+        error.refreshRequired = true;
+        throw error;
+    }
+    return body;
+}
+
+function adminJsonRequest(path, method, body, recovery = {}) {
+    return adminRequest(path, {
+        method,
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' }
+    }, recovery);
+}
+
+const deviceBlockRecovery = {
+    network: 'The server could not be reached. Refresh blocked devices to check the current status before retrying.',
+    unreadable: 'The site returned an unexpected response. Refresh blocked devices to check the current status before retrying.',
+    failed: 'Refresh blocked devices before retrying.'
+};
+
+function getBlockedDevices() {
+    return adminRequest('BlockedDevices', {}, { ...deviceBlockRecovery, expectedStatus: 200 });
+}
+
+function blockDevice(deviceId, reason) {
+    return adminJsonRequest('BlockedDevices', 'POST', { deviceId, reason },
+        { ...deviceBlockRecovery, expectedStatus: 204 });
+}
+
+function unblockDevice(deviceId) {
+    return adminJsonRequest('BlockedDevices', 'DELETE', { deviceId },
+        { ...deviceBlockRecovery, expectedStatus: 204 });
+}
+
 function getBlueskySession() {
-    return fetch('api/AdminPage/GetBlueskySession')
-    .then(response => {
-        if (!response.ok) {
-            return response.text();
-        }
-
-        return response.json();
-    })
-    .then(response => {
-        if (typeof response === 'string') {
-            throw new Error(response);
-        }
-
-        return response;
-    });
+    return adminRequest('GetBlueskySession');
 }
 
 function getPendingPhotos() {
-    return fetch('api/AdminPage/PendingPhotos')
-    .then(response => {
-        if (!response.ok) {
-            return response.text();
-        }
-
-        return response.json();
-    })
-    .then(response => {
-        if (typeof response === 'string') {
-            throw new Error(response);
-        }
-
-        return response;
-    });
+    return adminRequest('PendingPhotos');
 }
 
-function uploadTweet(metadata) {
-    return fetch('api/AdminPage/UploadTweet', {
-        method: 'POST',
-        body: JSON.stringify(metadata),
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            return response.text();
-        }
-
-        return null;
-    })
-    .then(response => {
-        if (typeof response === 'string') {
-            throw new Error(response);
-        }
-    });
+function uploadTweet(report) {
+    return adminJsonRequest('UploadTweet', 'POST', report);
 }
 
 function postTweet(link, body, images, tweetLink, quoteTweetLink, blueskyDid, blueskyAccessJwt) {
-    return fetch('api/AdminPage/PostTweet', {
-        method: 'POST',
-        body: JSON.stringify({
-            postUrl: link,
-            tweetBody: body,
-            tweetImages: images,
-            tweetLink: tweetLink,
-            quoteTweetLink: quoteTweetLink,
-            blueskyDid: blueskyDid,
-            blueskyAccessJwt: blueskyAccessJwt
-        }),
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            return response.text();
-        }
-
-        return null;
-    })
-    .then(response => {
-        if (typeof response === 'string') {
-            throw new Error(response);
-        }
+    return adminJsonRequest('PostTweet', 'POST', {
+        postUrl: link,
+        tweetBody: body,
+        tweetImages: images,
+        tweetLink,
+        quoteTweetLink,
+        blueskyDid,
+        blueskyAccessJwt
     });
 }
 
-function deletePendingPhoto(metadata) {
-    return fetch('api/AdminPage/DeletePendingPhoto', {
-        method: 'DELETE',
-        body: JSON.stringify(metadata),
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    });
+function deletePendingPhoto(report) {
+    return adminJsonRequest('DeletePendingPhoto', 'DELETE', report);
 }
 
 function deletePost(identifier) {
-    return fetch('api/AdminPage/DeletePost', {
-        method: 'DELETE',
-        body: JSON.stringify({ postIdentifier: identifier }),
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    });
+    return adminJsonRequest('DeletePost', 'DELETE', { postIdentifier: identifier });
 }
 
 function postMonthlyStats(link) {
-    return fetch('api/AdminPage/PostMonthlyStats', {
-        method: 'POST',
-        body: JSON.stringify({ postIdentifier: link }),
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            return response.text();
-        }
-
-        return null;
-    })
-    .then(response => {
-        if (typeof response === 'string') {
-            throw new Error(response);
-        }
-    });
+    return adminJsonRequest('PostMonthlyStats', 'POST', { postIdentifier: link });
 }
 
 function displayError(text) {
-    const oldAlertDiv = document.getElementById('alertDiv');
-    if (oldAlertDiv) {
-        oldAlertDiv.remove();
-    }
-
+    document.getElementById('alertDiv')?.remove();
     const alertDiv = document.createElement('div');
     alertDiv.className = 'alert alert-danger';
     alertDiv.setAttribute('role', 'alert');
-    alertDiv.setAttribute('id', 'alertDiv');
+    alertDiv.id = 'alertDiv';
     alertDiv.append(text);
-    document.getElementsByTagName('body')[0].append(alertDiv);
+    document.body.prepend(alertDiv);
 }

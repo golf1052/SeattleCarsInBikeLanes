@@ -101,7 +101,7 @@ namespace SeattleCarsInBikeLanes.Controllers
             try
             {
                 VerifiedMastodonAccount account = await verifier.VerifyAsync(request.ServerUrl,
-                    request.AccessToken, cancellationToken);
+                                                    request.AccessToken, cancellationToken);
                 return Ok(account);
             }
             catch (CredentialRejectedException)

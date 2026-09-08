@@ -43,44 +43,75 @@ function searchReportedItems(searchParams) {
     });
 }
 
-function uploadImage(files) {
+class UploadRequestError extends Error {
+    constructor(message, status, code) {
+        super(message);
+        this.status = status;
+        this.code = code;
+    }
+}
+
+async function readUploadResponse(response) {
+    const text = await response.text();
+    const body = text && response.headers.get('content-type')?.includes('json')
+        ? JSON.parse(text) : text;
+    if (!response.ok) {
+        const message = typeof body === 'string' ? body :
+            body?.message || body?.detail || body?.title;
+        throw new UploadRequestError(message || `The site could not complete the upload (${response.status}).`,
+            response.status, body?.code);
+    }
+    return body;
+}
+
+function validateUploadReceipt(receipt, reportId) {
+    if (!receipt || receipt.reportId !== reportId ||
+        typeof receipt.submissionId !== 'string' || !receipt.submissionId ||
+        !receipt.submittedAt || !Number.isFinite(Date.parse(receipt.submittedAt)) ||
+        !receipt.attribution || typeof receipt.attribution !== 'object' ||
+        Array.isArray(receipt.attribution)) {
+        throw new Error('The site did not return a valid confirmation. Retry to check whether your report was received.');
+    }
+    return receipt;
+}
+
+async function uploadImage(files, reportId) {
     const data = new FormData();
     for (const file of files) {
         data.append('files', file);
     }
-    return fetch(`api/Upload/Initial`, {
+    const response = await fetch('api/Upload/Initial', {
         method: 'POST',
+        headers: { 'X-Report-Id': reportId },
         body: data
-    })
-    .then(response => {
-        if (!response.ok) {
-            return response.text();
-        }
-
-        return response.json();
-    })
-    .then(response => {
-        if (typeof response === 'string') {
-            throw new Error(response);
-        }
-
-        return response;
     });
+    const photos = await readUploadResponse(response);
+    if (!Array.isArray(photos) || photos.length !== files.length ||
+        photos.some((photo, index) => !photo.photoId || !photo.submissionId ||
+            photo.photoNumber !== index || photo.submissionId !== photos[0].submissionId)) {
+        throw new Error('The site did not return the complete photo set. Please retry.');
+    }
+    return photos;
 }
 
-function finalizeUploadImage(metadata) {
-    return fetch('api/Upload/Finalize', {
+async function finalizeUploadImage(metadata, reportId, attribution) {
+    const response = await fetch('api/Upload/Finalize', {
         method: 'POST',
-        body: JSON.stringify(metadata),
+        body: JSON.stringify({ photos: metadata, attribution }),
         headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`Error when finalizing image upload. ${response}`);
+            'Content-Type': 'application/json',
+            'X-Report-Id': reportId
         }
     });
+    return validateUploadReceipt(await readUploadResponse(response), reportId);
+}
+
+async function getUploadReceipt(reportId) {
+    const response = await fetch(`api/Upload/Reports/${encodeURIComponent(reportId)}`, { cache: 'no-store' });
+    if (response.status === 404) {
+        return null;
+    }
+    return validateUploadReceipt(await readUploadResponse(response), reportId);
 }
 
 function createReportedItemFeatureCollection(reportedItems) {

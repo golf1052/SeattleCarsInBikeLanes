@@ -68,5 +68,4 @@ namespace SeattleCarsInBikeLanes.Storage.Models
             Tags = tags;
         }
     }
-
 }

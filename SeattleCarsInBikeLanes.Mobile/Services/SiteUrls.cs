@@ -24,7 +24,7 @@ public static class SiteUrls
 
     public static Uri UploadInitial { get; } = new Uri(BaseAddress, "api/Upload/Initial");
 
-    public static Uri UploadFinalize { get; } = new Uri(BaseAddress, "api/Upload/FinalizeMobile");
+    public static Uri UploadFinalize { get; } = new Uri(BaseAddress, "api/Upload/Finalize");
     public static Uri ReportStatus(string reportId) => new Uri(BaseAddress, $"api/Upload/Reports/{reportId}");
 
     public static Uri UploadLimits { get; } = new Uri(BaseAddress, "api/Upload/Limits");

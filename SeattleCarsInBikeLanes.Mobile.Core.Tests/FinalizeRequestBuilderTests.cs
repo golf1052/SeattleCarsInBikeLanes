@@ -43,6 +43,35 @@ public class FinalizeRequestBuilderTests
         Assert.Equal(new[] { 0, 1, 2 }, result.Select(photo => photo.PhotoNumber));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DifferentPhotoMetadataProducesIdenticalReportFields(bool hasDraftValues)
+    {
+        List<InitialPhotoUpload> photos = Photos(3);
+        photos[1].PhotoDateTime = photos[0].PhotoDateTime!.Value.AddMinutes(1);
+        photos[1].PhotoLatitude = "47.65";
+        photos[1].PhotoLongitude = "-122.35";
+        photos[1].PhotoCrossStreet = "Pine St";
+        photos[2].PhotoDateTime = null;
+        photos[2].PhotoLatitude = null;
+        photos[2].PhotoLongitude = null;
+        photos[2].PhotoCrossStreet = null;
+        ReportDraft draft = hasDraftValues
+            ? new ReportDraft { TakenAt = new DateTime(2026, 4, 2), Location = new GeoPosition(47.62, -122.34), CrossStreet = "Union St" }
+            : new ReportDraft();
+
+        List<FinalizedPhotoUpload> result = FinalizeRequestBuilder.Build(photos, draft, null);
+
+        Assert.All(result, photo =>
+        {
+            Assert.Equal(draft.TakenAt ?? photos[0].PhotoDateTime, photo.PhotoDateTime);
+            Assert.Equal(draft.Location?.LatitudeString ?? photos[0].PhotoLatitude, photo.PhotoLatitude);
+            Assert.Equal(draft.Location?.LongitudeString ?? photos[0].PhotoLongitude, photo.PhotoLongitude);
+            Assert.Equal(draft.CrossStreet ?? photos[0].PhotoCrossStreet, photo.PhotoCrossStreet);
+        });
+    }
+
     [Fact]
     public void KeepsTheServersLocationWhenTheUserDidNotChangeIt()
     {

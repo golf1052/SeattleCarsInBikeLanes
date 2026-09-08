@@ -196,7 +196,7 @@ namespace SeattleCarsInBikeLanes.Controllers
                 if (!string.Equals(did, loginState.ExpectedDid, StringComparison.Ordinal))
                 {
                     logger.LogError("Bluesky returned DID {ReturnedDid} but we requested {ExpectedDid}.",
-                        did, loginState.ExpectedDid);
+                                                                did, loginState.ExpectedDid);
                     await TryRevoke(agent, cancellationToken);
                     return LoginFailed("Bluesky authenticated a different account than the one requested.");
                 }
@@ -301,7 +301,7 @@ namespace SeattleCarsInBikeLanes.Controllers
         private static ClaimsPrincipal BuildPrincipal(string did, string handle, string authenticationScheme)
         {
             Claim[] claims = new[]
-            {
+                                    {
                 new Claim(BlueskyAuthDefaults.DidClaim, did),
                 new Claim(BlueskyAuthDefaults.HandleClaim, handle),
                 new Claim(ClaimTypes.NameIdentifier, did),

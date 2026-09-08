@@ -1,152 +1,208 @@
-using Azure;
-using Azure.Storage.Blobs;
-using Azure.Storage.Blobs.Models;
-using Microsoft.Extensions.Caching.Memory;
+using System.Net;
+using Azure.Identity;
+using Microsoft.Azure.Cosmos;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Newtonsoft.Json;
+using SeattleCarsInBikeLanes.Database;
+using SeattleCarsInBikeLanes.Database.Models;
 using SeattleCarsInBikeLanes.Providers;
 
 namespace SeattleCarsInBikeLanes.Tests
 {
     public class DeviceBlocklistProviderTests
     {
-        private static DeviceBlocklistProvider CreateProvider(BlobContainerClient containerClient)
+        private sealed class Fixture
         {
-            return new DeviceBlocklistProvider(NullLogger<DeviceBlocklistProvider>.Instance,
-                containerClient,
-                new MemoryCache(new MemoryCacheOptions()));
-        }
+            public Mock<Container> Container { get; } = new Mock<Container>(MockBehavior.Strict);
+            public Mock<ILogger<DeviceBlocklistProvider>> Log { get; } = new Mock<ILogger<DeviceBlocklistProvider>>();
+            public HashSet<string> Blocked { get; } = new HashSet<string>(StringComparer.Ordinal);
+            public DeviceBlocklistProvider Provider { get; }
 
-        private static Mock<BlobClient> CreateBlobClient(string? json, Exception? failure = null)
-        {
-            Mock<BlobClient> blobClient = new Mock<BlobClient>();
-
-            if (failure != null)
+            public Fixture()
             {
-                blobClient.Setup(c => c.DownloadContentAsync()).ThrowsAsync(failure);
+                Container.Setup(c => c.ReadItemAsync<BlockedDevice>(It.IsAny<string>(), It.IsAny<PartitionKey>(),
+                        null, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync((string id, PartitionKey partition, ItemRequestOptions? _, CancellationToken _) =>
+                    {
+                        Assert.Equal(new PartitionKey(id), partition);
+                        if (!Blocked.Contains(id))
+                        {
+                            throw new CosmosException("Not found", HttpStatusCode.NotFound, 0, "test", 0);
+                        }
+                        Mock<ItemResponse<BlockedDevice>> response = new Mock<ItemResponse<BlockedDevice>>();
+                        response.SetupGet(r => r.Resource)
+                            .Returns(new BlockedDevice() { DeviceId = id, Reason = "Private moderation reason" });
+                        return response.Object;
+                    });
+                Provider = new DeviceBlocklistProvider(Log.Object,
+                    new BlockedDevicesDatabase(NullLogger<BlockedDevicesDatabase>.Instance, Container.Object));
             }
-            else
+
+            public void Fail(Exception failure)
             {
-                BlobDownloadResult download = BlobsModelFactory.BlobDownloadResult(BinaryData.FromString(json!));
-                blobClient.Setup(c => c.DownloadContentAsync())
-                    .ReturnsAsync(Response.FromValue(download, Mock.Of<Response>()));
+                Container.Setup(c => c.ReadItemAsync<BlockedDevice>(It.IsAny<string>(), It.IsAny<PartitionKey>(),
+                        null, It.IsAny<CancellationToken>()))
+                    .ThrowsAsync(failure);
             }
-
-            return blobClient;
-        }
-
-        private static BlobContainerClient CreateContainer(Mock<BlobClient> blobClient)
-        {
-            Mock<BlobContainerClient> containerClient = new Mock<BlobContainerClient>();
-            containerClient.Setup(c => c.GetBlobClient(DeviceBlocklistProvider.BlobName))
-                .Returns(blobClient.Object);
-
-            return containerClient.Object;
-        }
-
-        private static BlobContainerClient CreateContainer(string? json, Exception? failure = null) =>
-            CreateContainer(CreateBlobClient(json, failure));
-
-        [Fact]
-        public async Task BlocksAListedDevice()
-        {
-            DeviceBlocklistProvider provider = CreateProvider(CreateContainer("[\"device-1\",\"device-2\"]"));
-
-            Assert.True(await provider.IsBlocked("device-1"));
         }
 
         [Fact]
-        public async Task AllowsADeviceThatIsNotListed()
+        public async Task UsesExactDeviceIdAndPartitionForPointReads()
         {
-            DeviceBlocklistProvider provider = CreateProvider(CreateContainer("[\"device-1\"]"));
+            Fixture fixture = new Fixture();
+            fixture.Blocked.Add("device-1");
 
-            Assert.False(await provider.IsBlocked("device-3"));
-        }
+            Assert.True(await fixture.Provider.IsBlocked("device-1"));
+            Assert.False(await fixture.Provider.IsBlocked("DEVICE-1"));
+            Assert.False(await fixture.Provider.IsBlocked("device-10"));
 
-        [Fact]
-        public async Task MatchesDeviceIdsExactly()
-        {
-            DeviceBlocklistProvider provider = CreateProvider(CreateContainer("[\"device-1\"]"));
-
-            // Device ids are opaque, so a near miss is a different device.
-            Assert.False(await provider.IsBlocked("DEVICE-1"));
-            Assert.False(await provider.IsBlocked("device-10"));
+            foreach (string id in new[] { "device-1", "DEVICE-1", "device-10" })
+            {
+                fixture.Container.Verify(c => c.ReadItemAsync<BlockedDevice>(
+                    id, new PartitionKey(id), null, CancellationToken.None), Times.Once);
+            }
+            fixture.Container.VerifyNoOtherCalls();
+            Assert.Empty(fixture.Log.Invocations);
         }
 
         [Theory]
         [InlineData(null)]
         [InlineData("")]
         [InlineData("   ")]
-        public async Task AllowsRequestsWithNoDeviceId(string? deviceId)
+        public async Task NoDeviceIdDoesNotAccessStorage(string? deviceId)
         {
-            // The website sends no device id, so treating a missing one as blocked would take
-            // uploads away from every browser.
-            DeviceBlocklistProvider provider = CreateProvider(CreateContainer("[\"device-1\"]"));
+            Fixture fixture = new Fixture();
 
-            Assert.False(await provider.IsBlocked(deviceId));
+            Assert.False(await fixture.Provider.IsBlocked(deviceId));
+
+            fixture.Container.VerifyNoOtherCalls();
         }
 
         [Fact]
-        public async Task AllowsEverythingWhenTheListDoesNotExist()
+        public async Task ReadsEveryTimeAndObservesBlockAndUnblockWithoutCaching()
         {
-            DeviceBlocklistProvider provider = CreateProvider(CreateContainer(null,
-                new RequestFailedException(404, "BlobNotFound")));
+            Fixture fixture = new Fixture();
 
-            Assert.False(await provider.IsBlocked("device-1"));
+            Assert.False(await fixture.Provider.IsBlocked("device-1"));
+            fixture.Blocked.Add("device-1");
+            Assert.True(await fixture.Provider.IsBlocked("device-1"));
+            fixture.Blocked.Remove("device-1");
+            Assert.False(await fixture.Provider.IsBlocked("device-1"));
+
+            fixture.Container.Verify(c => c.ReadItemAsync<BlockedDevice>("device-1",
+                new PartitionKey("device-1"), null, CancellationToken.None), Times.Exactly(3));
+        }
+
+        [Theory]
+        [InlineData(HttpStatusCode.Unauthorized)]
+        [InlineData(HttpStatusCode.Forbidden)]
+        [InlineData(HttpStatusCode.RequestTimeout)]
+        [InlineData(HttpStatusCode.TooManyRequests)]
+        [InlineData(HttpStatusCode.ServiceUnavailable)]
+        public async Task LogsAndFailsOpenOnCosmosFailureWithoutCaching(HttpStatusCode status)
+        {
+            Fixture fixture = new Fixture();
+            fixture.Fail(new CosmosException("Unavailable", status, 0, "test", 0));
+
+            Assert.False(await fixture.Provider.IsBlocked("device-1"));
+            Assert.False(await fixture.Provider.IsBlocked("device-1"));
+
+            fixture.Container.Verify(c => c.ReadItemAsync<BlockedDevice>("device-1",
+                new PartitionKey("device-1"), null, CancellationToken.None), Times.Exactly(2));
+            Assert.Equal(2, fixture.Log.Invocations.Count(i => i.Method.Name == "Log" &&
+                i.Arguments[0].Equals(LogLevel.Error)));
+        }
+
+        public static IEnumerable<object[]> StorageFailures()
+        {
+            yield return [new HttpRequestException("Network unavailable")];
+            yield return [new TimeoutException("Request timed out")];
+            yield return [new OperationCanceledException("SDK timeout")];
+            yield return [new AuthenticationFailedException("Azure credentials unavailable")];
+            yield return [new JsonReaderException("Unreadable document")];
+        }
+
+        [Theory]
+        [MemberData(nameof(StorageFailures))]
+        public async Task LogsAndFailsOpenOnExpectedStorageFailure(Exception failure)
+        {
+            Fixture fixture = new Fixture();
+            fixture.Fail(failure);
+
+            Assert.False(await fixture.Provider.IsBlocked("device-1"));
+
+            Assert.Contains(fixture.Log.Invocations, i => i.Method.Name == "Log" &&
+                i.Arguments[0].Equals(LogLevel.Error) && ReferenceEquals(failure, i.Arguments[3]));
         }
 
         [Fact]
-        public async Task FailsOpenWhenTheListCannotBeRead()
+        public async Task DoesNotCacheFailureWhenStorageRecovers()
         {
-            // A broken blocklist must not stop everybody uploading.
-            DeviceBlocklistProvider provider = CreateProvider(CreateContainer(null,
-                new RequestFailedException(503, "storage is unavailable")));
+            Fixture fixture = new Fixture();
+            fixture.Container.SetupSequence(c => c.ReadItemAsync<BlockedDevice>("device-1",
+                    new PartitionKey("device-1"), null, CancellationToken.None))
+                .ThrowsAsync(new CosmosException("Unavailable", HttpStatusCode.ServiceUnavailable, 0, "test", 0))
+                .ReturnsAsync(Mock.Of<ItemResponse<BlockedDevice>>(r =>
+                    r.Resource == new BlockedDevice() { DeviceId = "device-1", Reason = "Private reason" }));
 
-            Assert.False(await provider.IsBlocked("device-1"));
+            Assert.False(await fixture.Provider.IsBlocked("device-1"));
+            Assert.True(await fixture.Provider.IsBlocked("device-1"));
         }
 
         [Fact]
-        public async Task FailsOpenWhenTheListIsNotValidJson()
+        public async Task ForwardsCancellationToken()
         {
-            DeviceBlocklistProvider provider = CreateProvider(CreateContainer("not json"));
+            Fixture fixture = new Fixture();
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
 
-            Assert.False(await provider.IsBlocked("device-1"));
+            Assert.False(await fixture.Provider.IsBlocked("device-1", cancellation.Token));
+
+            fixture.Container.Verify(c => c.ReadItemAsync<BlockedDevice>("device-1",
+                new PartitionKey("device-1"), null, cancellation.Token), Times.Once);
         }
 
         [Fact]
-        public async Task IgnoresBlankEntries()
+        public async Task AlreadyCanceledRequestDoesNotAccessStorage()
         {
-            DeviceBlocklistProvider provider = CreateProvider(CreateContainer("[\"\",\"  \",\"device-1\"]"));
+            Fixture fixture = new Fixture();
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
 
-            Assert.True(await provider.IsBlocked("device-1"));
-            Assert.False(await provider.IsBlocked("  "));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                fixture.Provider.IsBlocked("device-1", cancellation.Token));
+
+            fixture.Container.VerifyNoOtherCalls();
+            Assert.Empty(fixture.Log.Invocations);
         }
 
         [Fact]
-        public async Task ReadsTheListOnlyOnceWithinTheCacheWindow()
+        public async Task CallerCancellationDuringReadIsNotAnAllowDecision()
         {
-            Mock<BlobClient> blobClient = CreateBlobClient("[\"device-1\"]");
-            DeviceBlocklistProvider provider = CreateProvider(CreateContainer(blobClient));
+            Fixture fixture = new Fixture();
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
+            fixture.Container.Setup(c => c.ReadItemAsync<BlockedDevice>("device-1",
+                    new PartitionKey("device-1"), null, cancellation.Token))
+                .Callback(cancellation.Cancel)
+                .ThrowsAsync(new OperationCanceledException(cancellation.Token));
 
-            await provider.IsBlocked("device-1");
-            await provider.IsBlocked("device-2");
-            await provider.IsBlocked("device-3");
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                fixture.Provider.IsBlocked("device-1", cancellation.Token));
 
-            // Every upload checks the list, so it has to be cached rather than fetched each time.
-            blobClient.Verify(c => c.DownloadContentAsync(), Times.Once);
+            Assert.Empty(fixture.Log.Invocations);
         }
 
         [Fact]
-        public async Task CachesTheEmptyResultAfterAFailure()
+        public async Task UnexpectedErrorsAreNotSwallowed()
         {
-            Mock<BlobClient> blobClient = CreateBlobClient(null, new RequestFailedException(503, "unavailable"));
-            DeviceBlocklistProvider provider = CreateProvider(CreateContainer(blobClient));
+            Fixture fixture = new Fixture();
+            InvalidOperationException failure = new InvalidOperationException("Programming error");
+            fixture.Fail(failure);
 
-            await provider.IsBlocked("device-1");
-            await provider.IsBlocked("device-2");
-
-            // A failing blob should not be retried on every single upload.
-            blobClient.Verify(c => c.DownloadContentAsync(), Times.Once);
+            Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                fixture.Provider.IsBlocked("device-1")));
+            Assert.Empty(fixture.Log.Invocations);
         }
     }
 }

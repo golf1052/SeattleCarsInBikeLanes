@@ -1,5 +1,4 @@
 using SeattleCarsInBikeLanes.Core.Contracts;
-using SeattleCarsInBikeLanes.Mobile.Core.Models;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Upload;
 
@@ -77,7 +76,15 @@ public static class FinalizeRequestBuilder
         }
 
         bool attribute = draft.Attribute && identity is not null && identity.CanAttribute;
+        DateTime? takenAt = draft.TakenAt ?? photos.FirstOrDefault(photo => photo.PhotoDateTime.HasValue)?.PhotoDateTime;
+        InitialPhotoUpload? locationPhoto = photos.FirstOrDefault(photo =>
+            !string.IsNullOrWhiteSpace(photo.PhotoLatitude) && !string.IsNullOrWhiteSpace(photo.PhotoLongitude));
+        string? latitude = draft.Location?.LatitudeString ?? locationPhoto?.PhotoLatitude;
+        string? longitude = draft.Location?.LongitudeString ?? locationPhoto?.PhotoLongitude;
+        string? crossStreet = draft.UserSpecifiedLocation ? null : draft.CrossStreet ??
+            photos.FirstOrDefault(photo => !string.IsNullOrWhiteSpace(photo.PhotoCrossStreet))?.PhotoCrossStreet;
 
+        // Finalize accepts one report: all photos must carry identical report-level fields.
         List<FinalizedPhotoUpload> result = new List<FinalizedPhotoUpload>(photos.Count);
         foreach (InitialPhotoUpload photo in photos)
         {
@@ -88,29 +95,20 @@ public static class FinalizeRequestBuilder
                 PhotoNumber = photo.PhotoNumber,
                 Tags = photo.Tags,
                 NumberOfCars = draft.NumberOfCars,
-                PhotoDateTime = draft.TakenAt ?? photo.PhotoDateTime,
+                PhotoDateTime = takenAt,
+                PhotoLatitude = latitude,
+                PhotoLongitude = longitude,
                 UserSpecifiedDateTime = draft.UserSpecifiedDateTime,
                 UserSpecifiedLocation = draft.UserSpecifiedLocation,
 
                 // A blank cross street tells the server to reverse geocode one itself, which is
                 // what we want whenever the user has moved the pin.
-                PhotoCrossStreet = draft.UserSpecifiedLocation ? null : photo.PhotoCrossStreet,
+                PhotoCrossStreet = crossStreet,
 
                 TwitterSubmittedBy = AnonymousSubmittedBy,
                 MastodonSubmittedBy = AnonymousSubmittedBy,
                 BlueskySubmittedBy = AnonymousSubmittedBy
             };
-
-            if (draft.Location is GeoPosition location)
-            {
-                finalized.PhotoLatitude = location.LatitudeString;
-                finalized.PhotoLongitude = location.LongitudeString;
-            }
-            else
-            {
-                finalized.PhotoLatitude = photo.PhotoLatitude;
-                finalized.PhotoLongitude = photo.PhotoLongitude;
-            }
 
             if (attribute && identity is not null)
             {

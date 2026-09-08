@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin device block browser checks</title>
+<h1>Admin device block browser checks</h1>
+<p>Exercises the production admin page and Bootstrap modal with an in-memory fake API.
+    Serve the repository root with a static HTTP server. No backend or Azure access is used.</p>
+<pre id="results">Running...</pre>
+<iframe id="admin" title="Admin page under test" style="width: 100%; height: 700px;"></iframe>
+<script>
+const checks = [];
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const json = (body, status = 200) => new Response(JSON.stringify(body),
+    { status, headers: { 'Content-Type': 'application/json' } });
+const waitFor = async (condition, message = 'Timed out', attempts = 200) => {
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        if (condition()) return;
+        await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    throw new Error(message);
+};
+const frame = document.getElementById('admin');
+let records = new Map();
+let calls = [];
+let intercept = null;
+let pending = {};
+let submitCount = 0;
+const photo = (deviceId) => ({
+    deviceId, reportId: 'report', moderationStatus: 'Pending', reportVersion: 'version', canModerate: true,
+    photoId: 'photo', photoDateTime: '2026-09-08T10:30:00', numberOfCars: 1,
+    photoCrossStreet: 'Original location', photoLatitude: '47.6', photoLongitude: '-122.3'
+});
+window.adminDeviceBlocksFetch = async (url, options = {}) => {
+    calls.push({ url, ...options });
+    if (url.endsWith('/PendingPhotos')) return json(pending);
+    if (url.endsWith('/GetBlueskySession')) return json({});
+    assert(url === 'api/AdminPage/BlockedDevices', `Unexpected API call: ${url}`);
+    assert(options.cache === 'no-store', 'Blocklist request must bypass cache');
+    const overridden = intercept && await intercept(options);
+    if (overridden) return overridden;
+    if (!options.method) return json([...records].map(([deviceId, reason]) => ({ deviceId, reason })));
+    assert(options.headers['Content-Type'] === 'application/json', 'Mutation is not JSON');
+    const body = JSON.parse(options.body);
+    assert(Object.keys(body).sort().join(',') ===
+        (options.method === 'POST' ? 'deviceId,reason' : 'deviceId'), 'Unexpected payload fields / credentials');
+    if (options.method === 'POST') records.set(body.deviceId, body.reason);
+    else if (options.method === 'DELETE') records.delete(body.deviceId);
+    else throw new Error(`Unexpected method: ${options.method}`);
+    return new Response(null, { status: 204 });
+};
+
+const doc = () => frame.contentDocument;
+const el = id => doc().getElementById(id);
+const controller = () => frame.contentWindow.eval('adminDeviceBlocks');
+const controls = id => [...doc().querySelectorAll('[data-device-block-control]')]
+    .filter(control => control.dataset.deviceBlockControl === id);
+const block = id => controls(id)[0].querySelector('button');
+const unblock = id => [...el('blockedDevicesList').querySelectorAll('li')]
+    .find(row => row.querySelector('strong').textContent === id).querySelector('button');
+const writes = () => calls.filter(call => call.method);
+const shown = () => el('deviceBlockModal').classList.contains('show');
+const openBlock = async id => {
+    block(id).focus();
+    block(id).click();
+    await waitFor(() => doc().activeElement === el('deviceBlockReason'), 'Reason did not receive focus');
+};
+const cancel = async () => {
+    el('deviceBlockModalCancel').click();
+    await waitFor(() => !controller().action, 'Modal did not close');
+};
+const confirm = async () => {
+    el('deviceBlockModalConfirm').click();
+    await waitFor(() => !controller().busy, 'Mutation did not finish');
+};
+async function reset(initialRecords = [], reports = {
+    first: [photo('Device_A')], duplicate: [photo('Device_A')], second: [photo('device_B')],
+    noId: [photo(null)], blankId: [photo('   ')], invalidId: [photo('x'.repeat(129))]
+}) {
+    if (controller().action) await cancel();
+    records = new Map(initialRecords);
+    pending = reports;
+    intercept = null;
+    await controller().refresh();
+    await frame.contentWindow.displayPendingPhotos();
+    calls = [];
+    submitCount = 0;
+}
+async function check(name, run) {
+    try {
+        await run();
+        checks.push({ name, passed: true });
+    } catch (error) {
+        checks.push({ name, passed: false, error: error.message });
+    }
+    document.getElementById('results').textContent = checks.map(result =>
+        `${result.passed ? 'PASS' : 'FAIL'} ${result.name}${result.error ? ': ' + result.error : ''}`).join('\n');
+}
+
+(async () => {
+    const pageUrl = new URL('../../SeattleCarsInBikeLanes/wwwroot/admin.html', location.href);
+    const source = new DOMParser().parseFromString(await (await fetch(pageUrl)).text(), 'text/html');
+    // Keep the real Bootstrap and Luxon scripts; the map SDK is unrelated and must not contact Azure.
+    source.querySelectorAll('[src], [href]').forEach(element => {
+        if ((element.getAttribute('src') || element.getAttribute('href')).includes('atlas.microsoft.com')) element.remove();
+    });
+    const base = source.createElement('base');
+    base.href = pageUrl.href;
+    source.head.prepend(base);
+    const fake = source.createElement('script');
+    fake.textContent = 'window.fetch = (...args) => parent.adminDeviceBlocksFetch(...args);';
+    source.head.prepend(fake);
+    frame.srcdoc = '<!doctype html>' + source.documentElement.outerHTML;
+    await waitFor(() => {
+        try { return controller().status === 'known'; } catch { return false; }
+    }, 'Production page failed to load (Bootstrap/Luxon CDN access is required)', 2000);
+    doc().addEventListener('submit', () => submitCount++, true);
+
+    await check('Missing IDs have no action; duplicate IDs share status; invalid IDs cannot block', async () => {
+        await reset();
+        assert(!el('noId').querySelector('[data-device-block-control]'), 'Missing ID received a block action');
+        assert(!el('blankId').querySelector('[data-device-block-control]'), 'Blank ID received a block action');
+        assert(el('invalidId').querySelector('[data-device-block-control] button').disabled, 'Overlong ID was accepted');
+        assert(controls('Device_A').length === 2, 'Duplicate ID fixture missing');
+        assert(controls('Device_A').every(control => control.textContent.includes('Not blocked')), 'Initial status differs');
+        assert(block('Device_A').type === 'button', 'Block control can submit a report form');
+    });
+
+    await check('Open / cancel writes nothing, focuses the reason and restores the opener', async () => {
+        await reset();
+        const opener = block('Device_A');
+        await openBlock('Device_A');
+        assert(el('deviceBlockModal').getAttribute('role') === 'dialog', 'Bootstrap dialog semantics missing');
+        assert(el('deviceBlockReason').required && el('deviceBlockReason').maxLength === 1000, 'Reason constraints missing');
+        el('deviceBlockReason').value = 'Do not save';
+        await cancel();
+        assert(writes().length === 0, 'Opening / cancellation wrote a block');
+        assert(doc().activeElement === opener, 'Focus was not restored');
+        await openBlock('device_B');
+        assert(el('deviceBlockReason').value === '', 'Reason leaked to another device');
+        el('deviceBlockModal').dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await waitFor(() => !controller().action, 'Escape did not dismiss the idle modal');
+        assert(writes().length === 0, 'Escape sent a mutation');
+    });
+
+    await check('Blank and overlong reasons are rejected; trimmed 1,000-character reason is accepted', async () => {
+        await reset();
+        await openBlock('Device_A');
+        for (const reason of ['', ' \n\t ', 'x'.repeat(1001)]) {
+            el('deviceBlockReason').value = reason;
+            await confirm();
+            assert(writes().length === 0 && shown(), 'Invalid reason sent a mutation');
+            assert(el('deviceBlockReason').getAttribute('aria-invalid') === 'true', 'Invalid reason is not accessible');
+        }
+        el('deviceBlockReason').value = ` ${'x'.repeat(1000)} `;
+        await confirm();
+        await waitFor(() => !controller().action);
+        assert(records.get('Device_A') === 'x'.repeat(1000), 'Reason boundary or trim failed');
+        assert(writes().length === 1, 'Valid confirmation not sent exactly once');
+    });
+
+    await check('Writes lock the target, prevent duplicate confirms/dismissal and preserve moderation edits', async () => {
+        await reset();
+        const form = el('first_form');
+        const input = form.elements.location;
+        input.value = 'Unsaved moderation edit';
+        await openBlock('Device_A');
+        el('deviceBlockReason').value = ' repeated spam ';
+        let finish;
+        intercept = options => options.method ? new Promise(resolve => { finish = resolve; }) : null;
+        el('deviceBlockModalConfirm').click();
+        await waitFor(() => finish);
+        el('deviceBlockModalConfirm').dispatchEvent(new Event('click'));
+        controller().open('device_B', true, block('device_B'));
+        controller().modal.hide();
+        el('deviceBlockModal').dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        assert(shown() && el('deviceBlockModalCancel').disabled, 'Modal dismissed during write');
+        assert(el('deviceBlockReason').readOnly, 'In-flight reason can change');
+        assert(el('deviceBlockModalTarget').textContent === 'Device_A', 'Target changed during write');
+        assert(controls('Device_A').every(control => control.querySelector('button').disabled), 'Duplicate card remained active');
+        assert(writes().length === 1, 'Duplicate confirmation sent a request');
+        records.set('Device_A', 'repeated spam');
+        finish(new Response(null, { status: 204 }));
+        await waitFor(() => !controller().action);
+        assert(el('first_form') === form && input.value === 'Unsaved moderation edit', 'Report form or edits replaced');
+        assert(submitCount === 0, 'Blocking submitted a report form');
+        assert(!calls.some(call => call.url.endsWith('/PendingPhotos')), 'Blocking reloaded pending reports');
+        assert(controls('Device_A').every(control => control.textContent.includes('Blocked')), 'Duplicate statuses differ');
+        assert(JSON.parse(writes()[0].body).deviceId === 'Device_A', 'Device ID casing changed');
+        assert(doc().activeElement === el('refreshBlockedDevicesButton'), 'Success did not restore usable focus');
+    });
+
+    await check('400 errors retain reason and message; corrected input retries; unrelated actions reset both', async () => {
+        await reset();
+        await openBlock('Device_A');
+        el('deviceBlockReason').value = ' Keep my reason ';
+        intercept = options => options.method ? json('Server validation detail', 400) : null;
+        await confirm();
+        assert(shown() && el('deviceBlockReason').value === ' Keep my reason ', 'Failed reason was lost');
+        assert(el('deviceBlockModalError').textContent.includes('Server validation detail'), 'Server error was hidden');
+        assert(!el('deviceBlockModalConfirm').disabled, 'Validation cannot be retried');
+        await cancel();
+        await openBlock('device_B');
+        assert(!el('deviceBlockReason').value && el('deviceBlockModalError').hidden, 'Error/reason leaked between actions');
+        el('deviceBlockReason').value = 'x';
+        intercept = null;
+        await confirm();
+        await waitFor(() => !controller().action);
+        assert(records.get('device_B') === 'x', 'Minimum-length reason did not succeed');
+    });
+
+    await check('Persisted reasons are plain text; unblock displays existing reason and sends no new one', async () => {
+        const reason = '<img src=x onerror="window.reasonExecuted=true"> & <script>bad()</scr' + 'ipt>\nSecond line';
+        await reset([['Device_A', reason]]);
+        assert(el('blockedDevicesList').textContent.includes(reason), 'Persisted reason changed');
+        assert(!el('blockedDevicesList').querySelector('img, script'), 'Reason interpreted as markup');
+        unblock('Device_A').click();
+        await waitFor(() => doc().activeElement === el('deviceBlockModalCancel'));
+        assert(el('deviceBlockSavedReason').textContent === reason, 'Unblock omitted saved reason');
+        assert(el('deviceBlockReasonGroup').hidden && !el('deviceBlockReason').required, 'Unblock requires a new reason');
+        await cancel();
+        assert(writes().length === 0, 'Cancel unblocked a device');
+        unblock('Device_A').click();
+        await waitFor(() => doc().activeElement === el('deviceBlockModalCancel'));
+        await confirm();
+        await waitFor(() => !controller().action);
+        assert(writes()[0].method === 'DELETE' && writes()[0].body === '{"deviceId":"Device_A"}', 'Wrong unblock payload');
+        assert(!records.has('Device_A') && el('blockedDevicesList').children.length === 0, 'Unblock list not updated');
+        assert(controls('Device_A').every(control => !control.querySelector('button').disabled), 'Unblock not reflected on cards');
+    });
+
+    await check('Blocked devices stay available with no pending reports', async () => {
+        await reset([['orphan-device', 'Report already deleted']], {});
+        assert(el('cardsDiv').textContent.includes('No pending'), 'Empty pending fixture failed');
+        assert(unblock('orphan-device') && el('blockedDevicesList').textContent.includes('Report already deleted'), 'Block lost with report');
+    });
+
+    await check('List failure marks status unknown, retains last known reasons, and leaves moderation usable', async () => {
+        await reset([['Device_A', 'Saved reason']]);
+        const form = el('first_form');
+        form.elements.location.value = 'Keep through outage';
+        intercept = () => json({ message: 'Storage unavailable' }, 503);
+        await controller().refresh();
+        assert(controller().status === 'unknown' && !el('blockedDevicesError').hidden, 'Failed list looked successful');
+        assert(el('blockedDevicesList').textContent.includes('Saved reason') && unblock('Device_A').disabled, 'Last known list not marked stale');
+        assert(controls('device_B')[0].textContent.includes('unknown') && block('device_B').disabled, 'Unknown means unblocked');
+        assert(!form.querySelector('button[type=submit]').disabled, 'Blocklist failure disabled moderation');
+        assert(el('first_form') === form && form.elements.location.value === 'Keep through outage', 'List refresh lost edits');
+        intercept = null;
+        el('refreshBlockedDevicesButton').click();
+        await waitFor(() => controller().status === 'known');
+        assert(el('blockedDevicesError').hidden && !block('device_B').disabled, 'Refresh did not recover');
+    });
+
+    await check('Out-of-order list successes/failures cannot overwrite newer state or a successful mutation', async () => {
+        await reset();
+        let finishOld;
+        intercept = () => new Promise(resolve => { finishOld = resolve; });
+        const old = controller().refresh();
+        await waitFor(() => finishOld);
+        intercept = null;
+        await controller().refresh();
+        await openBlock('Device_A');
+        el('deviceBlockReason').value = 'New block';
+        await confirm();
+        await waitFor(() => !controller().action);
+        finishOld(json([]));
+        await old;
+        assert(controller().records.has('Device_A'), 'Old list erased successful block');
+        intercept = () => new Promise(resolve => { finishOld = resolve; });
+        const olderFailure = controller().refresh();
+        await waitFor(() => controller().status === 'loading');
+        intercept = null;
+        await controller().refresh();
+        finishOld(json({ message: 'Old failure' }, 503));
+        await olderFailure;
+        assert(controller().status === 'known' && el('blockedDevicesError').hidden, 'Stale failure poisoned newer status');
+    });
+
+    await check('Lost mutation response reconciles without claiming success or discarding the entered reason', async () => {
+        await reset();
+        await openBlock('Device_A');
+        el('deviceBlockReason').value = ' Retain after disconnect ';
+        intercept = options => {
+            if (!options.method) return null;
+            records.set('Device_A', 'Retain after disconnect');
+            throw new frame.contentWindow.TypeError('Lost response after write');
+        };
+        await confirm();
+        assert(shown() && el('deviceBlockReason').value === ' Retain after disconnect ', 'Unconfirmed write closed or cleared dialog');
+        assert(el('deviceBlockModalError').textContent.includes('not confirmed') &&
+            el('deviceBlockModalError').textContent.includes('as blocked'), 'Outcome not explicitly reconciled');
+        assert(el('deviceBlockModalConfirm').disabled, 'Reconciled block can overwrite its reason');
+        assert(!el('deviceBlockModalError').textContent.includes('pending reports'), 'Wrong recovery guidance');
+        assert(writes().length === 1 && controller().records.has('Device_A'), 'Lost write was retried or missed');
+        await cancel();
+    });
+
+    await check('Uncertain mutation and failed reconciliation lock retry; modal refresh recovers without losing input/error', async () => {
+        await reset();
+        await openBlock('Device_A');
+        el('deviceBlockReason').value = 'Keep during outage';
+        intercept = options => json({ message: options.method ? 'Write unavailable' : 'Read unavailable' }, 503);
+        await confirm();
+        assert(controller().status === 'unknown' && el('deviceBlockModalConfirm').disabled, 'Uncertain state permits retry');
+        assert(!el('deviceBlockModalRefresh').hidden && !el('deviceBlockModalCancel').disabled, 'Recovery/cancel unavailable');
+        assert(el('deviceBlockReason').value === 'Keep during outage' &&
+            el('deviceBlockModalError').textContent.includes('Write unavailable'), 'Reason or original error lost');
+        intercept = null;
+        el('deviceBlockModalRefresh').click();
+        await waitFor(() => !controller().busy);
+        assert(!el('deviceBlockModalConfirm').disabled && el('deviceBlockModalError').textContent.includes('not blocked'), 'Modal refresh failed');
+        await confirm();
+        await waitFor(() => !controller().action);
+        assert(records.get('Device_A') === 'Keep during outage', 'Retry lost entered reason');
+    });
+
+    await check('Unblock failure retains saved reason and reconciles before allowing retry', async () => {
+        await reset([['Device_A', 'Saved reason']]);
+        unblock('Device_A').click();
+        await waitFor(() => doc().activeElement === el('deviceBlockModalCancel'));
+        intercept = options => options.method ? json({ message: 'Delete unavailable' }, 503) : null;
+        await confirm();
+        assert(shown() && el('deviceBlockSavedReason').textContent === 'Saved reason', 'Failed unblock lost reason');
+        assert(el('deviceBlockModalError').textContent.includes('Delete unavailable') &&
+            el('deviceBlockModalError').textContent.includes('as blocked'), 'Failed unblock did not reconcile');
+        intercept = null;
+        await confirm();
+        await waitFor(() => !controller().action);
+        assert(!records.has('Device_A'), 'Unblock retry failed');
+    });
+
+    await check('Malformed lists are unknown; unexpected mutation success is uncertain rather than accepted', async () => {
+        await reset();
+        intercept = () => json({});
+        await controller().refresh();
+        assert(controller().status === 'unknown', 'Malformed list became empty success');
+        intercept = null;
+        await controller().refresh();
+        await openBlock('Device_A');
+        el('deviceBlockReason').value = 'Check unexpected response';
+        intercept = options => options.method ? new Response('<html>Sign in</html>') : null;
+        await confirm();
+        assert(shown() && el('deviceBlockModalError').textContent.includes('unexpected response'), 'Unexpected status was accepted');
+        assert(el('deviceBlockModalError').textContent.includes('not blocked'), 'Unexpected response was not reconciled');
+        await cancel();
+    });
+})().catch(error => {
+    checks.push({ name: 'Harness setup', passed: false, error: error.message });
+    document.getElementById('results').textContent += '\nFAIL ' + error.message;
+}).finally(() => {
+    window.adminDeviceBlocksResults = checks;
+    document.title = checks.length && checks.every(result => result.passed) ? 'Admin block checks passed' : 'Admin block checks failed';
+});
+</script>
+</html>

@@ -9,6 +9,8 @@ on:
       - ".github/workflows/main_seattle-carsinbikelanes.yml"
       - "SeattleCarsInBikeLanes/**"
       - "SeattleCarsInBikeLanes.Tests/**"
+      - "SeattleCarsInBikeLanes.Core/**"
+      - "SeattleCarsInBikeLanes.Core.Tests/**"
   push:
     branches:
       - main
@@ -28,12 +30,15 @@ jobs:
 
       - name: Build with dotnet
         run: dotnet build SeattleCarsInBikeLanes/SeattleCarsInBikeLanes.csproj --configuration Release
-      
+
       - name: Build tests
         run: dotnet build SeattleCarsInBikeLanes.Tests/SeattleCarsInBikeLanes.Tests.csproj --configuration Release
 
       - name: Run tests
         run: dotnet test SeattleCarsInBikeLanes.Tests/SeattleCarsInBikeLanes.Tests.csproj --configuration Release
+
+      - name: Run shared contract tests
+        run: dotnet test SeattleCarsInBikeLanes.Core.Tests/SeattleCarsInBikeLanes.Core.Tests.csproj --configuration Release
 
       - name: dotnet publish
         run: dotnet publish SeattleCarsInBikeLanes/SeattleCarsInBikeLanes.csproj -c Release -r win-x64 --self-contained true -o "${{env.DOTNET_ROOT}}/myapp"

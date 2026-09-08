@@ -17,6 +17,45 @@ html, body {
     padding: 15px;
 }
 
+.atlas-map .maplibregl-popup-content {
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+}
+
+.atlas-map .popup-container {
+    color: var(--bs-body-bg) !important;
+}
+
+.atlas-map .popup-content-container {
+    background-color: var(--bs-body-bg) !important;
+    color: var(--bs-body-color) !important;
+}
+
+.atlas-map .maplibregl-popup-close-button,
+.atlas-map .popup-close {
+    color: var(--bs-body-color);
+}
+
+.atlas-map .maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.atlas-map .maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.atlas-map .maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+    border-bottom-color: var(--bs-body-bg);
+}
+
+.atlas-map .maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.atlas-map .maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.atlas-map .maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+    border-top-color: var(--bs-body-bg);
+}
+
+.atlas-map .maplibregl-popup-anchor-left .maplibregl-popup-tip {
+    border-right-color: var(--bs-body-bg);
+}
+
+.atlas-map .maplibregl-popup-anchor-right .maplibregl-popup-tip {
+    border-left-color: var(--bs-body-bg);
+}
+
 @media (max-height: 1000px) {
     .atlas-layer-legend-card {
         /* This overrides the legend card height so it doesn't take up too much space on small devices. */
@@ -26,16 +65,18 @@ html, body {
 
 .twitter-button {
     background-color: #1DA1F2 !important;
+    color: #000 !important;
     margin-bottom: 4px;
 }
 
 .mastodon-button {
     background-color: #6364FF !important;
+    color: #fff !important;
 }
 
 .bluesky-button {
     background-color: #1185FE !important;
-    color: white;
+    color: #fff !important;
 }
 
 .collapsing {

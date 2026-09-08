@@ -7,6 +7,7 @@ on:
       - "SeattleCarsInBikeLanes.Mobile/**"
       - "SeattleCarsInBikeLanes.Mobile.Core/**"
       - "SeattleCarsInBikeLanes.Mobile.Core.Tests/**"
+      - "SeattleCarsInBikeLanes.Core/**"
   push:
     branches:
       - main
@@ -15,6 +16,7 @@ on:
       - "SeattleCarsInBikeLanes.Mobile/**"
       - "SeattleCarsInBikeLanes.Mobile.Core/**"
       - "SeattleCarsInBikeLanes.Mobile.Core.Tests/**"
+      - "SeattleCarsInBikeLanes.Core/**"
   workflow_dispatch:
 
 jobs:

@@ -1,4 +1,5 @@
 using System.Net;
+using SeattleCarsInBikeLanes.Core.Contracts;
 using SeattleCarsInBikeLanes.Mobile.Core.Upload;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Tests;
@@ -49,6 +50,18 @@ public class UploadRetryPolicyTests
     public void BlockedDeviceIsPermanent()
     {
         Assert.Equal(UploadFailureKind.Permanent, UploadRetryPolicy.Classify(HttpStatusCode.Forbidden));
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Conflict, UploadErrors.ReportInProgress, UploadFailureKind.Transient)]
+    [InlineData(HttpStatusCode.Gone, UploadErrors.PreparationExpired, UploadFailureKind.Transient)]
+    [InlineData(HttpStatusCode.Conflict, UploadErrors.IdentityMismatch, UploadFailureKind.Permanent)]
+    [InlineData(HttpStatusCode.Conflict, null, UploadFailureKind.Permanent)]
+    [InlineData(HttpStatusCode.Gone, null, UploadFailureKind.Permanent)]
+    [InlineData(HttpStatusCode.Forbidden, UploadErrors.ReportInProgress, UploadFailureKind.Permanent)]
+    public void OnlyExplicitRecoverableClientErrorsAreRetried(HttpStatusCode status, string? code, UploadFailureKind expected)
+    {
+        Assert.Equal(expected, UploadRetryPolicy.Classify(status, code));
     }
 
     [Fact]
