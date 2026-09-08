@@ -18,6 +18,18 @@
                         Style="{StaticResource CameraPhotoRollSelectionBorder}"
                         StrokeThickness="3" />
 
+                <!-- Fluent arrowUpload (20 regular). -->
+                <Label Text="&#xF1A4;"
+                       Style="{StaticResource CameraPhotoRollSelectionBadge}"
+                       FontFamily="FluentIcons"
+                       FontSize="20"
+                       Padding="4,2"
+                       HorizontalOptions="End"
+                       VerticalOptions="Start"
+                       InputTransparent="True"
+                       SemanticProperties.Description="Selected for upload"
+                       IsVisible="{Binding IsSelectedForUpload}" />
+
                 <!-- The checkmark is how the user tells an already reported photo from one that
                      still needs sending. -->
                 <Label Text="&#xF295;"

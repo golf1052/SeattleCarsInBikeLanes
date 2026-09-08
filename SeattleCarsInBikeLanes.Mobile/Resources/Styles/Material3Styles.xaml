@@ -138,6 +138,11 @@
         <Setter Property="BackgroundColor" Value="Transparent" />
     </Style>
 
+    <Style x:Key="CameraPhotoRollSelectionBadge" TargetType="Label">
+        <Setter Property="TextColor" Value="{DynamicResource M3OnPrimary}" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource M3Primary}" />
+    </Style>
+
     <Style x:Key="CameraPageStyle" TargetType="ContentPage">
         <Setter Property="Padding" Value="0" />
         <Setter Property="BackgroundColor" Value="Black" />

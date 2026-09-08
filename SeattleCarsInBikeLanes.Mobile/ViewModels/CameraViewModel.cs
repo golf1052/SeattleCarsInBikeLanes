@@ -36,10 +36,14 @@ public sealed partial class PhotoItemViewModel : ObservableObject, IReportedPhot
     public partial ImageSource? Thumbnail { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSelectedForUpload))]
     public partial bool Submitted { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSelectedForUpload))]
     public partial bool IsSelected { get; set; }
+
+    public bool IsSelectedForUpload => IsSelected && !Submitted && !IsQueued;
 
     /// <summary>
     /// Where the photo's report has got to, when there is one waiting to be sent.
@@ -51,6 +55,7 @@ public sealed partial class PhotoItemViewModel : ObservableObject, IReportedPhot
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsQueued))]
+    [NotifyPropertyChangedFor(nameof(IsSelectedForUpload))]
     [NotifyPropertyChangedFor(nameof(QueueBadge))]
     [NotifyPropertyChangedFor(nameof(QueueBadgeColor))]
     public partial UploadQueueState? QueueState { get; set; }
