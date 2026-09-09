@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <RuntimeIdentifier>iossimulator-arm64</RuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+    <SupportedOSPlatformVersion>16.0</SupportedOSPlatformVersion>
+    <ApplicationId>com.golf1052.PhotoStatusSmoke</ApplicationId>
+    <ApplicationTitle>Photo status smoke test</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <JpegXmpWritePluginMDEProject Condition="'$(JpegXmpWritePluginMDEProject)' == ''">$(HOME)/Documents/GitHub/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE.csproj</JpegXmpWritePluginMDEProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../SeattleCarsInBikeLanes.Mobile.Core/SeattleCarsInBikeLanes.Mobile.Core.csproj" />
+    <Compile Include="../../SeattleCarsInBikeLanes.Mobile/Platforms/iOS/PhotoEditingRenderer.cs" Link="PhotoEditingRenderer.cs" />
+    <Compile Include="../../SeattleCarsInBikeLanes.Mobile/Services/JpegXmpEditor.cs" Link="JpegXmpEditor.cs" />
+    <ProjectReference Include="$(JpegXmpWritePluginMDEProject)" />
+    <PackageReference Include="MetadataExtractor" Version="2.9.3" />
+  </ItemGroup>
+</Project>

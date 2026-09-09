@@ -25,12 +25,37 @@ public static class JpegXmpEditor
     {
         ArgumentNullException.ThrowIfNull(jpeg);
 
-        byte[]? existingPacket = JpegSegmentScanner.FindXmpPacket(new MemoryStream(jpeg, writable: false));
-        IXmpMeta meta = (existingPacket is null ? null : CarsInBikeLanesXmp.TryParse(existingPacket))
-            ?? XmpMetaFactory.Create();
-
+        IXmpMeta meta = ReadMetadata(jpeg);
         CarsInBikeLanesXmp.Write(meta, state);
+        return WriteMetadata(jpeg, meta);
+    }
 
+    /// <summary>
+    /// Restores custom XMP after rendering, updating tags that describe the old pixel layout.
+    /// </summary>
+    public static byte[] CopyUprightXmp(byte[] original, byte[] rendered, int width, int height)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        ArgumentNullException.ThrowIfNull(rendered);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        IXmpMeta meta = ReadMetadata(original);
+        meta.SetPropertyInteger("http://ns.adobe.com/tiff/1.0/", "Orientation", 1);
+        meta.SetPropertyInteger("http://ns.adobe.com/tiff/1.0/", "ImageWidth", width);
+        meta.SetPropertyInteger("http://ns.adobe.com/tiff/1.0/", "ImageLength", height);
+        meta.SetPropertyInteger("http://ns.adobe.com/exif/1.0/", "PixelXDimension", width);
+        meta.SetPropertyInteger("http://ns.adobe.com/exif/1.0/", "PixelYDimension", height);
+        return WriteMetadata(rendered, meta);
+    }
+
+    private static IXmpMeta ReadMetadata(byte[] jpeg)
+    {
+        byte[]? packet = JpegSegmentScanner.FindXmpPacket(new MemoryStream(jpeg, writable: false));
+        return (packet is null ? null : CarsInBikeLanesXmp.TryParse(packet)) ?? XmpMetaFactory.Create();
+    }
+
+    private static byte[] WriteMetadata(byte[] jpeg, IXmpMeta meta)
+    {
         // The writer truncates and rewrites the stream it is given, so it needs one that can grow.
         // A MemoryStream constructed over an existing array cannot.
         using MemoryStream stream = new MemoryStream();

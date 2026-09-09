@@ -331,7 +331,32 @@ already have received the report: cancelling is local only, does not remove anyt
 from the site, and reporting those photos again could create a duplicate.
 
 iOS stamps the rendered current photo rather than reconstructing earlier adjustment
-recipes, and reads the edited resource back. Android keeps the MediaStore asset ID
+recipes, and reads the edited resource back. PhotoKit requires edited JPEGs to have
+upright pixels, not just an EXIF rotation tag. Rotated or mirrored photos are rendered
+at full resolution before stamping; EXIF/GPS and custom XMP are retained with
+orientation and dimensions updated. Already-upright JPEGs are not recompressed.
+Without this normalization, PhotoKit rejects the edit with error 3302 and the
+accepted report remains at **Sent; saving photo status**. After updating, **Retry**
+on an affected report finishes locally using its saved receipt, without resubmitting.
+
+The native regression smoke app exercises all eight EXIF orientations, pixel
+placement, dimensions, EXIF/GPS, custom XMP, exact receipt timestamps, and repeated
+rendering. It uses synthetic images, needs no Photos permission, and never contacts
+the server. With an iOS simulator booted, run from the repository root:
+
+```bash
+output="$HOME/Library/Caches/SeattleCarsInBikeLanes/photo-status-smoke/"
+dotnet build scripts/ios-photo-status-smoke/PhotoStatusSmoke.csproj \
+  -c Debug -p:OutputPath="$output"
+xcrun simctl install booted "$output/PhotoStatusSmoke.app"
+xcrun simctl launch --console booted com.golf1052.PhotoStatusSmoke
+```
+
+Success prints `PHOTO_STATUS_SMOKE_PASS`; `simctl launch` does not propagate the
+app's exit status, so automation must check that marker. The project uses the same
+JPEG writer checkout as the app; override `JpegXmpWritePluginMDEProject` if needed.
+
+Android keeps the MediaStore asset ID
 unchanged: before truncating, it saves and flushes the contents of original/staged
 JPEGs and a journal in the app's no-backup directory, then publishes the journal.
 Process-interrupted edits are recovered before app access when those files remain
