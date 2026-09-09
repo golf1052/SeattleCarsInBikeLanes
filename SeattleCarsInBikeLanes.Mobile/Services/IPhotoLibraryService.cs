@@ -31,8 +31,8 @@ public enum PhotoLibraryAccess
     Granted,
 
     /// <summary>
-    /// The user picked specific photos to share. The app's own album is invisible under this mode,
-    /// so the photo roll cannot work and the user has to be told why.
+    /// The user picked specific photos to share. The app uses private storage for captures and
+    /// system-picker copies instead of relying on access to its album.
     /// </summary>
     Limited,
 
