@@ -436,7 +436,9 @@ public sealed class PhotoLibraryService : IPhotoLibraryService
         try
         {
             byte[] original = File.ReadAllBytes(input.FullSizeImageUrl.Path!);
-            byte[] updated = JpegXmpEditor.SetUploadState(original, state);
+            byte[] upright = PhotoEditingRenderer.RenderUpright(original,
+                (CGImagePropertyOrientation)input.FullSizeImageOrientation);
+            byte[] updated = JpegXmpEditor.SetUploadState(upright, state);
 
             using PHContentEditingOutput output = new PHContentEditingOutput(input)
             {

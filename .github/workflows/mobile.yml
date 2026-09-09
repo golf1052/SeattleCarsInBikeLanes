@@ -8,6 +8,7 @@ on:
       - "SeattleCarsInBikeLanes.Mobile.Core/**"
       - "SeattleCarsInBikeLanes.Mobile.Core.Tests/**"
       - "SeattleCarsInBikeLanes.Core/**"
+      - "scripts/ios-photo-status-smoke/**"
   push:
     branches:
       - main
@@ -17,6 +18,7 @@ on:
       - "SeattleCarsInBikeLanes.Mobile.Core/**"
       - "SeattleCarsInBikeLanes.Mobile.Core.Tests/**"
       - "SeattleCarsInBikeLanes.Core/**"
+      - "scripts/ios-photo-status-smoke/**"
   workflow_dispatch:
 
 jobs:
@@ -61,6 +63,19 @@ jobs:
           --no-restore
           -p:GOOGLE_MAPS_API_KEY="$GOOGLE_MAPS_API_KEY"
           -p:JpegXmpWritePluginMDEProject="${{ github.workspace }}/dependencies/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE.csproj"
+
+      - name: Run native photo orientation regressions
+        run: |
+          dotnet build scripts/ios-photo-status-smoke/PhotoStatusSmoke.csproj \
+            -c Debug -p:OutputPath="$RUNNER_TEMP/photo-status-smoke/" \
+            -p:JpegXmpWritePluginMDEProject="${{ github.workspace }}/dependencies/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE/JpegXmpWritePluginMDE.csproj"
+          simulator=$(xcrun simctl list devices available --json | jq -r \
+            '[.devices[][] | select(.isAvailable and (.name | startswith("iPhone")))][0].udid')
+          xcrun simctl boot "$simulator"
+          xcrun simctl bootstatus "$simulator" -b
+          xcrun simctl install "$simulator" "$RUNNER_TEMP/photo-status-smoke/PhotoStatusSmoke.app"
+          xcrun simctl launch --console "$simulator" com.golf1052.PhotoStatusSmoke 2>&1 | tee "$RUNNER_TEMP/photo-status-smoke.log"
+          grep -q 'PHOTO_STATUS_SMOKE_PASS:' "$RUNNER_TEMP/photo-status-smoke.log"
 
       - name: Build iOS simulator
         run: >
