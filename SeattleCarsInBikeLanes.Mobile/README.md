@@ -235,8 +235,20 @@ in the app icon and splash screen uses exact `#6495ED`, while the splash backgro
 follows the light/dark colors above.
 The camera HUD also keeps fixed high-contrast colors over the live preview. These
 Android theme resources are not loaded on iOS, which continues to use the shared
-MAUI styles. .NET MAUI 10 Shell tabs use the Material 3 token palette, but native
-Material 3 Shell navigation requires .NET MAUI 11.
+MAUI styles.
+
+Android Shell tabs retain the Material 3 80dp height in portrait and use a compact
+56dp height in landscape, excluding the system navigation/gesture inset. The
+landscape layout keeps the 24dp icons and text labels, with smaller item padding
+and selection indicators. `CompactShellRenderer` updates these dimensions when
+the native tab bar resizes, using the window's aspect ratio; Android does not
+recreate the activity on rotation. Material continues to manage bottom and side
+system insets.
+
+iOS keeps MAUI's native `UITabBarController` layout. UIKit adapts the tab bar to
+the device's size classes, including compact-height landscape layouts, and manages
+the home-indicator safe area. Its precise height and icon/label arrangement depend
+on the iOS version and device; the Android dimensions are not applied to iOS.
 
 ### Deploy to an Android device
 
@@ -257,6 +269,13 @@ dotnet build SeattleCarsInBikeLanes.Mobile.csproj \
 ### Android smoke test
 
 Run this matrix on a physical Android 10+ device before merging mobile changes:
+
+After deploying a Debug build to an unlocked phone, run
+`bash scripts/android-tab-bar-smoke.sh` from the repository root. It checks both
+landscape directions and repeated portrait restoration without switching tabs,
+including the system navigation inset, and restores the phone's rotation setting.
+Set `ANDROID_SERIAL` when more than one device is connected. Also check that all
+three tabs remain readable and tappable in landscape with large system text.
 
 | Area | Expected result |
 | --- | --- |

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="shell_tab_bar_height">@dimen/m3_bottom_nav_min_height</dimen>
+    <dimen name="shell_tab_bar_padding_top">@dimen/m3_bottom_nav_item_padding_top</dimen>
+    <dimen name="shell_tab_bar_padding_bottom">@dimen/m3_bottom_nav_item_padding_bottom</dimen>
+    <dimen name="shell_tab_bar_indicator_height">@dimen/m3_bottom_nav_item_active_indicator_height</dimen>
+    <dimen name="compact_shell_tab_bar_height">56dp</dimen>
+    <dimen name="compact_shell_tab_bar_padding">4dp</dimen>
+    <dimen name="compact_shell_tab_bar_indicator_height">24dp</dimen>
+</resources>
