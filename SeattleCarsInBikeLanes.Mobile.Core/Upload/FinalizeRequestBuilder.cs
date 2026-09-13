@@ -1,3 +1,4 @@
+using System.Globalization;
 using SeattleCarsInBikeLanes.Core.Contracts;
 
 namespace SeattleCarsInBikeLanes.Mobile.Core.Upload;
@@ -136,7 +137,7 @@ public static class FinalizeRequestBuilder
     }
 
     private static string? FormatCoordinate(string? coordinate) =>
-        double.TryParse(coordinate, System.Globalization.CultureInfo.InvariantCulture, out double value)
-            ? value.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture)
+        double.TryParse(coordinate, CultureInfo.InvariantCulture, out double value)
+            ? value.ToString("0.#####", CultureInfo.InvariantCulture)
             : coordinate;
 }
