@@ -79,8 +79,8 @@ public static class FinalizeRequestBuilder
         DateTime? takenAt = draft.TakenAt ?? photos.FirstOrDefault(photo => photo.PhotoDateTime.HasValue)?.PhotoDateTime;
         InitialPhotoUpload? locationPhoto = photos.FirstOrDefault(photo =>
             !string.IsNullOrWhiteSpace(photo.PhotoLatitude) && !string.IsNullOrWhiteSpace(photo.PhotoLongitude));
-        string? latitude = draft.Location?.LatitudeString ?? locationPhoto?.PhotoLatitude;
-        string? longitude = draft.Location?.LongitudeString ?? locationPhoto?.PhotoLongitude;
+        string? latitude = FormatCoordinate(draft.Location?.LatitudeString ?? locationPhoto?.PhotoLatitude);
+        string? longitude = FormatCoordinate(draft.Location?.LongitudeString ?? locationPhoto?.PhotoLongitude);
         string? crossStreet = draft.UserSpecifiedLocation ? null : draft.CrossStreet ??
             photos.FirstOrDefault(photo => !string.IsNullOrWhiteSpace(photo.PhotoCrossStreet))?.PhotoCrossStreet;
 
@@ -134,4 +134,9 @@ public static class FinalizeRequestBuilder
 
         return result;
     }
+
+    private static string? FormatCoordinate(string? coordinate) =>
+        double.TryParse(coordinate, System.Globalization.CultureInfo.InvariantCulture, out double value)
+            ? value.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture)
+            : coordinate;
 }
