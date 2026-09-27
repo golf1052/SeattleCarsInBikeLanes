@@ -230,8 +230,20 @@ in the app icon and splash screen uses exact `#6495ED`, while the splash backgro
 follows the light/dark colors above.
 The camera HUD also keeps fixed high-contrast colors over the live preview. These
 Android theme resources are not loaded on iOS, which continues to use the shared
-MAUI styles. .NET MAUI 10 Shell tabs use the Material 3 token palette, but native
-Material 3 Shell navigation requires .NET MAUI 11.
+MAUI styles.
+
+Android Shell tabs retain the Material 3 80dp height in portrait and use a compact
+56dp height in landscape, excluding the system navigation/gesture inset. The
+landscape layout keeps the 24dp icons and text labels, with smaller item padding
+and selection indicators. `CompactShellRenderer` updates these dimensions when
+the native tab bar resizes, using the window's aspect ratio; Android does not
+recreate the activity on rotation. Material continues to manage bottom and side
+system insets.
+
+iOS keeps MAUI's native `UITabBarController` layout. UIKit adapts the tab bar to
+the device's size classes, including compact-height landscape layouts, and manages
+the home-indicator safe area. Its precise height and icon/label arrangement depend
+on the iOS version and device; the Android dimensions are not applied to iOS.
 
 ### Deploy to an Android device
 
@@ -253,13 +265,20 @@ dotnet build SeattleCarsInBikeLanes.Mobile.csproj \
 
 Run this matrix on a physical Android 10+ device before merging mobile changes:
 
+After deploying a Debug build to an unlocked phone, run
+`bash scripts/android-tab-bar-smoke.sh` from the repository root. It checks both
+landscape directions and repeated portrait restoration without switching tabs,
+including the system navigation inset, and restores the phone's rotation setting.
+Set `ANDROID_SERIAL` when more than one device is connected. Also check that all
+three tabs remain readable and tappable in landscape with large system text.
+
 | Area | Expected result |
 | --- | --- |
 | First launch on iOS | Camera, photo-library, and when-in-use location permissions are requested sequentially before those features are used; denying any prompt does not crash or block unrelated startup work |
 | First launch on Android | Camera and location permissions are requested sequentially; no storage permission is requested because captured photos use scoped `MediaStore` storage and imports use the system picker |
 | Later launch after denial | Previously attempted permissions are status-checked but not automatically requested again; permissions granted later in system Settings are recognized |
 | Camera denied | The camera preview is never created or started; the Camera tab opens directly to previous photos and the Import button remains usable |
-| Photos denied or limited on iOS | Capture and import remain usable; new captures and picker copies are stored persistently inside the app and remain after process termination, normal device restart, and app updates, but are removed when the app is uninstalled; see the file-persistence limitation below |
+| Photos denied or limited on iOS | Capture and import remain usable without a persistent photo-access warning in the camera view or roll; access can still be changed in system Settings. New captures and picker copies are stored persistently inside the app and remain after process termination, normal device restart, and app updates, but are removed when the app is uninstalled; see the file-persistence limitation below |
 | Location denied | Capture and the map picker do not re-prompt; captured photos have no GPS and submission is blocked until the user selects an in-bounds location on the map |
 | Capture | Each successful shot immediately flashes the preview and produces one haptic click before its thumbnail appears; a non-black photo is saved under `Pictures/Cars in Bike Lanes`, appears in the app roll, and remains after process restart |
 | Orientation and preview | The center-cropped preview fills the usable camera body in portrait and both landscape rotations without entering the status bar or display cutout; the full control rail is horizontal at the screen bottom in portrait and vertical on the physical-bottom side in landscape, the zoom pill stays next to the shutter, all controls remain clear of system insets and upright, and rotating does not restart the preview |

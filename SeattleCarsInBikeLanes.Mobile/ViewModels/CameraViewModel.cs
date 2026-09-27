@@ -401,16 +401,6 @@ public sealed partial class CameraViewModel : ObservableObject
     public partial string? StatusMessage { get; set; }
 
     /// <summary>
-    /// Set when the user has restricted the app to a hand picked set of photos.
-    /// </summary>
-    /// <remarks>
-    /// Under limited access the app's own album is invisible to it, so the roll would silently
-    /// appear empty. The user has to be told, or the app just looks broken.
-    /// </remarks>
-    [ObservableProperty]
-    public partial string? PhotoAccessMessage { get; set; }
-
-    /// <summary>
     /// Whether this device has a camera to preview.
     /// </summary>
     /// <remarks>
@@ -607,25 +597,6 @@ public sealed partial class CameraViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            PhotoLibraryAccess access;
-            try
-            {
-                access = await photoLibrary.CheckAccessAsync();
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Could not check photo-library access.");
-                access = PhotoLibraryAccess.Denied;
-            }
-            PhotoAccessMessage = access switch
-            {
-                PhotoLibraryAccess.Limited =>
-                    "Photo access is limited. New camera photos will be kept only inside this app. You can still import photos with the system picker.",
-                PhotoLibraryAccess.Denied or PhotoLibraryAccess.NotDetermined =>
-                    "Photo access is off. New camera photos will be kept only inside this app. You can still import photos with the system picker.",
-                _ => null
-            };
-
             StatusMessage = null;
             await uploadService.RefreshLimitsAsync();
             await ReloadPhotosAsync();

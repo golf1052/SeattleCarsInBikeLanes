@@ -245,14 +245,17 @@ public sealed class PhotoCatalogTests
         Assert.Equal(SubmittedAt.UtcDateTime, indexed.SubmittedAt);
     }
 
-    [Fact]
-    public async Task PrivateImportedJpegRetainsItsExistingSubmissionMetadata()
+    [Theory]
+    [InlineData(PhotoLibraryAccess.Limited)]
+    [InlineData(PhotoLibraryAccess.Denied)]
+    [InlineData(PhotoLibraryAccess.NotDetermined)]
+    public async Task PrivateImportedJpegRetainsItsExistingSubmissionMetadata(PhotoLibraryAccess access)
     {
         using ImportedPhotoTestDatabase database = new ImportedPhotoTestDatabase();
         FakePhotoLibrary library = new FakePhotoLibrary();
         FakePrivatePhotoStore privatePhotos = new FakePrivatePhotoStore();
         XmpUploadState expected = new XmpUploadState(true, SubmittedAt, "exported-private-report");
-        library.Access = PhotoLibraryAccess.Denied;
+        library.Access = access;
         library.PickedPhotos = new[] { new PickedPhoto(null, JpegWithState(expected)) };
         PhotoCatalog catalog = CreateCatalog(library, privatePhotos, new ImportedPhotoStore(database.Path));
 
@@ -263,7 +266,7 @@ public sealed class PhotoCatalogTests
         AssertState(expected, Assert.Single(await catalog.GetPhotosAsync()));
         Assert.Equal(expected, await privatePhotos.ReadUploadStateAsync(imported.Id));
 
-        FakePhotoLibrary reopenedLibrary = new FakePhotoLibrary(library) { Access = PhotoLibraryAccess.Denied };
+        FakePhotoLibrary reopenedLibrary = new FakePhotoLibrary(library) { Access = access };
         PhotoCatalog reopened = CreateCatalog(reopenedLibrary, new FakePrivatePhotoStore(privatePhotos),
             new ImportedPhotoStore(database.Path));
         ReportPhoto restored = Assert.Single(await reopened.GetPhotosAsync());
@@ -333,7 +336,9 @@ public sealed class PhotoCatalogTests
 
     [Theory]
     [InlineData(PhotoLibraryAccess.Granted, PhotoOrigin.Captured)]
+    [InlineData(PhotoLibraryAccess.Limited, PhotoOrigin.PrivateCaptured)]
     [InlineData(PhotoLibraryAccess.Denied, PhotoOrigin.PrivateCaptured)]
+    [InlineData(PhotoLibraryAccess.NotDetermined, PhotoOrigin.PrivateCaptured)]
     public async Task NewlyCapturedPhotosRemainUnsubmitted(PhotoLibraryAccess access, PhotoOrigin origin)
     {
         using ImportedPhotoTestDatabase database = new ImportedPhotoTestDatabase();

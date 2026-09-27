@@ -47,6 +47,11 @@ public static class MauiProgram
 				fonts.AddFont("FluentSystemIcons-Regular.ttf", "FluentIcons");
 			});
 
+#if ANDROID
+		builder.ConfigureMauiHandlers(handlers =>
+			handlers.AddHandler<AppShell, Platforms.Android.CompactShellRenderer>());
+#endif
+
 		RegisterServices(builder.Services);
 		RegisterViewModels(builder.Services);
 		RegisterPages(builder.Services);

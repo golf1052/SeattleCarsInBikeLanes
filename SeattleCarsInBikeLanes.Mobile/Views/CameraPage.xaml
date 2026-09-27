@@ -495,12 +495,6 @@
                    Padding="10"
                    IsVisible="{Binding StatusMessage, Converter={StaticResource IsNotNullConverter}}" />
 
-            <Label Text="{Binding PhotoAccessMessage}"
-                   TextColor="White"
-                   BackgroundColor="#CC7A5A1F"
-                   Padding="10"
-                   IsVisible="{Binding PhotoAccessMessage, Converter={StaticResource IsNotNullConverter}}" />
-
             <Label Text="No camera is available, or camera access was not granted. You can still import photos from your library."
                    TextColor="White"
                    BackgroundColor="#CC7A5A1F"
