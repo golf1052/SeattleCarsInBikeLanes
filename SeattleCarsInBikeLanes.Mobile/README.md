@@ -295,7 +295,7 @@ three tabs remain readable and tappable in landscape with large system text.
 | Sign-out synchronization | Signing out either provider in Settings updates native attribution and the already-loaded Map UI/storage; signing out from the Map website updates Settings; neither direction signs out the other provider, and Settings-originated sign-out also works when Map has not loaded yet or reloads before handling the request |
 | Weak/offline network | A report stays queued, survives stopping the process, and resumes through WorkManager after connectivity returns |
 | Upload payload | Large photos are resized while EXIF, GPS, orientation, and XMP remain readable by the server |
-| Map | Google Maps loads and off-site main-frame links open externally without embedded posts ejecting the user from the app |
+| Map | Google Maps loads and off-site main-frame links open externally without embedded posts ejecting the user from the app; if an offline load fails or renders from cache without fresh map data, it retries automatically when internet returns, including after leaving and reopening the tab or resuming the app, without reloading an already working online map or interrupting sign-in |
 
 ### Already reported
 

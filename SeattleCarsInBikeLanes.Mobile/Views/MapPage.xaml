@@ -15,6 +15,17 @@
                            VerticalOptions="Center"
                            HorizontalOptions="Center" />
 
+        <Border x:Name="MapUnavailable"
+                IsVisible="False"
+                Style="{StaticResource ErrorBorder}"
+                HorizontalOptions="Center"
+                VerticalOptions="Center"
+                Margin="24">
+            <Label Text="Couldn't load the map. It will retry when you reconnect or return to this tab."
+                   Style="{StaticResource ErrorTextLabel}"
+                   HorizontalTextAlignment="Center" />
+        </Border>
+
         <Button x:Name="CancelSignInButton"
                 Text="Cancel sign in"
                 Clicked="CancelSignInClicked"

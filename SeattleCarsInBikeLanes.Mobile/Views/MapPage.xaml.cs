@@ -15,7 +15,12 @@ public partial class MapPage : ContentPage
     private readonly ILogger<MapPage> logger;
     private readonly WebNavigationPolicy navigationPolicy = new WebNavigationPolicy();
     private readonly SemaphoreSlim webAuthMutex = new SemaphoreSlim(1, 1);
+    private readonly MapLoadRecovery mapLoadRecovery;
     private Uri? currentDocumentUri;
+    private Window? observedWindow;
+    private bool isPageActive;
+    private bool siteNavigationInProgress = true;
+    private bool socialAuthorizationInProgress;
 
     public MapPage(IAuthService authService,
         IWebViewCookieBridge cookieBridge,
@@ -30,6 +35,7 @@ public partial class MapPage : ContentPage
         this.mastodonSessionCapture = mastodonSessionCapture;
         this.webAuthActions = webAuthActions;
         this.logger = logger;
+        mapLoadRecovery = new MapLoadRecovery(Connectivity.Current.NetworkAccess != NetworkAccess.Internet);
 
         webAuthActions.PendingActionsChanged += WebAuthActionsPendingActionsChanged;
         Web.Source = SiteUrls.Map.ToString();
@@ -39,10 +45,96 @@ public partial class MapPage : ContentPage
     {
         base.OnAppearing();
 
+        isPageActive = true;
+        Connectivity.Current.ConnectivityChanged += ConnectivityChanged;
+        observedWindow = Window;
+        if (observedWindow is not null)
+        {
+            observedWindow.Resumed += WindowResumed;
+        }
+
+        if (Connectivity.Current.NetworkAccess != NetworkAccess.Internet)
+        {
+            mapLoadRecovery.ConnectivityLost();
+            ShowMapUnavailable();
+        }
+        TryRecoverMap();
+
         if (IsSiteUri(currentDocumentUri))
         {
             await ProcessPendingWebAuthActionsAsync();
         }
+    }
+
+    protected override void OnDisappearing()
+    {
+        isPageActive = false;
+        Connectivity.Current.ConnectivityChanged -= ConnectivityChanged;
+        if (observedWindow is not null)
+        {
+            observedWindow.Resumed -= WindowResumed;
+            observedWindow = null;
+        }
+
+        base.OnDisappearing();
+    }
+
+    private void ConnectivityChanged(object? sender, ConnectivityChangedEventArgs e) =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (Connectivity.Current.NetworkAccess == NetworkAccess.Internet)
+            {
+                TryRecoverMap();
+            }
+            else
+            {
+                mapLoadRecovery.ConnectivityLost();
+                ShowMapUnavailable();
+            }
+        });
+
+    private void WindowResumed(object? sender, EventArgs e) =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (Connectivity.Current.NetworkAccess != NetworkAccess.Internet)
+            {
+                mapLoadRecovery.ConnectivityLost();
+                ShowMapUnavailable();
+            }
+            TryRecoverMap();
+        });
+
+    private void ShowMapUnavailable()
+    {
+        if (!mapLoadRecovery.NeedsRetry || socialAuthorizationInProgress)
+        {
+            return;
+        }
+
+        Busy.IsRunning = false;
+        Busy.IsVisible = false;
+        MapUnavailable.IsVisible = true;
+    }
+
+    private void TryRecoverMap()
+    {
+        if (!mapLoadRecovery.TryBeginRetry(
+            Connectivity.Current.NetworkAccess == NetworkAccess.Internet,
+            isPageActive,
+            socialAuthorizationInProgress))
+        {
+            return;
+        }
+
+        siteNavigationInProgress = true;
+        currentDocumentUri = null;
+        CancelSignInButton.IsVisible = false;
+        MapUnavailable.IsVisible = false;
+        Busy.IsVisible = true;
+        Busy.IsRunning = true;
+
+        // A new source navigates to the site even when the failed URL is still the current source.
+        Web.Source = new UrlWebViewSource { Url = SiteUrls.Map.AbsoluteUri };
     }
 
     private async void WebNavigating(object? sender, WebNavigatingEventArgs e)
@@ -89,6 +181,8 @@ public partial class MapPage : ContentPage
         if (action == WebNavigationAction.RestartSocialAuthorization)
         {
             e.Cancel = true;
+            socialAuthorizationInProgress = true;
+            siteNavigationInProgress = false;
             try
             {
                 // The site's logout disconnects its token, not the provider's own browser session.
@@ -99,6 +193,7 @@ public partial class MapPage : ContentPage
             catch (Exception ex)
             {
                 navigationPolicy.ResetSocialAuthorization();
+                socialAuthorizationInProgress = false;
                 logger.LogError(ex, "Could not clear the social provider session before signing in.");
                 await DisplayAlertAsync("Sign in failed",
                     "The previous social account session could not be cleared. Try again.",
@@ -108,14 +203,53 @@ public partial class MapPage : ContentPage
             return;
         }
 
+        if (IsSiteUri(target) && !socialAuthorizationInProgress)
+        {
+            siteNavigationInProgress = true;
+            mapLoadRecovery.NavigationStarted(Connectivity.Current.NetworkAccess == NetworkAccess.Internet);
+        }
+
+        if (mapLoadRecovery.NeedsRetry && Connectivity.Current.NetworkAccess != NetworkAccess.Internet &&
+            !socialAuthorizationInProgress)
+        {
+            ShowMapUnavailable();
+            return;
+        }
+
+        MapUnavailable.IsVisible = false;
         Busy.IsVisible = true;
         Busy.IsRunning = true;
     }
 
     private async void WebNavigated(object? sender, WebNavigatedEventArgs e)
     {
+        if (e.Result == WebNavigationResult.Cancel)
+        {
+            return;
+        }
+
+        if (e.Result != WebNavigationResult.Success &&
+            !siteNavigationInProgress && !socialAuthorizationInProgress)
+        {
+            return;
+        }
+
         Busy.IsRunning = false;
         Busy.IsVisible = false;
+
+        if (e.Result != WebNavigationResult.Success)
+        {
+            currentDocumentUri = null;
+            CancelSignInButton.IsVisible = socialAuthorizationInProgress;
+            if (siteNavigationInProgress && !socialAuthorizationInProgress)
+            {
+                mapLoadRecovery.NavigationFailed();
+                ShowMapUnavailable();
+            }
+
+            siteNavigationInProgress = false;
+            return;
+        }
 
         currentDocumentUri = Uri.TryCreate(e.Url, UriKind.Absolute, out Uri? target) ? target : null;
         CancelSignInButton.IsVisible = currentDocumentUri is not null && !IsSiteUri(currentDocumentUri);
@@ -123,6 +257,11 @@ public partial class MapPage : ContentPage
         {
             return;
         }
+
+        siteNavigationInProgress = false;
+        socialAuthorizationInProgress = false;
+        mapLoadRecovery.NavigationSucceeded(Connectivity.Current.NetworkAccess == NetworkAccess.Internet);
+        MapUnavailable.IsVisible = false;
 
         try
         {
@@ -241,9 +380,12 @@ public partial class MapPage : ContentPage
     private void CancelSignInClicked(object? sender, EventArgs e)
     {
         navigationPolicy.ResetSocialAuthorization();
+        socialAuthorizationInProgress = false;
+        siteNavigationInProgress = true;
+        mapLoadRecovery.NavigationStarted(Connectivity.Current.NetworkAccess == NetworkAccess.Internet);
         CancelSignInButton.IsVisible = false;
         currentDocumentUri = null;
-        Web.Source = SiteUrls.Map.ToString();
+        Web.Source = new UrlWebViewSource { Url = SiteUrls.Map.AbsoluteUri };
     }
 
     private static bool IsSiteUri(Uri? target) =>
