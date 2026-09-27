@@ -9,6 +9,12 @@ on:
       - "SeattleCarsInBikeLanes.Mobile.Core.Tests/**"
       - "SeattleCarsInBikeLanes.Core/**"
       - "scripts/ios-photo-status-smoke/**"
+      - "scripts/release-mobile.sh"
+      - "scripts/lib/verify-mobile-package.sh"
+      - "scripts/codesign-with-fileprovider-guard.py"
+      - "scripts/tests/codesign-with-fileprovider-guard-tests.py"
+      - "scripts/tests/release-mobile-tests.sh"
+      - "scripts/tests/verify-mobile-package-tests.sh"
   push:
     branches:
       - main
@@ -19,6 +25,12 @@ on:
       - "SeattleCarsInBikeLanes.Mobile.Core.Tests/**"
       - "SeattleCarsInBikeLanes.Core/**"
       - "scripts/ios-photo-status-smoke/**"
+      - "scripts/release-mobile.sh"
+      - "scripts/lib/verify-mobile-package.sh"
+      - "scripts/codesign-with-fileprovider-guard.py"
+      - "scripts/tests/codesign-with-fileprovider-guard-tests.py"
+      - "scripts/tests/release-mobile-tests.sh"
+      - "scripts/tests/verify-mobile-package-tests.sh"
   workflow_dispatch:
 
 jobs:
@@ -27,6 +39,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Test mobile release scripts
+        run: |
+          for script in scripts/release-mobile.sh scripts/lib/verify-mobile-package.sh \
+            scripts/tests/release-mobile-tests.sh scripts/tests/verify-mobile-package-tests.sh; do
+            /bin/bash -n "$script"
+          done
+          /bin/bash scripts/tests/release-mobile-tests.sh
+          /bin/bash scripts/tests/verify-mobile-package-tests.sh
+          /usr/bin/python3 -B scripts/tests/codesign-with-fileprovider-guard-tests.py
 
       - name: Check out JPEG XMP writer
         uses: actions/checkout@v4

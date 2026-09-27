@@ -2,5 +2,24 @@
 	<PropertyGroup>
 		<!-- Copy this file to SeattleCarsInBikeLanes.Mobile.local.props and paste the key below. -->
 		<GOOGLE_MAPS_API_KEY></GOOGLE_MAPS_API_KEY>
+		<!-- Optional: opt out of the automatic iOS CloudStorage signing guard.
+		     Use nonsynced output instead; see IOS_SIGNING.md. -->
+		<!-- <SuspendFileProviderDuringCodesign>false</SuspendFileProviderDuringCodesign> -->
+	</PropertyGroup>
+
+	<!-- Only the release script enables distribution signing. Use an installed
+	     Apple Distribution identity and an App Store profile name or UUID. -->
+	<PropertyGroup Condition="'$(MobileReleasePackaging)' == 'true' And '$(MobileReleasePlatform)' == 'ios'">
+		<CodesignKey></CodesignKey>
+		<CodesignProvision></CodesignProvision>
+	</PropertyGroup>
+
+	<!-- Reuse your existing Play upload key. Passwords must reference private files
+	     outside the repository, for example file:$(HOME)/.config/cars/key-password. -->
+	<PropertyGroup Condition="'$(MobileReleasePackaging)' == 'true' And '$(MobileReleasePlatform)' == 'android'">
+		<AndroidSigningKeyStore></AndroidSigningKeyStore>
+		<AndroidSigningKeyAlias></AndroidSigningKeyAlias>
+		<AndroidSigningKeyPass></AndroidSigningKeyPass>
+		<AndroidSigningStorePass></AndroidSigningStorePass>
 	</PropertyGroup>
 </Project>

@@ -185,6 +185,13 @@ DocProject/Help/html
 
 # Click-Once directory
 publish/
+!/publish/
+/publish/*
+!/publish/PUBLISHING.md
+
+# Local release serialization and atomic version updates
+/.mobile-release.lock/
+/SeattleCarsInBikeLanes.Mobile/Version.props.tmp.*
 
 # Publish Web Output
 *.[Pp]ublish.xml

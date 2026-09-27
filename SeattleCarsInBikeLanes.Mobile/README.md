@@ -1,5 +1,8 @@
 # SeattleCarsInBikeLanes.Mobile
 
+For signed iOS and Android release packages, see the
+[publishing guide](../publish/PUBLISHING.md).
+
 Fonts from https://github.com/microsoft/fluentui-system-icons
   - see `fonts` folder
 
@@ -49,14 +52,10 @@ monochrome source is the opaque colored foreground, which would hide the bicycle
 Keep this derived glyph aligned with the shared SVGs when changing the design.
 
 Clean the affected platform target after changing icon assets to remove stale
-generated resources; launchers can also cache the previous icon. For checkouts
-inside OneDrive, keep signed iOS output outside the synced directory if
-`codesign` reports resource-fork or Finder-info errors, for example:
-
-```bash
-dotnet build -f net10.0-ios -r iossimulator-arm64 \
-  -p:OutputPath="$HOME/Library/Caches/SeattleCarsInBikeLanes/ios-build/"
-```
+generated resources; launchers can also cache the previous icon. iOS builds on
+macOS automatically guard signing against CloudStorage metadata changes, including
+VSCode Debug/Release and CLI builds. See [iOS signing in CloudStorage](IOS_SIGNING.md)
+for the investigation, suspend/resume safeguards, and opt-out.
 
 ## Splash screen
 
@@ -133,33 +132,29 @@ Clean the exact device configuration, then rebuild. From the repository root:
 
 ```bash
 project="SeattleCarsInBikeLanes.Mobile/SeattleCarsInBikeLanes.Mobile.csproj"
-output="$HOME/Library/Caches/SeattleCarsInBikeLanes/ios-release/"
 
-dotnet restore "$project" -r ios-arm64 -p:Configuration=Release \
-  -p:OutputPath="$output" &&
-dotnet clean "$project" -f net10.0-ios -c Release -r ios-arm64 \
-  -p:OutputPath="$output" &&
-dotnet build "$project" -f net10.0-ios -c Release -r ios-arm64 \
-  -p:OutputPath="$output"
+dotnet restore "$project" -r ios-arm64 -p:Configuration=Release &&
+dotnet clean "$project" -f net10.0-ios -c Release -r ios-arm64 &&
+dotnet build "$project" -f net10.0-ios -c Release -r ios-arm64
 ```
 
-The output override keeps the signed bundle outside OneDrive. Otherwise, OneDrive
-can attach `com.apple.FinderInfo` to a generated framework such as `Sentry.framework`
-and make code signing fail even after the project's metadata-cleanup targets run.
-That signing failure is separate from the runtime AOT abort.
+No output override or manual daemon control is needed for the default build.
+The project's [signing guard](IOS_SIGNING.md) briefly suspends FileProvider while
+cleaning and signing each CloudStorage bundle, then resumes it. That metadata race
+is separate from the runtime AOT abort.
 
 Install the newly built bundle over the existing app, then relaunch:
 
 ```bash
 xcrun devicectl device install app --device "<device-identifier>" \
-  "$HOME/Library/Caches/SeattleCarsInBikeLanes/ios-release/SeattleCarsInBikeLanes.Mobile.app"
+  "SeattleCarsInBikeLanes.Mobile/bin/Release/net10.0-ios/ios-arm64/SeattleCarsInBikeLanes.Mobile.app"
 xcrun devicectl device process launch --device "<device-identifier>" \
   --terminate-existing --console com.golf1052.SeattleCarsInBikeLanes.Mobile
 ```
 
 Do not uninstall or reset app data for this recovery: an over-install preserves
-private photos, settings, and the upload queue. Deploy the bundle from the selected
-output directory, not an older copy under `bin`.
+private photos, settings, and the upload queue. If overriding `OutputPath`, deploy
+the bundle from that directory rather than an older copy under `bin`.
 
 ### Confirmed diagnostics-toggle trigger
 

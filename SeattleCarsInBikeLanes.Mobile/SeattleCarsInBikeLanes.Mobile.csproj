@@ -2,10 +2,13 @@
 
 	<Import Project="SeattleCarsInBikeLanes.Mobile.local.props"
 			Condition="Exists('SeattleCarsInBikeLanes.Mobile.local.props')" />
+	<Import Project="Version.props" />
 
 	<PropertyGroup>
 		<TargetFrameworks>net10.0-android;net10.0-ios</TargetFrameworks>
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+		<TargetFrameworks Condition="'$(MobileReleasePackaging)' == 'true' And '$(MobileReleasePlatform)' == 'ios'">net10.0-ios</TargetFrameworks>
+		<TargetFrameworks Condition="'$(MobileReleasePackaging)' == 'true' And '$(MobileReleasePlatform)' == 'android'">net10.0-android</TargetFrameworks>
 		<!-- Uncomment to also build the tizen app. You will need to install tizen by following this: https://github.com/Samsung/Tizen.NET -->
 		<!-- <TargetFrameworks>$(TargetFrameworks);net9.0-tizen</TargetFrameworks> -->
 
@@ -32,10 +35,6 @@
 		<!-- App Identifier -->
 		<ApplicationId>com.golf1052.SeattleCarsInBikeLanes.Mobile</ApplicationId>
 
-		<!-- Versions -->
-		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>1</ApplicationVersion>
-
 		<!-- CommunityToolkit.Maui.Camera requires iOS 15.0, PHPickerViewController multi select
 		     requires 14.0, and Photos content editing behaves consistently from 16.0 onwards. -->
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">16.0</SupportedOSPlatformVersion>
@@ -51,6 +50,15 @@
 	<PropertyGroup Condition="'$(Configuration)' == 'Release' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
 		<EnableDiagnostics>false</EnableDiagnostics>
 		<EnableMauiXamlDiagnostics>false</EnableMauiXamlDiagnostics>
+	</PropertyGroup>
+
+	<!-- Wrap the signing tool, not the build: the guard resumes FileProvider even
+	     if signing fails or the IDE cancels. Explicit signing-tool overrides win. -->
+	<PropertyGroup Condition="$([MSBuild]::IsOSPlatform('osx')) And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+		<SuspendFileProviderDuringCodesign Condition="'$(SuspendFileProviderDuringCodesign)' == ''">true</SuspendFileProviderDuringCodesign>
+		<_UseFileProviderCodesignGuard Condition="'$(SuspendFileProviderDuringCodesign)' == 'true' And '$(CodesignPath)' == '' And '$(CodesignExe)' == ''">true</_UseFileProviderCodesignGuard>
+		<CodesignPath Condition="'$(_UseFileProviderCodesignGuard)' == 'true'">$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '../scripts'))</CodesignPath>
+		<CodesignExe Condition="'$(_UseFileProviderCodesignGuard)' == 'true'">codesign-with-fileprovider-guard.py</CodesignExe>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
@@ -132,24 +140,12 @@
 		<Error Text="GOOGLE_MAPS_API_KEY is required to build the Android app. Set it in the build environment to a Google Maps SDK for Android key restricted to this app." />
 	</Target>
 
-	<!-- OneDrive tags files with com.apple.FinderInfo extended attributes, and .NET's file copy on
-	     macOS preserves extended attributes, so those tags follow the files into the .app bundle.
-	     codesign then fails with "resource fork, Finder information, or similar detritus not
-	     allowed". Strip the offending attributes from the project tree before the build (so they
-	     never get copied) and from the app bundle right before it is signed (to also catch files
-	     produced during the build, e.g. ibtool output and extracted .xcframework archives).
-	     The conditions live on the targets rather than in a PropertyGroup because
-	     TargetPlatformIdentifier is only set once the SDK targets are imported. -->
-	<Target Name="StripAppleDetritusFromProject" BeforeTargets="BeforeBuild"
-			Condition="$([MSBuild]::IsOSPlatform('osx')) And ('$(TargetPlatformIdentifier)' == 'ios' Or '$(TargetPlatformIdentifier)' == 'maccatalyst')">
-		<Exec Command="xattr -d -r -s com.apple.FinderInfo &quot;$(MSBuildProjectDirectory)&quot; 2&gt;/dev/null; xattr -d -r -s com.apple.ResourceFork &quot;$(MSBuildProjectDirectory)&quot; 2&gt;/dev/null; exit 0"
-			  ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low" />
-	</Target>
-
+	<!-- Also clean copied metadata for nonsynced output and custom signing tools.
+	     CloudStorage can recreate FinderInfo after this target; the guarded tool
+	     repeats cleanup while FileProvider is suspended. See IOS_SIGNING.md. -->
 	<Target Name="StripAppleDetritusFromAppBundle" BeforeTargets="_CodesignAppBundle"
 			Condition="$([MSBuild]::IsOSPlatform('osx')) And '$(AppBundleDir)' != '' And Exists('$(AppBundleDir)')">
-		<Exec Command="xattr -d -r -s com.apple.FinderInfo &quot;$(AppBundleDir)&quot; 2&gt;/dev/null; xattr -d -r -s com.apple.ResourceFork &quot;$(AppBundleDir)&quot; 2&gt;/dev/null; exit 0"
-			  ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low" />
+		<Exec Command="/usr/bin/xattr -d -r -s com.apple.FinderInfo &quot;$(AppBundleDir)&quot; &amp;&amp; /usr/bin/xattr -d -r -s com.apple.ResourceFork &quot;$(AppBundleDir)&quot;" />
 	</Target>
 
 </Project>
