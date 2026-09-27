@@ -82,6 +82,19 @@ public class FinalizeRequestBuilderTests
     }
 
     [Fact]
+    public void LimitsTheServersLocationToFiveDecimalPlaces()
+    {
+        List<InitialPhotoUpload> photos = Photos();
+        photos[0].PhotoLatitude = "47.6062123";
+        photos[0].PhotoLongitude = "-122.3321987";
+
+        List<FinalizedPhotoUpload> result = FinalizeRequestBuilder.Build(photos, Draft(), null);
+
+        Assert.Equal("47.60621", result[0].PhotoLatitude);
+        Assert.Equal("-122.3322", result[0].PhotoLongitude);
+    }
+
+    [Fact]
     public void ClearsTheCrossStreetWhenTheUserMovedThePin()
     {
         ReportDraft draft = Draft();
