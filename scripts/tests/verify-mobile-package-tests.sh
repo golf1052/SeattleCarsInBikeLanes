@@ -199,8 +199,9 @@ case "$tool" in
         if [[ "$1" == --verify ]]; then
             [[ "$2" == --deep && "$3" == --strict ]] || exit 97
         else
+            [[ "$1" == -d && "$2" == --extract-certificates=* && $# -eq 3 ]] || exit 97
             [[ "$scenario" != certificate_extraction_failure ]] || exit 1
-            if [[ "$scenario" != adhoc_codesign ]]; then printf 'DER\n' > "${3}0"; fi
+            if [[ "$scenario" != adhoc_codesign ]]; then printf 'DER\n' > "${2#*=}0"; fi
         fi
         ;;
     openssl)

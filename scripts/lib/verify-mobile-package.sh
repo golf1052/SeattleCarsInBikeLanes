@@ -184,7 +184,7 @@ verify_ios() {
 
     codesign --verify --deep --strict "$app" > "$scratch/codesign-verify.log" 2>&1 ||
         fail "iOS code signature verification failed; see scratch/codesign-verify.log."
-    codesign -d --extract-certificates "$scratch/ios-signing-cert-" "$app" \
+    codesign -d --extract-certificates="$scratch/ios-signing-cert-" "$app" \
         > "$scratch/codesign-certificate.log" 2>&1 ||
         fail "Cannot extract the iOS signing certificate."
     [[ -s "$scratch/ios-signing-cert-0" ]] || fail "iOS package has no signing leaf certificate (possibly ad-hoc signed)."
