@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
     <ApplicationDisplayVersion>1.0.1</ApplicationDisplayVersion>
-    <ApplicationVersion>4</ApplicationVersion>
+    <ApplicationVersion>5</ApplicationVersion>
   </PropertyGroup>
 </Project>

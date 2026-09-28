@@ -116,7 +116,7 @@ development signing.
 
 `SeattleCarsInBikeLanes.Mobile/Version.props` is the shared source of truth.
 `ApplicationDisplayVersion` is the public version (`1.0.1`).
-`ApplicationVersion` is the internal build number (`4`).
+`ApplicationVersion` is the internal build number (`5`).
 
 | MAUI property | iOS | Android |
 | --- | --- | --- |
