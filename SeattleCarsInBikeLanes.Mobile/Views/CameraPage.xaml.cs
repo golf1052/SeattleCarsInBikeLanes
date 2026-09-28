@@ -158,6 +158,7 @@ public partial class CameraPage : ContentPage
         base.OnAppearing();
 
         isPageVisible = true;
+        CameraCrashTelemetry.Record(CameraCrashPhase.PageAppearing);
         ObserveHardwareWindow();
         StartObservingOrientation();
         cameraReadiness.Begin(CameraReadinessTransition.TabReturn);
@@ -175,6 +176,7 @@ public partial class CameraPage : ContentPage
         catch (Exception ex)
         {
             // OnAppearing is async void, so anything escaping here would take the app down.
+            CameraCrashTelemetry.Record(CameraCrashPhase.PreviewFailed);
             cameraReadiness.Finish("error");
             logger.LogError(ex, "Failed to start the camera preview.");
         }
@@ -185,6 +187,7 @@ public partial class CameraPage : ContentPage
         base.OnDisappearing();
 
         isPageVisible = false;
+        CameraCrashTelemetry.Record(CameraCrashPhase.PageDisappearing);
         UpdateHardwareAvailability();
         StopObservingHardwareWindow();
         StopObservingOrientation();
@@ -287,6 +290,7 @@ public partial class CameraPage : ContentPage
             return;
         }
 
+        CameraCrashTelemetry.Record(CameraCrashPhase.PreviewStarting);
         viewModel.IsCameraReady = false;
 
         if (camera is not null && !await cameraReadiness.CheckCameraPermissionAsync())
@@ -319,6 +323,7 @@ public partial class CameraPage : ContentPage
 
         if (isPreviewRunning)
         {
+            CameraCrashTelemetry.Record(CameraCrashPhase.PreviewReady);
             viewModel.IsCameraReady = true;
             AttachHardwareControls();
             cameraReadiness.Complete();
@@ -362,6 +367,7 @@ public partial class CameraPage : ContentPage
         }
 
         isPreviewRunning = true;
+        CameraCrashTelemetry.Record(CameraCrashPhase.PreviewReady);
         viewModel.IsCameraReady = true;
         AttachHardwareControls();
         ResumePreviewState();
@@ -400,6 +406,7 @@ public partial class CameraPage : ContentPage
 
         if (camera is null)
         {
+            CameraCrashTelemetry.Record(CameraCrashPhase.PreviewStopped);
             return;
         }
 
@@ -421,9 +428,13 @@ public partial class CameraPage : ContentPage
         // Taking a photo is slow enough for the user to have come back by now.
         if (IsPreviewExpected)
         {
+            CameraCrashTelemetry.Record(isPreviewRunning
+                ? CameraCrashPhase.PreviewReady
+                : CameraCrashPhase.PreviewStarting);
             return;
         }
 
+        CameraCrashTelemetry.Record(CameraCrashPhase.PreviewStopping);
         HideFocusReticle();
 
         if (camera.Handler is not null)
@@ -439,6 +450,8 @@ public partial class CameraPage : ContentPage
         {
             camera.StopCameraPreview();
         }
+
+        CameraCrashTelemetry.Record(CameraCrashPhase.PreviewStopped);
     }
 
     /// <summary>
@@ -555,6 +568,7 @@ public partial class CameraPage : ContentPage
             }
 
             isPreviewRunning = true;
+            CameraCrashTelemetry.Record(CameraCrashPhase.PreviewReady);
             viewModel.IsCameraReady = true;
             AttachHardwareControls();
             ResumePreviewState();
@@ -605,6 +619,7 @@ public partial class CameraPage : ContentPage
     private CancellationTokenSource BeginPreviewReadyWait()
     {
         CancelPreviewReadyWait();
+        CameraCrashTelemetry.Record(CameraCrashPhase.FirstFrameWaiting);
         previewReadyCancellation = new CancellationTokenSource(PreviewReadyTimeout);
         return previewReadyCancellation;
     }
@@ -619,6 +634,7 @@ public partial class CameraPage : ContentPage
             return;
         }
 
+        CameraCrashTelemetry.Record(CameraCrashPhase.FirstFrameCancelled);
         cancellation.Cancel();
         cancellation.Dispose();
     }
@@ -631,6 +647,9 @@ public partial class CameraPage : ContentPage
         }
 
         previewReadyCancellation = null;
+        CameraCrashTelemetry.Record(cancel
+            ? CameraCrashPhase.FirstFrameNotReady
+            : CameraCrashPhase.FirstFrameReady);
         if (cancel)
         {
             cancellation.Cancel();
@@ -671,6 +690,7 @@ public partial class CameraPage : ContentPage
         }
         catch (Exception ex)
         {
+            CameraCrashTelemetry.Record(CameraCrashPhase.PreviewFailed);
             cameraReadiness.Finish("error");
             logger.LogError(ex, "Failed to restart the camera preview after the app resumed.");
         }

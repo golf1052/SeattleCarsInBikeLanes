@@ -37,7 +37,9 @@ public abstract class DeviceDisplayCameraOrientationSource : ICameraOrientationS
             if (startListening)
             {
                 lastPublishedOrientation = Current;
+                CameraCrashTelemetry.Record(CameraCrashPhase.OrientationSubscribing);
                 deviceDisplay.MainDisplayInfoChanged += MainDisplayInfoChanged;
+                CameraCrashTelemetry.Record(CameraCrashPhase.OrientationSubscribed);
             }
         }
         remove
@@ -46,7 +48,9 @@ public abstract class DeviceDisplayCameraOrientationSource : ICameraOrientationS
 
             if (orientationChanged is null)
             {
+                CameraCrashTelemetry.Record(CameraCrashPhase.OrientationUnsubscribing);
                 deviceDisplay.MainDisplayInfoChanged -= MainDisplayInfoChanged;
+                CameraCrashTelemetry.Record(CameraCrashPhase.OrientationUnsubscribed);
             }
         }
     }
@@ -87,6 +91,7 @@ public abstract class DeviceDisplayCameraOrientationSource : ICameraOrientationS
         }
 
         lastPublishedOrientation = current;
+        CameraCrashTelemetry.Record(CameraCrashPhase.OrientationChanged);
         orientationChanged?.Invoke(this, EventArgs.Empty);
     }
 }

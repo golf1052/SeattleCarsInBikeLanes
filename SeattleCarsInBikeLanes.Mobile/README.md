@@ -3,6 +3,24 @@
 For signed iOS and Android release packages, see the
 [publishing guide](../publish/PUBLISHING.md).
 
+## Crash diagnostics
+
+Sentry records bounded camera lifecycle breadcrumbs and the latest `camera.phase`
+tag in both Debug and Release builds. They identify orientation listener
+registration, rotation, first-frame waits, preview readiness, and camera
+stop/resume without sending photos, coordinates, account data, or view text.
+Sentry forwards managed breadcrumbs and tags to its Android SDK after
+initialization, so they can accompany Java/native errors. Android also attaches
+thread context to logged events. On Android 12 and newer, OS tombstones enrich
+native crashes after the app restarts; Android 11 native crashes still require
+device logcat/tombstones when the NDK stack has no useful frames. Crashes before
+Sentry initializes cannot include these custom breadcrumbs. Screenshots and raw
+tombstone attachments are not enabled.
+
+These diagnostics apply only to newly built packages, not already-installed
+releases. Publish with a new build number to distinguish new events from the
+existing release in Sentry.
+
 Fonts from https://github.com/microsoft/fluentui-system-icons
   - see `fonts` folder
 

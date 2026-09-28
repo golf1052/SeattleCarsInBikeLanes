@@ -39,6 +39,11 @@ public static class MauiProgram
 				options.Environment = "production";
 #endif
 				options.TracesSampleRate = 1.0;
+				options.MaxBreadcrumbs = 150;
+#if ANDROID
+				options.Native.AttachThreads = true;
+				options.Native.TombstoneEnabled = true;
+#endif
 			})
 			.ConfigureFonts(fonts =>
 			{

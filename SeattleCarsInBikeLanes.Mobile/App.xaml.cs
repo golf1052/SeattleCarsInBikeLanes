@@ -52,6 +52,7 @@ public partial class App : Application
 			cameraWasActiveWhenStopped = shell.CurrentPage is Views.CameraPage;
 			if (cameraWasActiveWhenStopped)
 			{
+				CameraCrashTelemetry.Record(CameraCrashPhase.AppStopped);
 				cameraLifecycle.NotifyStopped();
 			}
 		};
@@ -62,6 +63,7 @@ public partial class App : Application
 		{
 			if (cameraWasActiveWhenStopped)
 			{
+				CameraCrashTelemetry.Record(CameraCrashPhase.AppResumed);
 				cameraReadiness.Begin(Core.Performance.CameraReadinessTransition.AppResume);
 				cameraLifecycle.NotifyResumed();
 				cameraWasActiveWhenStopped = false;
